@@ -1,24 +1,24 @@
 import { ExperienceCard } from "@/components/ExperienceCard";
-import lagosFood from "@/assets/lagos-food.jpg";
-import lagosCulture from "@/assets/lagos-culture.jpg";
+import lagosParty from "@/assets/lagos-party.jpg";
+import lagosClub from "@/assets/lagos-club.jpg";
 
 export const FeaturesSection = () => {
   const experiences = [
     {
-      title: "Lagos Street Food Festival",
-      location: "Victoria Island",
-      time: "Today, 6:00 PM",
-      attendees: 127,
-      image: lagosFood,
-      category: "Food & Drinks"
+      title: "Rooftop Party Vibes",
+      location: "Victoria Island Skybar",
+      time: "Tonight, 9:00 PM",
+      attendees: 247,
+      image: lagosParty,
+      category: "Nightlife"
     },
     {
-      title: "Afrobeats Live Session",
-      location: "Ikeja",
-      time: "Tomorrow, 8:00 PM",
-      attendees: 89,
-      image: lagosCulture,
-      category: "Music & Arts"
+      title: "Afrobeats Club Night",
+      location: "Lekki Phase 1",
+      time: "Saturday, 10:00 PM",
+      attendees: 189,
+      image: lagosClub,
+      category: "Music & Dance"
     }
   ];
 
@@ -29,13 +29,13 @@ export const FeaturesSection = () => {
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
             Discover{" "}
             <span className="bg-gradient-warm bg-clip-text text-transparent">
-              Lagos
+              Lagos Nights
             </span>{" "}
             Like Never Before
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            From street food festivals to rooftop parties, cultural events to business meetups - 
-            GIDI CONNECT brings you closer to the pulse of Lagos.
+            From exclusive rooftop parties to underground club scenes, VIP lounges to beach raves - 
+            GIDI CONNECT unlocks Lagos' electric nightlife and connects you with the city's energy.
           </p>
         </div>
 
@@ -49,32 +49,32 @@ export const FeaturesSection = () => {
         {/* Features Grid */}
         <div className="grid md:grid-cols-3 gap-8">
           <div className="text-center">
-            <div className="w-16 h-16 bg-gradient-hero rounded-full flex items-center justify-center mx-auto mb-4 shadow-glow">
-              <span className="text-2xl font-bold text-primary-foreground">🏙️</span>
+            <div className="w-16 h-16 bg-gradient-hero rounded-full flex items-center justify-center mx-auto mb-4 shadow-glow animate-pulse">
+              <span className="text-2xl font-bold text-primary-foreground">🌃</span>
             </div>
-            <h3 className="text-xl font-bold mb-2">Hyperlocal Discovery</h3>
+            <h3 className="text-xl font-bold mb-2">Nightlife Discovery</h3>
             <p className="text-muted-foreground">
-              Find experiences within your neighborhood. From Surulere to Lekki, discover what's happening nearby.
+              Find the hottest spots after dark. From Victoria Island to Lekki, discover where Lagos comes alive at night.
             </p>
           </div>
 
           <div className="text-center">
-            <div className="w-16 h-16 bg-gradient-warm rounded-full flex items-center justify-center mx-auto mb-4 shadow-warm">
-              <span className="text-2xl font-bold text-secondary-foreground">👥</span>
+            <div className="w-16 h-16 bg-gradient-warm rounded-full flex items-center justify-center mx-auto mb-4 shadow-warm animate-pulse">
+              <span className="text-2xl font-bold text-secondary-foreground">🎉</span>
             </div>
-            <h3 className="text-xl font-bold mb-2">Community First</h3>
+            <h3 className="text-xl font-bold mb-2">Party Network</h3>
             <p className="text-muted-foreground">
-              Connect with like-minded Lagosians. Share experiences, make friends, and build your local network.
+              Connect with Lagos' party scene. Meet fellow night owls, share experiences, and build your social circle.
             </p>
           </div>
 
           <div className="text-center">
-            <div className="w-16 h-16 bg-gradient-cool rounded-full flex items-center justify-center mx-auto mb-4 shadow-cool">
-              <span className="text-2xl font-bold text-accent-foreground">⚡</span>
+            <div className="w-16 h-16 bg-gradient-cool rounded-full flex items-center justify-center mx-auto mb-4 shadow-cool animate-pulse">
+              <span className="text-2xl font-bold text-accent-foreground">🔥</span>
             </div>
-            <h3 className="text-xl font-bold mb-2">Real-time Updates</h3>
+            <h3 className="text-xl font-bold mb-2">Live Energy</h3>
             <p className="text-muted-foreground">
-              Get instant notifications about events, traffic updates, and community happenings as they unfold.
+              Feel the pulse of Lagos nightlife in real-time. Get instant updates on parties, club events, and the hottest scenes.
             </p>
           </div>
         </div>
