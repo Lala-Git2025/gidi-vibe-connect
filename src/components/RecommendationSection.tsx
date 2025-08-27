@@ -6,13 +6,13 @@ import lagosFood from "@/assets/lagos-food.jpg";
 
 const recommendations = [
   {
-    id: "sample-venue-1",
+    id: "11111111-1111-1111-1111-111111111111",
     title: "BORDELLE CITY",
     address: "123 Anywhere Street, Any City",
     image: lagosClub,
   },
   {
-    id: "sample-venue-2", 
+    id: "22222222-2222-2222-2222-222222222222", 
     title: "FLAVOUR HOUSE",
     address: "456 Victoria Island, Lagos",
     image: lagosFood,
