@@ -1,5 +1,5 @@
 import { ExperienceCard } from "@/components/ExperienceCard";
-import lagosParty from "@/assets/lagos-party.jpg";
+import lagosBeach from "@/assets/lagos-beach.jpg";
 import lagosClub from "@/assets/lagos-club.jpg";
 
 export const FeaturesSection = () => {
@@ -9,7 +9,7 @@ export const FeaturesSection = () => {
       location: "Lekki Conservation Centre",
       time: "Today, 2:00 PM",
       attendees: 156,
-      image: lagosParty,
+      image: lagosBeach,
       category: "Daylife"
     },
     {
