@@ -5,20 +5,20 @@ import lagosClub from "@/assets/lagos-club.jpg";
 export const FeaturesSection = () => {
   const experiences = [
     {
+      title: "Lekki Beach Hangout",
+      location: "Lekki Conservation Centre",
+      time: "Today, 2:00 PM",
+      attendees: 156,
+      image: lagosParty,
+      category: "Daylife"
+    },
+    {
       title: "Rooftop Party Vibes",
       location: "Victoria Island Skybar",
       time: "Tonight, 9:00 PM",
       attendees: 247,
-      image: lagosParty,
-      category: "Nightlife"
-    },
-    {
-      title: "Afrobeats Club Night",
-      location: "Lekki Phase 1",
-      time: "Saturday, 10:00 PM",
-      attendees: 189,
       image: lagosClub,
-      category: "Music & Dance"
+      category: "Nightlife"
     }
   ];
 
@@ -29,13 +29,13 @@ export const FeaturesSection = () => {
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
             Discover{" "}
             <span className="bg-gradient-warm bg-clip-text text-transparent">
-              Lagos Nights
+              Lagos Life
             </span>{" "}
-            Like Never Before
+            24/7
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            From exclusive rooftop parties to underground club scenes, VIP lounges to beach raves - 
-            GIDI CONNECT unlocks Lagos' electric nightlife and connects you with the city's energy.
+            From beach brunches to rooftop dinners, art galleries to club scenes, business hubs to VIP lounges - 
+            GIDI CONNECT unlocks Lagos' dynamic energy from sunrise to midnight.
           </p>
         </div>
 
@@ -50,21 +50,21 @@ export const FeaturesSection = () => {
         <div className="grid md:grid-cols-3 gap-8">
           <div className="text-center">
             <div className="w-16 h-16 bg-gradient-hero rounded-full flex items-center justify-center mx-auto mb-4 shadow-glow animate-pulse">
-              <span className="text-2xl font-bold text-primary-foreground">🌃</span>
+              <span className="text-2xl font-bold text-primary-foreground">☀️</span>
             </div>
-            <h3 className="text-xl font-bold mb-2">Nightlife Discovery</h3>
+            <h3 className="text-xl font-bold mb-2">Daytime Hotspots</h3>
             <p className="text-muted-foreground">
-              Find the hottest spots after dark. From Victoria Island to Lekki, discover where Lagos comes alive at night.
+              Discover Lagos by day: beach clubs, rooftop brunches, art galleries, and business networking spots.
             </p>
           </div>
 
           <div className="text-center">
             <div className="w-16 h-16 bg-gradient-warm rounded-full flex items-center justify-center mx-auto mb-4 shadow-warm animate-pulse">
-              <span className="text-2xl font-bold text-secondary-foreground">🎉</span>
+              <span className="text-2xl font-bold text-secondary-foreground">🌃</span>
             </div>
-            <h3 className="text-xl font-bold mb-2">Party Network</h3>
+            <h3 className="text-xl font-bold mb-2">Nightlife Scene</h3>
             <p className="text-muted-foreground">
-              Connect with Lagos' party scene. Meet fellow night owls, share experiences, and build your social circle.
+              Experience Lagos after dark: exclusive clubs, rooftop bars, live music venues, and VIP experiences.
             </p>
           </div>
 
@@ -72,9 +72,9 @@ export const FeaturesSection = () => {
             <div className="w-16 h-16 bg-gradient-cool rounded-full flex items-center justify-center mx-auto mb-4 shadow-cool animate-pulse">
               <span className="text-2xl font-bold text-accent-foreground">🔥</span>
             </div>
-            <h3 className="text-xl font-bold mb-2">Live Energy</h3>
+            <h3 className="text-xl font-bold mb-2">24/7 Community</h3>
             <p className="text-muted-foreground">
-              Feel the pulse of Lagos nightlife in real-time. Get instant updates on parties, club events, and the hottest scenes.
+              Connect with Lagos' vibrant community around the clock. Share experiences, discover events, and build meaningful connections.
             </p>
           </div>
         </div>

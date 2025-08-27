@@ -6,15 +6,15 @@ import lagosParty from "@/assets/lagos-party.jpg";
 const destinations = [
   {
     id: 1,
-    title: "LAGOS",
-    subtitle: "Nigeria's Cultural Hub",
+    title: "LAGOS ISLAND",
+    subtitle: "Business & Cultural Hub",
     image: lagosCulture,
     rating: 4.8,
   },
   {
     id: 2,
-    title: "ABUJA",
-    subtitle: "Capital Nightlife",
+    title: "LEKKI",
+    subtitle: "Beaches & Entertainment",
     image: lagosParty,
     rating: 4.7,
   },

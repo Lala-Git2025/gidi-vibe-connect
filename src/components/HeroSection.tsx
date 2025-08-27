@@ -27,23 +27,23 @@ export const HeroSection = () => {
           </h1>
           
           <p className="text-xl md:text-2xl text-foreground mb-8 leading-relaxed font-medium drop-shadow-lg">
-            Experience Lagos after dark! Connect with the city's vibrant nightlife, 
-            discover exclusive parties, and join the most energetic community in West Africa.
+            Experience Lagos 24/7! From vibrant daytime hotspots to electric nightlife, 
+            discover the city's energy and connect with West Africa's most dynamic community.
           </p>
           
           {/* Feature highlights */}
           <div className="flex flex-wrap justify-center gap-6 mb-10">
             <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm px-4 py-2 rounded-full border">
               <MapPin className="w-5 h-5 text-primary" />
-              <span className="font-medium">Hottest Spots</span>
+              <span className="font-medium">Day & Night Spots</span>
             </div>
             <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm px-4 py-2 rounded-full border">
               <Users className="w-5 h-5 text-secondary" />
-              <span className="font-medium">Night Owls</span>
+              <span className="font-medium">Active Community</span>
             </div>
             <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm px-4 py-2 rounded-full border">
               <Zap className="w-5 h-5 text-accent" />
-              <span className="font-medium">Live Updates</span>
+              <span className="font-medium">24/7 Energy</span>
             </div>
           </div>
           
@@ -51,12 +51,12 @@ export const HeroSection = () => {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/get-started">
               <Button variant="hero" size="lg">
-                Join the Night
+                Join the Community
               </Button>
             </Link>
             <Link to="/events">
               <Button variant="secondary" size="lg">
-                Discover Events
+                Explore Lagos
               </Button>
             </Link>
           </div>
