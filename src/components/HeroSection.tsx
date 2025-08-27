@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { MapPin, Users, Zap } from "lucide-react";
-import lagosHero from "@/assets/lagos-nightlife-hero.jpg";
+import lagosHero from "@/assets/lagos-hero.jpg";
 
 export const HeroSection = () => {
   return (
