@@ -66,6 +66,69 @@ export type Database = {
           },
         ]
       }
+      events: {
+        Row: {
+          address: string | null
+          attendee_count: number | null
+          category: string
+          created_at: string
+          description: string | null
+          end_date: string | null
+          featured_image: string | null
+          id: string
+          is_featured: boolean | null
+          location: string
+          organizer: string | null
+          price_range: string | null
+          start_date: string
+          tags: string[] | null
+          ticket_url: string | null
+          title: string
+          updated_at: string
+          venue: string | null
+        }
+        Insert: {
+          address?: string | null
+          attendee_count?: number | null
+          category: string
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          featured_image?: string | null
+          id?: string
+          is_featured?: boolean | null
+          location: string
+          organizer?: string | null
+          price_range?: string | null
+          start_date: string
+          tags?: string[] | null
+          ticket_url?: string | null
+          title: string
+          updated_at?: string
+          venue?: string | null
+        }
+        Update: {
+          address?: string | null
+          attendee_count?: number | null
+          category?: string
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          featured_image?: string | null
+          id?: string
+          is_featured?: boolean | null
+          location?: string
+          organizer?: string | null
+          price_range?: string | null
+          start_date?: string
+          tags?: string[] | null
+          ticket_url?: string | null
+          title?: string
+          updated_at?: string
+          venue?: string | null
+        }
+        Relationships: []
+      }
       exclusive_offers: {
         Row: {
           created_at: string

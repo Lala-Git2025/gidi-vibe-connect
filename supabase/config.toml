@@ -25,3 +25,6 @@ verify_jwt = false
 
 [functions.search-places]
 verify_jwt = false
+
+[functions.fetch-lagos-events]
+verify_jwt = false
