@@ -29,7 +29,7 @@ export const LiveVenueSection = () => {
   const [selectedLGA, setSelectedLGA] = useState('Lagos Island');
   const { toast } = useToast();
 
-  const fetchVenues = async (lga?: string, refresh = false) => {
+  const fetchVenues = async (lga = selectedLGA, refresh = false) => {
     if (refresh) setRefreshing(true);
     else setLoading(true);
 
@@ -38,7 +38,7 @@ export const LiveVenueSection = () => {
           body: { 
             category: 'Restaurant',
             location: 'Lagos',
-            lga: lga || selectedLGA
+            lga: lga
           }
         });
 
@@ -77,7 +77,7 @@ export const LiveVenueSection = () => {
   const handleRefresh = () => fetchVenues(selectedLGA, true);
 
   useEffect(() => {
-    fetchVenues(selectedLGA);
+    fetchVenues(selectedLGA, false);
   }, [selectedLGA]);
 
   if (loading) {
