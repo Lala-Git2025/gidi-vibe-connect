@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { MapPin, Users, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
-import lagosHero from "@/assets/lagos-hero.jpg";
+const lagosHero = "/lovable-uploads/b90ac7c2-d411-4570-b72b-e9b6602d74d1.png";
 
 export const HeroSection = () => {
   return (
@@ -10,7 +10,7 @@ export const HeroSection = () => {
       <div className="absolute inset-0">
         <img 
           src={lagosHero} 
-          alt="Lagos vibrant nightlife scene with rooftop parties and city lights"
+          alt="Lagos skyline at night with people enjoying rooftop city views"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background/40 to-secondary/20" />
