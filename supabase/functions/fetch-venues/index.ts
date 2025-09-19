@@ -163,7 +163,7 @@ async function scrapeVenueData(category: string, location: string, lga?: string)
           instagram_url: extractInstagram(tags),
           features,
           opening_hours: openingHours,
-          professional_media_urls: [],
+          professional_media_urls: await getVenueImages(tags.name, venueCategory, targetLGA),
           is_verified: false,
           latitude: lat ? parseFloat(lat.toString()) : null,
           longitude: lon ? parseFloat(lon.toString()) : null,
@@ -284,6 +284,66 @@ function extractInstagram(tags: any): string | null {
   if (tags.website?.includes('instagram.com')) return tags.website;
   
   return null;
+}
+
+async function getVenueImages(venueName: string, category: string, location: string): Promise<string[]> {
+  try {
+    // Search for images of the venue using a web search
+    const searchQuery = `${venueName} ${category} ${location} Lagos Nigeria restaurant bar interior exterior`;
+    
+    const searchResponse = await fetch(`https://api.bing.microsoft.com/v7.0/images/search?q=${encodeURIComponent(searchQuery)}&count=3&imageType=Photo&size=Large`, {
+      headers: {
+        'Ocp-Apim-Subscription-Key': Deno.env.get('BING_SEARCH_KEY') || ''
+      }
+    });
+
+    if (!searchResponse.ok) {
+      console.log(`Image search failed for ${venueName}, using fallback`);
+      return getFallbackImages(category);
+    }
+
+    const searchData = await searchResponse.json();
+    const imageUrls = searchData.value?.slice(0, 3).map((img: any) => img.contentUrl) || [];
+    
+    if (imageUrls.length > 0) {
+      console.log(`Found ${imageUrls.length} images for ${venueName}`);
+      return imageUrls;
+    }
+    
+    return getFallbackImages(category);
+  } catch (error) {
+    console.error(`Error fetching images for ${venueName}:`, error);
+    return getFallbackImages(category);
+  }
+}
+
+function getFallbackImages(category: string): string[] {
+  // Curated stock images for different venue categories
+  const fallbackImageMap: Record<string, string[]> = {
+    'Restaurant': [
+      'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1551632811-561732d1e306?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1586511925558-a4c6376fe65f?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80'
+    ],
+    'Bar': [
+      'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1578662996442-48f60103fc96?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80'
+    ],
+    'Club': [
+      'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1571974599782-87c8c4da5fa2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1574391884720-bbc31d6424f4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80'
+    ],
+    'Cafe': [
+      'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1559925393-8be0ec4767c8?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80'
+    ]
+  };
+  
+  const images = fallbackImageMap[category] || fallbackImageMap['Restaurant'];
+  return [images[Math.floor(Math.random() * images.length)]];
 }
 
 function getFallbackVenues(category: string, lga: string) {
