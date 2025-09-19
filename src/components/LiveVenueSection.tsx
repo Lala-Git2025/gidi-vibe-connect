@@ -26,19 +26,20 @@ export const LiveVenueSection = () => {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedLGA, setSelectedLGA] = useState('Lagos Island');
+  const [showLGASelector, setShowLGASelector] = useState(false);
+  const [selectedLGA, setSelectedLGA] = useState('');
   const { toast } = useToast();
 
-  const fetchVenues = async (lga = selectedLGA, refresh = false) => {
+  const fetchTrendingVenues = async (refresh = false) => {
     if (refresh) setRefreshing(true);
     else setLoading(true);
 
     try {
         const { data, error } = await supabase.functions.invoke('fetch-venues', {
           body: { 
-            category: 'Restaurant',
-            location: 'Lagos',
-            lga: lga
+            category: 'all',
+            location: 'Lagos'
+            // No LGA specified - get trending venues from all of Lagos
           }
         });
 
@@ -74,11 +75,48 @@ export const LiveVenueSection = () => {
     }
   };
 
-  const handleRefresh = () => fetchVenues(selectedLGA, true);
+  const fetchVenuesByLGA = async (lga: string) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-venues', {
+        body: { 
+          category: 'Restaurant',
+          location: 'Lagos',
+          lga: lga
+        }
+      });
+
+      if (error) throw error;
+      setVenues(data.data || []);
+      
+      toast({
+        title: "Venues Loaded",
+        description: `Found ${data.data?.length || 0} venues in ${lga}`,
+      });
+    } catch (error) {
+      console.error('Error fetching LGA venues:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load venues for selected area.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+      setShowLGASelector(false);
+    }
+  };
+
+  const handleRefresh = () => fetchTrendingVenues(true);
+
+  const handleLGASelection = (lga: string) => {
+    setSelectedLGA(lga);
+    fetchVenuesByLGA(lga);
+  };
 
   useEffect(() => {
-    fetchVenues(selectedLGA, false);
-  }, [selectedLGA]);
+    // Load trending venues on component mount
+    fetchTrendingVenues();
+  }, []);
 
   if (loading) {
     return (
@@ -110,27 +148,61 @@ export const LiveVenueSection = () => {
       <div className="container mx-auto max-w-6xl">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-foreground">Trending Venues by LGA</h2>
-            <p className="text-muted-foreground">Live updates from Lagos hotspots</p>
+            <h2 className="text-2xl font-bold text-foreground">
+              {selectedLGA ? `${selectedLGA} Venues` : 'Trending Venues'}
+            </h2>
+            <p className="text-muted-foreground">
+              {selectedLGA ? `Hotspots in ${selectedLGA}` : 'Hottest spots across Lagos'}
+            </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="gap-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLGASelector(!showLGASelector)}
+              className="gap-2"
+            >
+              <MapPin className="w-4 h-4" />
+              {selectedLGA ? 'Change Area' : 'Select Area'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
-        <div className="mb-8">
-          <LGASelector 
-            selectedLGA={selectedLGA} 
-            onLGAChange={setSelectedLGA}
-          />
-        </div>
+        {showLGASelector && (
+          <div className="mb-8 p-4 bg-background/50 rounded-lg border">
+            <LGASelector 
+              selectedLGA={selectedLGA} 
+              onLGAChange={handleLGASelection}
+            />
+          </div>
+        )}
+
+        {selectedLGA && (
+          <div className="mb-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSelectedLGA('');
+                setShowLGASelector(false);
+                fetchTrendingVenues();
+              }}
+              className="gap-2 text-muted-foreground hover:text-foreground"
+            >
+              ← Back to Trending Venues
+            </Button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {venues.map((venue) => (
