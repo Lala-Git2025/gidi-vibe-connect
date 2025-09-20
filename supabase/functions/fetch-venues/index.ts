@@ -118,11 +118,13 @@ async function scrapeVenueData(category: string, location: string, lga?: string)
     const data = await response.json();
     console.log(`Found ${data.elements?.length || 0} venues from Overpass API`);
 
-    // Transform OSM data to our venue schema
-    const venues = (data.elements || [])
+    // Transform OSM data to our venue schema  
+    const venueElements = (data.elements || [])
       .filter((element: any) => element.tags?.name)
-      .slice(0, 20) // Limit to 20 venues per request
-      .map((element: any) => {
+      .slice(0, 20); // Limit to 20 venues per request
+
+    // Process venues with async image fetching
+    const venues = await Promise.all(venueElements.map(async (element: any) => {
         const tags = element.tags || {};
         
         // Get coordinates
@@ -148,6 +150,9 @@ async function scrapeVenueData(category: string, location: string, lga?: string)
         if (tags.wheelchair === 'yes') features.push('Wheelchair Accessible');
         if (tags.cuisine) features.push(tags.cuisine);
 
+        // Fetch images for this venue
+        const images = await getVenueImages(tags.name, venueCategory, targetLGA);
+
         return {
           id: crypto.randomUUID(),
           name: tags.name,
@@ -163,13 +168,13 @@ async function scrapeVenueData(category: string, location: string, lga?: string)
           instagram_url: extractInstagram(tags),
           features,
           opening_hours: openingHours,
-          professional_media_urls: await getVenueImages(tags.name, venueCategory, targetLGA),
+          professional_media_urls: images,
           is_verified: false,
           latitude: lat ? parseFloat(lat.toString()) : null,
           longitude: lon ? parseFloat(lon.toString()) : null,
           owner_id: null
         };
-      });
+      }));
 
     console.log(`Successfully transformed ${venues.length} venues`);
     return venues;
@@ -288,26 +293,50 @@ function extractInstagram(tags: any): string | null {
 
 async function getVenueImages(venueName: string, category: string, location: string): Promise<string[]> {
   try {
-    // Search for images of the venue using a web search
-    const searchQuery = `${venueName} ${category} ${location} Lagos Nigeria restaurant bar interior exterior`;
+    const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
+    const searchEngineId = Deno.env.get('GOOGLE_SEARCH_ENGINE_ID');
     
-    const searchResponse = await fetch(`https://api.bing.microsoft.com/v7.0/images/search?q=${encodeURIComponent(searchQuery)}&count=3&imageType=Photo&size=Large`, {
-      headers: {
-        'Ocp-Apim-Subscription-Key': Deno.env.get('BING_SEARCH_KEY') || ''
-      }
-    });
+    if (!googleApiKey || !searchEngineId) {
+      console.log('Google API credentials not found, using fallback images');
+      return getFallbackImages(category);
+    }
+
+    // Create targeted search query for venue images
+    const searchQuery = `${venueName} ${category} ${location} Lagos Nigeria interior exterior`;
+    
+    console.log(`Searching for images: ${searchQuery}`);
+    
+    // Use Google Custom Search API for image search
+    const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${searchEngineId}&q=${encodeURIComponent(searchQuery)}&searchType=image&num=3&imgSize=large&safe=active`;
+    
+    const searchResponse = await fetch(searchUrl);
 
     if (!searchResponse.ok) {
-      console.log(`Image search failed for ${venueName}, using fallback`);
+      console.log(`Google image search failed for ${venueName} (${searchResponse.status}), using fallback`);
       return getFallbackImages(category);
     }
 
     const searchData = await searchResponse.json();
-    const imageUrls = searchData.value?.slice(0, 3).map((img: any) => img.contentUrl) || [];
+    const imageUrls = searchData.items?.slice(0, 3).map((img: any) => img.link).filter((url: string) => url) || [];
     
     if (imageUrls.length > 0) {
       console.log(`Found ${imageUrls.length} images for ${venueName}`);
       return imageUrls;
+    }
+    
+    // Fallback search with generic terms
+    const fallbackQuery = `${category} Lagos Nigeria interior`;
+    const fallbackUrl = `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${searchEngineId}&q=${encodeURIComponent(fallbackQuery)}&searchType=image&num=3&imgSize=large&safe=active`;
+    
+    const fallbackResponse = await fetch(fallbackUrl);
+    if (fallbackResponse.ok) {
+      const fallbackData = await fallbackResponse.json();
+      const fallbackImages = fallbackData.items?.slice(0, 3).map((img: any) => img.link).filter((url: string) => url) || [];
+      
+      if (fallbackImages.length > 0) {
+        console.log(`Found ${fallbackImages.length} fallback images for ${category}`);
+        return fallbackImages;
+      }
     }
     
     return getFallbackImages(category);
@@ -372,7 +401,7 @@ function getFallbackVenues(category: string, lga: string) {
         saturday: '9:00 AM - 11:00 PM',
         sunday: '10:00 AM - 9:00 PM'
       },
-      professional_media_urls: [],
+      professional_media_urls: getFallbackImages(category),
       is_verified: false,
       latitude: 6.4281,
       longitude: 3.4219,
