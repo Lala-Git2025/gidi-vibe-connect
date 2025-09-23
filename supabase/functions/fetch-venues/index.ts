@@ -28,19 +28,46 @@ serve(async (req) => {
     // Scrape popular venues from multiple sources
     const venues = await scrapeVenueData(category, location, lga);
 
-    // Update venues in database - using insert with conflict handling
-    const { error: insertError } = await supabase
+    console.log(`🎯 About to insert ${venues.length} newly scraped venues with real images`);
+    
+    // Clear old venues and insert fresh ones with real images
+    const { error: deleteError } = await supabase
+      .from('venues')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all existing venues
+    
+    if (deleteError) {
+      console.error('⚠️ Error clearing old venues (continuing anyway):', deleteError);
+    } else {
+      console.log('🗑️ Successfully cleared old venues');
+    }
+
+    // Insert fresh venues with real images
+    const { error: insertError, data: insertedVenues } = await supabase
       .from('venues')
       .insert(venues)
       .select();
 
     if (insertError) {
-      console.error('Error updating venues:', insertError);
+      console.error('❌ Error inserting new venues:', insertError);
+      
+      // Return scraped data even if DB insert fails
+      return new Response(JSON.stringify({ 
+        success: true,
+        data: venues,
+        source: 'live_scraping_no_db',
+        warning: 'Database insert failed but returning live data',
+        timestamp: new Date().toISOString()
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+
+    console.log(`✅ Successfully inserted ${insertedVenues?.length || venues.length} venues with real images`);
 
     return new Response(JSON.stringify({ 
       success: true,
-      data: venues,
+      data: insertedVenues || venues,
       source: 'live_scraping',
       timestamp: new Date().toISOString()
     }), {
@@ -364,22 +391,35 @@ async function googleImageSearch(apiKey: string, searchEngineId: string, query: 
   try {
     const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(query)}&searchType=image&num=3&imgSize=large&safe=active&lr=lang_en`;
     
-    console.log(`Google search query: ${query}`);
+    console.log(`🔍 Google search query: ${query}`);
+    console.log(`🌐 Search URL: ${searchUrl.replace(apiKey, 'API_KEY_HIDDEN')}`);
     
     const response = await fetch(searchUrl);
     
+    console.log(`📡 Google API Response Status: ${response.status}`);
+    
     if (!response.ok) {
       const errorText = await response.text();
-      console.log(`Google API error (${response.status}): ${errorText}`);
+      console.log(`❌ Google API error (${response.status}): ${errorText}`);
       return [];
     }
 
     const data = await response.json();
     
+    console.log(`📊 Google API Response: ${JSON.stringify(data).substring(0, 500)}...`);
+    
     if (data.error) {
-      console.log(`Google API error: ${data.error.message}`);
+      console.log(`❌ Google API error: ${data.error.message}`);
+      console.log(`📋 Error details: ${JSON.stringify(data.error)}`);
       return [];
     }
+    
+    if (!data.items || data.items.length === 0) {
+      console.log(`⚠️ No items found in Google API response for query: ${query}`);
+      return [];
+    }
+    
+    console.log(`📸 Found ${data.items.length} raw items from Google`);
     
     const images = data.items?.slice(0, 3).map((img: any) => img.link).filter((url: string) => 
       url && 
@@ -389,10 +429,10 @@ async function googleImageSearch(apiKey: string, searchEngineId: string, query: 
       (url.includes('.jpg') || url.includes('.jpeg') || url.includes('.png') || url.includes('.webp'))
     ) || [];
     
-    console.log(`Google search returned ${images.length} valid images`);
+    console.log(`✅ Google search returned ${images.length} valid images: ${images.join(', ')}`);
     return images;
   } catch (error) {
-    console.error(`Google image search error: ${error}`);
+    console.error(`💥 Google image search error: ${error}`);
     return [];
   }
 }
