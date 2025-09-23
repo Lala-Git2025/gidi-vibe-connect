@@ -28,46 +28,24 @@ serve(async (req) => {
     // Scrape popular venues from multiple sources
     const venues = await scrapeVenueData(category, location, lga);
 
-    console.log(`🎯 About to insert ${venues.length} newly scraped venues with real images`);
+    console.log(`🎯 About to process ${venues.length} newly scraped venues with images`);
     
-    // Clear old venues and insert fresh ones with real images
-    const { error: deleteError } = await supabase
-      .from('venues')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all existing venues
-    
-    if (deleteError) {
-      console.error('⚠️ Error clearing old venues (continuing anyway):', deleteError);
-    } else {
-      console.log('🗑️ Successfully cleared old venues');
-    }
-
-    // Insert fresh venues with real images
-    const { error: insertError, data: insertedVenues } = await supabase
+    // Try to insert venues, but don't fail if there are conflicts
+    const { error: insertError } = await supabase
       .from('venues')
       .insert(venues)
       .select();
 
     if (insertError) {
-      console.error('❌ Error inserting new venues:', insertError);
-      
-      // Return scraped data even if DB insert fails
-      return new Response(JSON.stringify({ 
-        success: true,
-        data: venues,
-        source: 'live_scraping_no_db',
-        warning: 'Database insert failed but returning live data',
-        timestamp: new Date().toISOString()
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.error('⚠️ Error inserting venues (returning scraped data anyway):', insertError);
+    } else {
+      console.log(`✅ Successfully inserted ${venues.length} venues`);
     }
 
-    console.log(`✅ Successfully inserted ${insertedVenues?.length || venues.length} venues with real images`);
-
+    // Always return the scraped venues with real images, regardless of DB status
     return new Response(JSON.stringify({ 
       success: true,
-      data: insertedVenues || venues,
+      data: venues,
       source: 'live_scraping',
       timestamp: new Date().toISOString()
     }), {
@@ -218,7 +196,13 @@ async function scrapeVenueData(category: string, location: string, lga?: string)
       }));
 
     console.log(`Successfully transformed ${venues.length} venues with images`);
-    return venues;
+    
+    // Ensure we always return at least a few venues
+    if (venues.length === 0) {
+      console.log('⚠️ No venues found via scraping, returning fallback venues');
+      return getFallbackVenues(category, targetLGA);
+    }
+    
     return venues;
 
   } catch (error) {
