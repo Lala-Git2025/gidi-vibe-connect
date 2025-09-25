@@ -23,30 +23,138 @@ Deno.serve(async (req) => {
     
     console.log(`📋 Request params - Category: ${category}, Location: ${location}, LGA: ${lga}`);
 
-    // Always return guaranteed venues
-    const venues = getGuaranteedVenues(category, lga || 'Lagos Island');
+    const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
+    
+    if (!googleApiKey) {
+      console.log('⚠️ Google API key not found, using guaranteed venues');
+      const venues = getGuaranteedVenues(category, lga || 'Lagos Island');
+      return new Response(JSON.stringify({ 
+        success: true,
+        data: venues,
+        source: 'guaranteed_venues',
+        timestamp: new Date().toISOString()
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    console.log(`✅ Returning ${venues.length} guaranteed venues`);
+    // Determine search query based on category
+    let searchQuery = '';
+    const searchLocation = `${lga || 'Lagos Island'}, Lagos, Nigeria`;
+    
+    if (category === 'all') {
+      searchQuery = `restaurants bars lounges clubs ${searchLocation}`;
+    } else {
+      searchQuery = `${category} ${searchLocation}`;
+    }
+
+    console.log(`🔍 Searching Google Places for: ${searchQuery}`);
+
+    // Search for places using Google Places Text Search API
+    const placesResponse = await fetch(
+      `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&type=restaurant|bar|night_club|establishment&key=${googleApiKey}`
+    );
+
+    if (!placesResponse.ok) {
+      throw new Error(`Google Places API error: ${placesResponse.status}`);
+    }
+
+    const placesData = await placesResponse.json();
+    console.log(`📍 Found ${placesData.results?.length || 0} places from Google`);
+
+    if (!placesData.results || placesData.results.length === 0) {
+      console.log('No places found, using guaranteed venues');
+      const venues = getGuaranteedVenues(category, lga || 'Lagos Island');
+      return new Response(JSON.stringify({ 
+        success: true,
+        data: venues,
+        source: 'guaranteed_venues',
+        timestamp: new Date().toISOString()
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Process Google Places results
+    const venues = placesData.results.slice(0, 10).map((place: any) => {
+      // Determine category based on place types
+      let venueCategory = 'Restaurant';
+      if (place.types?.includes('bar') || place.types?.includes('liquor_store')) {
+        venueCategory = 'Bar';
+      } else if (place.types?.includes('night_club')) {
+        venueCategory = 'Club';
+      } else if (place.types?.includes('lodging')) {
+        venueCategory = 'Lounge';
+      }
+
+      // Get photo URL if available
+      let photoUrl = null;
+      if (place.photos && place.photos.length > 0) {
+        photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${place.photos[0].photo_reference}&key=${googleApiKey}`;
+      }
+
+      return {
+        id: place.place_id,
+        name: place.name,
+        description: `Experience the best of Lagos at ${place.name}. ${place.types?.join(', ') || 'Great venue'} in ${place.formatted_address || searchLocation}.`,
+        location: place.formatted_address || searchLocation,
+        address: place.formatted_address || searchLocation,
+        category: venueCategory,
+        rating: place.rating || 4.0,
+        price_range: '₦'.repeat(place.price_level || 2),
+        contact_phone: null,
+        contact_email: null,
+        website_url: null,
+        instagram_url: null,
+        features: place.types?.slice(0, 5) || ['Great Atmosphere'],
+        opening_hours: place.opening_hours?.open_now ? 
+          { status: place.opening_hours.open_now ? 'Open Now' : 'Closed' } : 
+          null,
+        professional_media_urls: photoUrl ? [photoUrl] : [
+          'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800',
+          'https://images.unsplash.com/photo-1578474846511-04ba529f0b88?w=800'
+        ],
+        is_verified: place.rating >= 4.0,
+        latitude: place.geometry?.location?.lat || 6.4281,
+        longitude: place.geometry?.location?.lng || 3.4219,
+        owner_id: null
+      };
+    });
+
+    console.log(`✅ Processed ${venues.length} real venues from Google Places`);
+
+    // Try to store venues in database (non-blocking)
+    try {
+      await supabase
+        .from('venues')
+        .upsert(venues, { 
+          onConflict: 'id',
+          ignoreDuplicates: true 
+        });
+      console.log('📀 Venues cached in database');
+    } catch (dbError) {
+      console.log('⚠️ Could not cache venues:', dbError.message);
+    }
 
     return new Response(JSON.stringify({ 
       success: true,
       data: venues,
-      source: 'guaranteed_venues',
+      source: 'google_places',
       timestamp: new Date().toISOString()
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Error in fetch-venues:', error);
+    console.error('❌ Error in fetch-venues:', error);
     
-    // Even if everything fails, return basic venues
-    const fallbackVenues = getGuaranteedVenues('Restaurant', 'Lagos Island');
+    // Always return guaranteed venues as fallback
+    const fallbackVenues = getGuaranteedVenues(category || 'Restaurant', lga || 'Lagos Island');
 
     return new Response(JSON.stringify({ 
       success: true,
       data: fallbackVenues,
-      source: 'emergency_fallback',
+      source: 'error_fallback',
       error: error.message,
       timestamp: new Date().toISOString()
     }), {

@@ -236,10 +236,12 @@ export type Database = {
           category: string | null
           content: string
           created_at: string
+          external_url: string | null
           featured_image_url: string | null
           id: string
           is_published: boolean | null
           publish_date: string | null
+          source: string | null
           summary: string | null
           tags: string[] | null
           title: string
@@ -252,10 +254,12 @@ export type Database = {
           category?: string | null
           content: string
           created_at?: string
+          external_url?: string | null
           featured_image_url?: string | null
           id?: string
           is_published?: boolean | null
           publish_date?: string | null
+          source?: string | null
           summary?: string | null
           tags?: string[] | null
           title: string
@@ -268,10 +272,12 @@ export type Database = {
           category?: string | null
           content?: string
           created_at?: string
+          external_url?: string | null
           featured_image_url?: string | null
           id?: string
           is_published?: boolean | null
           publish_date?: string | null
+          source?: string | null
           summary?: string | null
           tags?: string[] | null
           title?: string
