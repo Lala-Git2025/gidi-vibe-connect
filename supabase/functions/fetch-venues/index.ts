@@ -25,6 +25,28 @@ serve(async (req) => {
     
     console.log(`📋 Request params - Category: ${category}, Location: ${location}, LGA: ${lga}`);
 
+    // Try web scraping first for real venues
+    try {
+      console.log('🕷️ Attempting to scrape real venues...');
+      const scrapeResponse = await supabase.functions.invoke('scrape-lagos-venues', {
+        body: { category, lga: lga || 'Lagos Island' }
+      });
+      
+      if (scrapeResponse.data?.success && scrapeResponse.data.data?.length > 0) {
+        console.log(`✅ Got ${scrapeResponse.data.data.length} scraped venues`);
+        return new Response(JSON.stringify({ 
+          success: true,
+          data: scrapeResponse.data.data,
+          source: 'web_scraping',
+          timestamp: new Date().toISOString()
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } catch (scrapeError) {
+      console.log('⚠️ Web scraping failed, trying Google Places:', scrapeError instanceof Error ? scrapeError.message : 'Unknown error');
+    }
+
     const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
     
     if (!googleApiKey) {
@@ -124,28 +146,6 @@ serve(async (req) => {
     });
 
     console.log(`✅ Processed ${venues.length} real venues from Google Places`);
-
-    // Try web scraping first for real venues
-    try {
-      console.log('🕷️ Attempting to scrape real venues...');
-      const scrapeResponse = await supabase.functions.invoke('scrape-lagos-venues', {
-        body: { category, lga }
-      });
-      
-      if (scrapeResponse.data?.success && scrapeResponse.data.data?.length > 0) {
-        console.log(`✅ Got ${scrapeResponse.data.data.length} scraped venues`);
-        return new Response(JSON.stringify({ 
-          success: true,
-          data: scrapeResponse.data.data,
-          source: 'web_scraping',
-          timestamp: new Date().toISOString()
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    } catch (scrapeError) {
-      console.log('⚠️ Web scraping failed, using Google Places:', scrapeError instanceof Error ? scrapeError.message : 'Unknown error');
-    }
 
     // Try to store venues in database (non-blocking)
     try {
