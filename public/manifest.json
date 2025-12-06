@@ -1,0 +1,49 @@
+{
+  "name": "GIDI CONNECT - Lagos Experience Guide",
+  "short_name": "GIDI CONNECT",
+  "description": "Real-time guide to Lagos experiences. Connect with your community, discover local gems, and explore Nigeria's vibrant capital city.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#22c55e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["lifestyle", "social", "travel"],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Explore Venues",
+      "short_name": "Explore",
+      "description": "Discover venues in Lagos",
+      "url": "/explore",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Events",
+      "short_name": "Events",
+      "description": "Browse Lagos events",
+      "url": "/events",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

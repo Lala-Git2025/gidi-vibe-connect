@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { Link } from "react-router-dom";
+import { PullToRefresh } from "@/components/PullToRefresh";
+import { hapticClick, hapticSuccess } from "@/utils/haptics";
+import { LazyImage } from "@/components/LazyImage";
 
 interface Venue {
   id: string;
@@ -27,6 +30,7 @@ const Explore = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
 
   const fetchVenues = async (refresh = false) => {
@@ -56,8 +60,9 @@ const Explore = () => {
       );
 
       setVenues(uniqueVenues);
-      
+
       if (refresh) {
+        hapticSuccess();
         toast({
           title: "Venues Updated",
           description: `Loaded ${uniqueVenues.length} venues`,
@@ -92,9 +97,20 @@ const Explore = () => {
 
   const categories = ["All", "Club", "Restaurant", "Lounge", "Bar"];
 
-  const filteredVenues = activeCategory === "All" 
-    ? venues 
-    : venues.filter(venue => venue.category === activeCategory);
+  // Filter venues by category and search query
+  const filteredVenues = venues.filter(venue => {
+    // Filter by category
+    const categoryMatch = activeCategory === "All" || venue.category === activeCategory;
+
+    // Filter by search query
+    const searchMatch = searchQuery === "" ||
+      venue.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      venue.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      venue.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      venue.features?.some(feature => feature.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    return categoryMatch && searchMatch;
+  });
 
   if (loading) {
     return (
@@ -130,8 +146,9 @@ const Explore = () => {
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Header />
-      <main className="pt-16">
-        <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <main className="pt-16 h-screen">
+        <PullToRefresh onRefresh={() => fetchVenues(true)} className="h-full">
+          <div className="container mx-auto px-4 py-8 max-w-6xl">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-2">
@@ -139,7 +156,10 @@ const Explore = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => fetchVenues(true)}
+                onClick={() => {
+                  hapticClick();
+                  fetchVenues(true);
+                }}
                 disabled={refreshing}
                 className="gap-2"
               >
@@ -155,9 +175,11 @@ const Explore = () => {
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input 
+                <Input
                   placeholder="Search venues, events, or locations..."
                   className="pl-10"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
               <Button variant="outline" size="icon">
@@ -176,7 +198,10 @@ const Explore = () => {
                   variant={category === activeCategory ? "default" : "outline"}
                   size="sm"
                   className="whitespace-nowrap"
-                  onClick={() => setActiveCategory(category)}
+                  onClick={() => {
+                    hapticClick();
+                    setActiveCategory(category);
+                  }}
                 >
                   {category}s
                 </Button>
@@ -212,17 +237,11 @@ const Explore = () => {
                   <Link key={venue.id} to={`/venue/${venue.id}`}>
                     <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 hover:scale-105 cursor-pointer">
                       <div className="relative h-48">
-                        {venue.professional_media_urls && venue.professional_media_urls[0] ? (
-                          <img 
-                            src={venue.professional_media_urls[0]}
-                            alt={venue.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
-                            <span className="text-muted-foreground">No Image</span>
-                          </div>
-                        )}
+                        <LazyImage
+                          src={venue.professional_media_urls?.[0] || ''}
+                          alt={venue.name}
+                          className="h-48"
+                        />
                         <div className="absolute top-3 left-3 flex gap-2">
                           <Badge className="bg-primary text-primary-foreground">
                             {venue.category}
@@ -270,7 +289,7 @@ const Explore = () => {
               </div>
             )}
           </div>
-        </div>
+        </PullToRefresh>
       </main>
       <BottomNavigation />
     </div>

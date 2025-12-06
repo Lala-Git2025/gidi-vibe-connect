@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Icon Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .icon-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .icon-wrapper {
+            text-align: center;
+        }
+        canvas {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #22c55e;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #16a34a;
+        }
+    </style>
+</head>
+<body>
+    <div class="instructions">
+        <h1>GIDI CONNECT App Icons</h1>
+        <p>Click the buttons below to download the icons. Save them to the <code>/public</code> folder.</p>
+    </div>
+
+    <div class="icon-container">
+        <div class="icon-wrapper">
+            <h3>192x192 Icon</h3>
+            <canvas id="icon192" width="192" height="192"></canvas>
+            <br>
+            <button onclick="downloadIcon('icon192', 'icon-192.png')">Download icon-192.png</button>
+        </div>
+
+        <div class="icon-wrapper">
+            <h3>512x512 Icon</h3>
+            <canvas id="icon512" width="512" height="512"></canvas>
+            <br>
+            <button onclick="downloadIcon('icon512', 'icon-512.png')">Download icon-512.png</button>
+        </div>
+    </div>
+
+    <script>
+        function drawIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+
+            // Background gradient (Lagos Green)
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#22c55e');
+            gradient.addColorStop(1, '#16a34a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Add subtle pattern
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = size * 0.02;
+            for (let i = 0; i < size; i += size * 0.1) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(0, i);
+                ctx.stroke();
+            }
+
+            // Text
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${size * 0.35}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('GC', size / 2, size / 2);
+
+            // Subtitle
+            ctx.font = `${size * 0.08}px Arial`;
+            ctx.fillText('GIDI CONNECT', size / 2, size * 0.75);
+        }
+
+        function downloadIcon(canvasId, filename) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Generate icons on load
+        drawIcon('icon192', 192);
+        drawIcon('icon512', 512);
+    </script>
+</body>
+</html>

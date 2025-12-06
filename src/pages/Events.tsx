@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { PullToRefresh } from "@/components/PullToRefresh";
+import { hapticClick, hapticSuccess } from "@/utils/haptics";
 
 interface Event {
   id: string;
@@ -46,8 +48,9 @@ const Events = () => {
       if (error) throw error;
 
       setEvents(data.data || []);
-      
+
       if (refresh) {
+        hapticSuccess();
         toast({
           title: "Events Updated",
           description: `Loaded ${data.data?.length || 0} live events`,
@@ -137,8 +140,9 @@ const Events = () => {
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Header />
-      <main className="pt-16">
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <main className="pt-16 h-screen">
+        <PullToRefresh onRefresh={() => fetchEvents(true)} className="h-full">
+          <div className="container mx-auto px-4 py-8 max-w-4xl">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-2">
@@ -146,7 +150,10 @@ const Events = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => fetchEvents(true)}
+                onClick={() => {
+                  hapticClick();
+                  fetchEvents(true);
+                }}
                 disabled={refreshing}
                 className="gap-2"
               >
@@ -166,7 +173,10 @@ const Events = () => {
                   variant={filter === activeFilter ? "default" : "outline"}
                   size="sm"
                   className="whitespace-nowrap"
-                  onClick={() => setActiveFilter(filter)}
+                  onClick={() => {
+                    hapticClick();
+                    setActiveFilter(filter);
+                  }}
                 >
                   {filter}
                 </Button>
@@ -275,9 +285,12 @@ const Events = () => {
                           
                           <div className="flex gap-2">
                             {event.ticket_url ? (
-                              <Button 
+                              <Button
                                 className="flex-1 gap-2"
-                                onClick={() => window.open(event.ticket_url, '_blank')}
+                                onClick={() => {
+                                  hapticClick();
+                                  window.open(event.ticket_url, '_blank');
+                                }}
                               >
                                 Get Tickets
                                 <ExternalLink className="w-4 h-4" />
@@ -287,7 +300,7 @@ const Events = () => {
                                 Coming Soon
                               </Button>
                             )}
-                            <Button variant="outline">
+                            <Button variant="outline" onClick={hapticClick}>
                               Share
                             </Button>
                           </div>
@@ -299,7 +312,7 @@ const Events = () => {
               </div>
             )}
           </div>
-        </div>
+        </PullToRefresh>
       </main>
       <BottomNavigation />
     </div>
