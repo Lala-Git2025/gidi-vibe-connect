@@ -312,6 +312,7 @@ const Events = () => {
               </div>
             )}
           </div>
+          </div>
         </PullToRefresh>
       </main>
       <BottomNavigation />
