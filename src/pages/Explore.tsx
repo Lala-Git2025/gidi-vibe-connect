@@ -289,6 +289,7 @@ const Explore = () => {
               </div>
             )}
           </div>
+          </div>
         </PullToRefresh>
       </main>
       <BottomNavigation />
