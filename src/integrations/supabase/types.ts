@@ -14,6 +14,132 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_log: {
+        Row: {
+          action: string
+          admin_id: string
+          created_at: string
+          details: Json | null
+          id: string
+          ip_address: string | null
+          resource_id: string | null
+          resource_type: string
+        }
+        Insert: {
+          action: string
+          admin_id: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          resource_id?: string | null
+          resource_type: string
+        }
+        Update: {
+          action?: string
+          admin_id?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          resource_id?: string | null
+          resource_type?: string
+        }
+        Relationships: []
+      }
+      admin_permissions: {
+        Row: {
+          can_manage_admins: boolean | null
+          can_manage_users: boolean | null
+          can_moderate_content: boolean | null
+          can_verify_businesses: boolean | null
+          can_view_analytics: boolean | null
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_manage_admins?: boolean | null
+          can_manage_users?: boolean | null
+          can_moderate_content?: boolean | null
+          can_verify_businesses?: boolean | null
+          can_view_analytics?: boolean | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_manage_admins?: boolean | null
+          can_manage_users?: boolean | null
+          can_moderate_content?: boolean | null
+          can_verify_businesses?: boolean | null
+          can_view_analytics?: boolean | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      business_subscriptions: {
+        Row: {
+          can_create_offers: boolean | null
+          can_manage_menu: boolean | null
+          can_view_analytics: boolean | null
+          created_at: string
+          current_period_end: string
+          current_period_start: string
+          id: string
+          max_events_per_month: number
+          max_photos_per_venue: number
+          max_venues: number
+          priority_listing: boolean | null
+          status: string
+          tier: Database["public"]["Enums"]["subscription_tier"]
+          trial_ends_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_create_offers?: boolean | null
+          can_manage_menu?: boolean | null
+          can_view_analytics?: boolean | null
+          created_at?: string
+          current_period_end?: string
+          current_period_start?: string
+          id?: string
+          max_events_per_month?: number
+          max_photos_per_venue?: number
+          max_venues?: number
+          priority_listing?: boolean | null
+          status?: string
+          tier?: Database["public"]["Enums"]["subscription_tier"]
+          trial_ends_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_create_offers?: boolean | null
+          can_manage_menu?: boolean | null
+          can_view_analytics?: boolean | null
+          created_at?: string
+          current_period_end?: string
+          current_period_start?: string
+          id?: string
+          max_events_per_month?: number
+          max_photos_per_venue?: number
+          max_venues?: number
+          priority_listing?: boolean | null
+          status?: string
+          tier?: Database["public"]["Enums"]["subscription_tier"]
+          trial_ends_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       comments: {
         Row: {
           content: string
@@ -230,6 +356,90 @@ export type Database = {
           },
         ]
       }
+      moderation_queue: {
+        Row: {
+          admin_notes: string | null
+          content_id: string
+          content_type: string
+          created_at: string
+          id: string
+          report_reason: string | null
+          reported_by: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          content_id: string
+          content_type: string
+          created_at?: string
+          id?: string
+          report_reason?: string | null
+          reported_by?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          content_id?: string
+          content_type?: string
+          created_at?: string
+          id?: string
+          report_reason?: string | null
+          reported_by?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      news: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          external_url: string | null
+          featured_image_url: string | null
+          id: string
+          is_active: boolean | null
+          publish_date: string | null
+          source: string | null
+          summary: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          external_url?: string | null
+          featured_image_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          publish_date?: string | null
+          source?: string | null
+          summary?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          external_url?: string | null
+          featured_image_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          publish_date?: string | null
+          source?: string | null
+          summary?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       news_feed: {
         Row: {
           author_id: string | null
@@ -437,6 +647,162 @@ export type Database = {
           },
         ]
       }
+      venue_analytics: {
+        Row: {
+          created_at: string
+          date: string
+          direction_clicks: number | null
+          event_views: number | null
+          id: string
+          offer_clicks: number | null
+          offer_views: number | null
+          phone_clicks: number | null
+          profile_views: number | null
+          updated_at: string
+          venue_id: string
+          website_clicks: number | null
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          direction_clicks?: number | null
+          event_views?: number | null
+          id?: string
+          offer_clicks?: number | null
+          offer_views?: number | null
+          phone_clicks?: number | null
+          profile_views?: number | null
+          updated_at?: string
+          venue_id: string
+          website_clicks?: number | null
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          direction_clicks?: number | null
+          event_views?: number | null
+          id?: string
+          offer_clicks?: number | null
+          offer_views?: number | null
+          phone_clicks?: number | null
+          profile_views?: number | null
+          updated_at?: string
+          venue_id?: string
+          website_clicks?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_analytics_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      venue_menus: {
+        Row: {
+          category: string
+          created_at: string
+          currency: string | null
+          description: string | null
+          dietary_info: string[] | null
+          display_order: number | null
+          id: string
+          image_url: string | null
+          is_available: boolean | null
+          item_name: string
+          price: number
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          currency?: string | null
+          description?: string | null
+          dietary_info?: string[] | null
+          display_order?: number | null
+          id?: string
+          image_url?: string | null
+          is_available?: boolean | null
+          item_name: string
+          price: number
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          currency?: string | null
+          description?: string | null
+          dietary_info?: string[] | null
+          display_order?: number | null
+          id?: string
+          image_url?: string | null
+          is_available?: boolean | null
+          item_name?: string
+          price?: number
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_menus_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      venue_photos: {
+        Row: {
+          caption: string | null
+          category: string | null
+          created_at: string
+          display_order: number | null
+          id: string
+          is_featured: boolean | null
+          photo_url: string
+          updated_at: string
+          uploaded_by: string | null
+          venue_id: string
+        }
+        Insert: {
+          caption?: string | null
+          category?: string | null
+          created_at?: string
+          display_order?: number | null
+          id?: string
+          is_featured?: boolean | null
+          photo_url: string
+          updated_at?: string
+          uploaded_by?: string | null
+          venue_id: string
+        }
+        Update: {
+          caption?: string | null
+          category?: string | null
+          created_at?: string
+          display_order?: number | null
+          id?: string
+          is_featured?: boolean | null
+          photo_url?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_photos_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venues: {
         Row: {
           address: string | null
@@ -520,11 +886,74 @@ export type Database = {
           },
         ]
       }
+      verification_requests: {
+        Row: {
+          additional_info: string | null
+          business_address: string
+          business_document_url: string | null
+          business_email: string
+          business_name: string
+          business_phone: string
+          business_registration_number: string | null
+          created_at: string
+          id: string
+          identity_document_url: string | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          additional_info?: string | null
+          business_address: string
+          business_document_url?: string | null
+          business_email: string
+          business_name: string
+          business_phone: string
+          business_registration_number?: string | null
+          created_at?: string
+          id?: string
+          identity_document_url?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          additional_info?: string | null
+          business_address?: string
+          business_document_url?: string | null
+          business_email?: string
+          business_name?: string
+          business_phone?: string
+          business_registration_number?: string | null
+          created_at?: string
+          id?: string
+          identity_document_url?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      can_create_event: { Args: { p_user_id: string }; Returns: boolean }
+      can_create_venue: { Args: { p_user_id: string }; Returns: boolean }
+      can_upload_photo: {
+        Args: { p_user_id: string; p_venue_id: string }
+        Returns: boolean
+      }
       get_safe_public_profile: {
         Args: { profile_user_id: string }
         Returns: {
@@ -541,7 +970,13 @@ export type Database = {
       }
     }
     Enums: {
-      user_role: "Consumer" | "Business Owner" | "Content Creator"
+      subscription_tier: "Free" | "Premium" | "Enterprise"
+      user_role:
+        | "Consumer"
+        | "Business Owner"
+        | "Content Creator"
+        | "Admin"
+        | "Super Admin"
       venue_category:
         | "Restaurant"
         | "Bar"
@@ -679,7 +1114,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      user_role: ["Consumer", "Business Owner", "Content Creator"],
+      subscription_tier: ["Free", "Premium", "Enterprise"],
+      user_role: [
+        "Consumer",
+        "Business Owner",
+        "Content Creator",
+        "Admin",
+        "Super Admin",
+      ],
       venue_category: [
         "Restaurant",
         "Bar",
