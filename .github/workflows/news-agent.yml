@@ -1,0 +1,35 @@
+name: Lagos News Agent (Every 3 Hours)
+
+on:
+  schedule:
+    # Run every 3 hours (at :00 minutes past the hour)
+    - cron: '0 */3 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  fetch-news:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Lagos News Agent
+        run: node scripts/lagos-news-agent.js
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Log completion
+        run: |
+          echo "✅ News agent completed at $(date)"
+          echo "📰 Next run in 3 hours"
