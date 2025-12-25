@@ -78,6 +78,50 @@ const SEARCH_QUERIES = [
 // --- FUNCTIONS ---
 
 /**
+ * Exponential backoff retry wrapper for handling rate limits
+ * @param {Function} fn - Async function to retry
+ * @param {number} maxRetries - Maximum number of retry attempts (default: 5)
+ * @param {number} initialDelay - Initial delay in milliseconds (default: 2000)
+ */
+async function retryWithExponentialBackoff(fn, maxRetries = 5, initialDelay = 2000) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // Check if it's a rate limit error (429)
+      const isRateLimitError = error.response?.status === 429 ||
+                               error.message?.includes('429') ||
+                               error.message?.toLowerCase().includes('rate limit');
+
+      // If not a rate limit error, throw immediately
+      if (!isRateLimitError) {
+        throw error;
+      }
+
+      // If we've exhausted all retries, throw the error
+      if (attempt === maxRetries) {
+        console.error(`❌ Max retries (${maxRetries}) exceeded for rate limit error`);
+        throw error;
+      }
+
+      // Calculate delay with exponential backoff: 2s, 4s, 8s, 16s, 32s
+      const delay = initialDelay * Math.pow(2, attempt);
+
+      console.log(`⏳ Rate limit hit (429). Retry ${attempt + 1}/${maxRetries} after ${delay/1000}s...`);
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Search Google for Lagos news using Serper API
  */
 async function searchGoogle(query) {
@@ -174,20 +218,23 @@ Rules:
 IMPORTANT: Return the JSON array only, nothing else.`;
 
   try {
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
-        tools: [{
-          googleSearch: {}
-        }]
-      },
-      {
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    // Wrap the API call with exponential backoff retry logic
+    const response = await retryWithExponentialBackoff(async () => {
+      return await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          tools: [{
+            googleSearch: {}
+          }]
+        },
+        {
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    });
 
     const aiText = response.data.candidates[0]?.content?.parts[0]?.text;
 
