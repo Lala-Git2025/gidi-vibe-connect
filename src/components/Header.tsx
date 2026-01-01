@@ -1,9 +1,18 @@
 import { Button } from "@/components/ui/button";
-import { Menu, Bell, User } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Menu, Bell, User, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { hapticClick } from "@/utils/haptics";
 
 export const Header = () => {
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleMobileNavClick = () => {
+    hapticClick();
+    setMobileMenuOpen(false);
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
@@ -52,16 +61,83 @@ export const Header = () => {
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Menu className="w-5 h-5" />
-          </Button>
-          
+          {/* Mobile Menu */}
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                aria-label="Open mobile menu"
+                onClick={hapticClick}
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[300px] sm:w-[400px]">
+              <SheetHeader>
+                <SheetTitle>Menu</SheetTitle>
+              </SheetHeader>
+              <nav className="flex flex-col gap-4 mt-8">
+                <Link
+                  to="/explore"
+                  onClick={handleMobileNavClick}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-lg font-medium transition-colors ${
+                    location.pathname === '/explore'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-accent'
+                  }`}
+                >
+                  Explore
+                </Link>
+                <Link
+                  to="/events"
+                  onClick={handleMobileNavClick}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-lg font-medium transition-colors ${
+                    location.pathname === '/events'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-accent'
+                  }`}
+                >
+                  Events
+                </Link>
+                <Link
+                  to="/#community"
+                  onClick={handleMobileNavClick}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-lg font-medium hover:bg-accent transition-colors"
+                >
+                  Community
+                </Link>
+                <Link
+                  to="/#about"
+                  onClick={handleMobileNavClick}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-lg font-medium hover:bg-accent transition-colors"
+                >
+                  About
+                </Link>
+                <div className="border-t border-border mt-4 pt-4">
+                  <Link to="/profile" onClick={handleMobileNavClick}>
+                    <Button variant="outline" className="w-full justify-start gap-3 mb-2">
+                      <User className="w-5 h-5" />
+                      Profile
+                    </Button>
+                  </Link>
+                  <Link to="/get-started" onClick={handleMobileNavClick}>
+                    <Button variant="default" className="w-full">
+                      Get Started
+                    </Button>
+                  </Link>
+                </div>
+              </nav>
+            </SheetContent>
+          </Sheet>
+
           <div className="hidden md:flex items-center gap-2">
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="w-5 h-5" />
             </Button>
             <Link to="/profile">
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" aria-label="Profile">
                 <User className="w-5 h-5" />
               </Button>
             </Link>
