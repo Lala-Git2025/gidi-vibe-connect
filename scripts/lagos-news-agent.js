@@ -488,10 +488,15 @@ async function runLagosNewsAgent() {
     // Step 1: Scrape real articles from Lagos news websites
     console.log('🔍 STEP 1: Scraping real articles from Lagos news sites...');
     const newsItems = await scrapeRealLagosNews();
-    console.log(`\n✅ Successfully scraped ${newsItems.length} articles with real images\n`);
+    console.log(`\n✅ Scraping complete: ${newsItems.length} new articles found\n`);
 
     if (newsItems.length === 0) {
-      throw new Error('No articles were successfully scraped. Check your internet connection or the news site structures may have changed.');
+      // No new articles is NOT an error - database is up to date
+      console.log('\n✅ AGENT COMPLETED SUCCESSFULLY!');
+      console.log('   📊 No new articles found (all recent articles already in database)');
+      console.log('   ✅ Database is up to date!');
+      console.log('   🕐 Next run: Will check again in 3 hours');
+      return; // Exit successfully, not with an error
     }
 
     // Step 2: Upload to Supabase
@@ -503,7 +508,7 @@ async function runLagosNewsAgent() {
     console.log(`   💡 Method: Direct web scraping from news sites`);
     console.log(`   🖼️  All articles have REAL images scraped from source`);
     console.log(`   📰 Sources: Punch, The Cable, Premium Times, Vanguard`);
-    console.log(`   🕐 Next run: Set up a cron job to run this every 3 hours`);
+    console.log(`   🕐 Next run: Will check again in 3 hours`);
 
   } catch (error) {
     console.error('\n❌ AGENT FAILED:', error.message);
