@@ -46,6 +46,21 @@ const supabase = SUPABASE_SERVICE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   : null;
 
+// Browser-like headers to avoid 403 errors from anti-bot protection
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Connection': 'keep-alive',
+  'Upgrade-Insecure-Requests': '1',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Cache-Control': 'max-age=0'
+};
+
 // --- FUNCTIONS ---
 
 /**
@@ -57,9 +72,7 @@ async function scrapeArticleDetails(articleUrl) {
 
     const response = await axios.get(articleUrl, {
       timeout: 10000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
+      headers: BROWSER_HEADERS
     });
 
     const $ = cheerio.load(response.data);
@@ -317,9 +330,7 @@ async function scrapeRealLagosNews() {
 
       const response = await axios.get(source.url, {
         timeout: 15000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+        headers: BROWSER_HEADERS
       });
 
       const $ = cheerio.load(response.data);
@@ -430,7 +441,24 @@ async function scrapeRealLagosNews() {
       await new Promise(resolve => setTimeout(resolve, 2000));
 
     } catch (error) {
-      console.log(`   ❌ Failed to scrape ${source.name}: ${error.message}\n`);
+      // Enhanced error handling for common issues
+      if (error.response) {
+        const status = error.response.status;
+        if (status === 403) {
+          console.log(`   ⚠️  ${source.name}: Access blocked (403) - site may have anti-bot protection`);
+        } else if (status === 404) {
+          console.log(`   ⚠️  ${source.name}: Page not found (404) - URL may have changed`);
+        } else if (status === 429) {
+          console.log(`   ⚠️  ${source.name}: Rate limited (429) - too many requests`);
+        } else {
+          console.log(`   ❌ Failed to scrape ${source.name}: HTTP ${status}`);
+        }
+      } else if (error.code === 'ECONNABORTED') {
+        console.log(`   ⚠️  ${source.name}: Request timeout - site may be slow`);
+      } else {
+        console.log(`   ❌ Failed to scrape ${source.name}: ${error.message}`);
+      }
+      console.log('');
     }
   }
 
