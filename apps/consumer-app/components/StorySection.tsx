@@ -1,64 +1,224 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { supabase } from '../config/supabase';
+import { StoryViewer } from './StoryViewer';
 
 interface Story {
   id: string;
-  user: string;
-  image: string;
-  isCreator: boolean;
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+  image_url: string;
+  caption: string | null;
+  created_at: string;
+  expires_at: string;
+  is_creator: boolean;
 }
 
-const STORIES: Story[] = [
-  { id: 's1', user: 'Zilla', image: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?q=80&w=200', isCreator: true },
-  { id: 's2', user: 'LagosEats', image: 'https://images.unsplash.com/photo-1485230405346-71acb9518d9c?q=80&w=200', isCreator: true },
-  { id: 's3', user: 'David', image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=200', isCreator: false },
-  { id: 's4', user: 'Sarah', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200', isCreator: false },
-  { id: 's5', user: 'Mike', image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200', isCreator: false },
-  { id: 's6', user: 'Linda', image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200', isCreator: false },
-];
-
 export const StorySection = () => {
-  return (
-    <View style={styles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Add Your Story */}
-        <TouchableOpacity style={styles.storyItem}>
-          <View style={styles.addStoryCircle}>
-            <Text style={styles.addIcon}>➕</Text>
-          </View>
-          <Text style={styles.storyUsername}>My Vibe</Text>
-        </TouchableOpacity>
+  const [stories, setStories] = useState<Story[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [selectedStoryIndex, setSelectedStoryIndex] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-        {/* Stories */}
-        {STORIES.map((story) => (
-          <TouchableOpacity key={story.id} style={styles.storyItem}>
-            <View style={[
-              styles.storyCircle,
-              story.isCreator ? styles.creatorGradient : styles.userGradient
-            ]}>
-              <View style={styles.innerCircle}>
-                <Image
-                  source={{ uri: story.image }}
-                  style={styles.storyImage}
-                  resizeMode="cover"
-                />
-              </View>
-              {story.isCreator && (
-                <View style={styles.creatorBadge}>
-                  <Text style={styles.starIcon}>⭐</Text>
-                </View>
+  useEffect(() => {
+    fetchCurrentUser();
+    fetchStories();
+  }, []);
+
+  const fetchCurrentUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    setCurrentUser(user);
+  };
+
+  const fetchStories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('stories')
+        .select(`
+          id,
+          user_id,
+          image_url,
+          caption,
+          created_at,
+          expires_at,
+          profiles!stories_user_id_fkey (
+            username,
+            avatar_url,
+            role
+          )
+        `)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const formattedStories: Story[] = (data || []).map((story: any) => ({
+        id: story.id,
+        user_id: story.user_id,
+        username: story.profiles?.username || 'User',
+        avatar_url: story.profiles?.avatar_url || null,
+        image_url: story.image_url,
+        caption: story.caption,
+        created_at: story.created_at,
+        expires_at: story.expires_at,
+        is_creator: story.profiles?.role === 'Creator',
+      }));
+
+      setStories(formattedStories);
+    } catch (error) {
+      console.error('Error fetching stories:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateStory = async () => {
+    if (!currentUser) {
+      Alert.alert('Sign in required', 'Please sign in to create a story');
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'We need camera roll permissions to select an image');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [9, 16],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadStory(result.assets[0].uri);
+    }
+  };
+
+  const uploadStory = async (uri: string) => {
+    setUploading(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('stories')
+        .upload(fileName, blob, {
+          contentType: `image/${fileExt}`,
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('stories')
+        .getPublicUrl(fileName);
+
+      const { error: insertError } = await supabase
+        .from('stories')
+        .insert({
+          user_id: currentUser.id,
+          image_url: publicUrl,
+        });
+
+      if (insertError) throw insertError;
+
+      Alert.alert('Success', 'Your story has been posted!');
+      fetchStories();
+    } catch (error) {
+      console.error('Error uploading story:', error);
+      Alert.alert('Error', 'Failed to upload story. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleStoryPress = (index: number) => {
+    setSelectedStoryIndex(index);
+  };
+
+  const handleCloseViewer = () => {
+    setSelectedStoryIndex(null);
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="small" color="#EAB308" />
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.container}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Add Your Story */}
+          <TouchableOpacity
+            style={styles.storyItem}
+            onPress={handleCreateStory}
+            disabled={uploading}
+          >
+            <View style={styles.addStoryCircle}>
+              {uploading ? (
+                <ActivityIndicator size="small" color="#EAB308" />
+              ) : (
+                <Text style={styles.addIcon}>➕</Text>
               )}
             </View>
-            <Text style={styles.storyUsername} numberOfLines={1}>
-              {story.user}
-            </Text>
+            <Text style={styles.storyUsername}>My Vibe</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
+
+          {/* Stories */}
+          {stories.map((story, index) => (
+            <TouchableOpacity
+              key={story.id}
+              style={styles.storyItem}
+              onPress={() => handleStoryPress(index)}
+            >
+              <View style={[
+                styles.storyCircle,
+                story.is_creator ? styles.creatorGradient : styles.userGradient
+              ]}>
+                <View style={styles.innerCircle}>
+                  <Image
+                    source={{ uri: story.image_url }}
+                    style={styles.storyImage}
+                    resizeMode="cover"
+                  />
+                </View>
+                {story.is_creator && (
+                  <View style={styles.creatorBadge}>
+                    <Text style={styles.starIcon}>⭐</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.storyUsername} numberOfLines={1}>
+                {story.username}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {selectedStoryIndex !== null && (
+        <StoryViewer
+          stories={stories}
+          initialIndex={selectedStoryIndex}
+          onClose={handleCloseViewer}
+        />
+      )}
+    </>
   );
 };
 
@@ -66,6 +226,10 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#000',
     paddingVertical: 16,
+  },
+  centerContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollContent: {
     paddingHorizontal: 16,

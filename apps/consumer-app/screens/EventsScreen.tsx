@@ -1,18 +1,28 @@
-import { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
+import { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
+import { supabase } from '../config/supabase';
 
-const events = [
-  { id: 1, title: "Lagos Fashion Week", date: "2025-01-15", time: "18:00", location: "Eko Atlantic", category: "Fashion", price: "₦5,000 - ₦20,000" },
-  { id: 2, title: "Afrobeat Night", date: "2025-01-20", time: "21:00", location: "Hard Rock Cafe", category: "Music", price: "₦3,000" },
-  { id: 3, title: "Art Exhibition", date: "2025-01-25", time: "14:00", location: "Terra Kulture", category: "Art", price: "Free" },
-  { id: 4, title: "Rooftop Sunset Party", date: "2025-01-28", time: "17:00", location: "Quilox", category: "Party", price: "₦10,000" },
-  { id: 5, title: "Food Festival", date: "2025-02-05", time: "12:00", location: "Victoria Island", category: "Food", price: "₦2,500" },
-];
+interface Event {
+  id: string;
+  title: string;
+  start_date: string;
+  venue_name: string;
+  category: string;
+  is_free: boolean;
+  ticket_price_min: number | null;
+  ticket_price_max: number | null;
+  ticket_url: string | null;
+  image_url: string | null;
+  short_description: string | null;
+}
 
 export default function EventsScreen() {
   const [activeFilter, setActiveFilter] = useState("All Events");
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Load Orbitron font
   const [fontsLoaded] = useFonts({
@@ -20,7 +30,38 @@ export default function EventsScreen() {
     Orbitron_900Black,
   });
 
-  const filters = ["All Events", "Music", "Party", "Art", "Food", "Fashion"];
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
+  const fetchEvents = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, title, start_date, venue_name, category, is_free, ticket_price_min, ticket_price_max, ticket_url, image_url, short_description')
+        .eq('is_active', true)
+        .eq('status', 'upcoming')
+        .gte('start_date', new Date().toISOString())
+        .order('start_date', { ascending: true })
+        .limit(50);
+
+      if (error) throw error;
+      setEvents(data || []);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchEvents();
+    setRefreshing(false);
+  };
+
+  const filters = ["All Events", "Nightlife", "Food & Dining", "Technology", "Arts & Culture", "Entertainment"];
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -29,6 +70,37 @@ export default function EventsScreen() {
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const formatPrice = (event: Event) => {
+    if (event.is_free) return 'Free';
+    if (event.ticket_price_min && event.ticket_price_max) {
+      if (event.ticket_price_min === event.ticket_price_max) {
+        return `₦${event.ticket_price_min.toLocaleString()}`;
+      }
+      return `₦${event.ticket_price_min.toLocaleString()} - ₦${event.ticket_price_max.toLocaleString()}`;
+    }
+    if (event.ticket_price_min) {
+      return `From ₦${event.ticket_price_min.toLocaleString()}`;
+    }
+    return 'Check ticket URL';
+  };
+
+  const handleGetTickets = (event: Event) => {
+    if (event.ticket_url) {
+      Linking.openURL(event.ticket_url);
+    } else {
+      alert(`${event.title}\n\n📅 ${formatDate(event.start_date)}\n🕐 ${formatTime(event.start_date)}\n📍 ${event.venue_name}\n💰 ${formatPrice(event)}\n\nNo ticket URL available for this event.`);
+    }
   };
 
   const filteredEvents = events.filter(event => {
@@ -40,9 +112,25 @@ export default function EventsScreen() {
     return null;
   }
 
+  if (loading && events.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+          <ActivityIndicator size="large" color="#EAB308" />
+          <Text style={{ color: '#9ca3af', marginTop: 16 }}>Loading events...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView}>
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#EAB308" />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -98,31 +186,37 @@ export default function EventsScreen() {
               <View style={styles.eventContent}>
                 <Text style={styles.eventTitle}>{event.title}</Text>
 
+                {event.short_description && (
+                  <Text style={styles.eventDescription} numberOfLines={2}>
+                    {event.short_description}
+                  </Text>
+                )}
+
                 <View style={styles.eventDetails}>
                   <View style={styles.eventDetail}>
                     <Text style={styles.detailIcon}>📅</Text>
-                    <Text style={styles.detailText}>{formatDate(event.date)}</Text>
+                    <Text style={styles.detailText}>{formatDate(event.start_date)}</Text>
                   </View>
 
                   <View style={styles.eventDetail}>
                     <Text style={styles.detailIcon}>🕐</Text>
-                    <Text style={styles.detailText}>{event.time}</Text>
+                    <Text style={styles.detailText}>{formatTime(event.start_date)}</Text>
                   </View>
 
                   <View style={styles.eventDetail}>
                     <Text style={styles.detailIcon}>📍</Text>
-                    <Text style={styles.detailText}>{event.location}</Text>
+                    <Text style={styles.detailText}>{event.venue_name}</Text>
                   </View>
 
                   <View style={styles.eventDetail}>
                     <Text style={styles.detailIcon}>💰</Text>
-                    <Text style={styles.detailText}>{event.price}</Text>
+                    <Text style={styles.detailText}>{formatPrice(event)}</Text>
                   </View>
                 </View>
 
                 <TouchableOpacity
                   style={styles.ticketButton}
-                  onPress={() => alert(`${event.title}\n\n📅 ${formatDate(event.date)}\n🕐 ${event.time}\n📍 ${event.location}\n💰 ${event.price}\n\nTicket booking feature coming soon!`)}
+                  onPress={() => handleGetTickets(event)}
                 >
                   <Text style={styles.ticketButtonText}>Get Tickets</Text>
                 </TouchableOpacity>
@@ -260,7 +354,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  eventDescription: {
+    fontSize: 14,
+    color: '#9ca3af',
+    lineHeight: 20,
+    marginBottom: 12,
   },
   eventDetails: {
     gap: 12,
