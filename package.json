@@ -35,7 +35,8 @@
     "clear-venues": "node scripts/clear-venues.js",
     "migrate:phase1": "node scripts/run-phase1-migration.js",
     "migrate:verify": "node scripts/verify-migration.js",
-    "migrate:seed": "node scripts/seed-phase1-data.js"
+    "migrate:seed": "node scripts/seed-phase1-data.js",
+    "verify:db": "node scripts/verify-supabase-state.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
@@ -112,6 +113,7 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
+    "canvas": "^3.2.1",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",

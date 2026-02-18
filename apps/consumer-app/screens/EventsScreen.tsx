@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Event {
   id: string;
@@ -19,6 +22,8 @@ interface Event {
 }
 
 export default function EventsScreen() {
+  const navigation = useNavigation();
+  const { colors, activeTheme } = useTheme();
   const [activeFilter, setActiveFilter] = useState("All Events");
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +34,8 @@ export default function EventsScreen() {
     Orbitron_700Bold,
     Orbitron_900Black,
   });
+
+  const styles = getStyles(colors);
 
   useEffect(() => {
     fetchEvents();
@@ -115,9 +122,10 @@ export default function EventsScreen() {
   if (loading && events.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
+        <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
         <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
-          <ActivityIndicator size="large" color="#EAB308" />
-          <Text style={{ color: '#9ca3af', marginTop: 16 }}>Loading events...</Text>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ color: colors.textSecondary, marginTop: 16 }}>Loading events...</Text>
         </View>
       </SafeAreaView>
     );
@@ -125,18 +133,25 @@ export default function EventsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
       <ScrollView
         style={styles.scrollView}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#EAB308" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.appName}>EVENTS</Text>
-          </View>
-          <Text style={styles.headerIcon}>🔔</Text>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+            style={styles.backButtonContainer}
+          >
+            <Text style={styles.backButton}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.appName}>EVENTS</Text>
+          <View style={{ width: 40 }} />
         </View>
 
         {/* Page Title */}
@@ -229,10 +244,10 @@ export default function EventsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -245,20 +260,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: colors.border,
   },
-  headerLeft: {
-    flexDirection: 'row',
+  backButtonContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
+  },
+  backButton: {
+    fontSize: 24,
+    color: colors.primary,
+    fontWeight: '600',
   },
   appName: {
     fontSize: 20,
     fontFamily: 'Orbitron_900Black',
-    color: '#EAB308',
+    color: colors.primary,
     letterSpacing: 2,
-  },
-  headerIcon: {
-    fontSize: 20,
   },
   // Title
   titleSection: {
@@ -269,12 +288,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   // Filters
   filtersSection: {
@@ -289,20 +308,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     marginRight: 8,
   },
   filterButtonActive: {
-    backgroundColor: '#EAB308',
-    borderColor: '#EAB308',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterButtonText: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   filterButtonTextActive: {
-    color: '#000',
+    color: colors.background,
   },
   // Events
   eventsSection: {
@@ -311,21 +330,21 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 16,
   },
   eventCard: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     marginBottom: 16,
     overflow: 'hidden',
   },
   eventImagePlaceholder: {
     width: '100%',
     height: 160,
-    backgroundColor: '#27272a',
+    backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -337,7 +356,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     left: 12,
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 4,
@@ -345,7 +364,7 @@ const styles = StyleSheet.create({
   categoryBadgeText: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#000',
+    color: colors.background,
   },
   eventContent: {
     padding: 16,
@@ -353,12 +372,12 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 12,
   },
   eventDescription: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     lineHeight: 20,
     marginBottom: 12,
   },
@@ -377,10 +396,10 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   ticketButton: {
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -388,6 +407,6 @@ const styles = StyleSheet.create({
   ticketButtonText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#000',
+    color: colors.background,
   },
 });

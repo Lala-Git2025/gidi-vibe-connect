@@ -5,6 +5,21 @@ import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-font
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
 import * as ImagePicker from 'expo-image-picker';
+import { useTheme } from '../contexts/ThemeContext';
+
+// Helper function to convert hex color to rgba
+const hexToRgba = (hex: string, opacity: number): string => {
+  // Remove the '#' if present
+  const color = hex.replace('#', '');
+
+  // Convert hex to RGB
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+
+  // Return rgba string
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
 
 export default function ProfileScreen() {
   // Load Orbitron font
@@ -12,6 +27,9 @@ export default function ProfileScreen() {
     Orbitron_700Bold,
     Orbitron_900Black,
   });
+
+  // Get theme context
+  const { themeMode, setThemeMode, colors, activeTheme } = useTheme();
 
   // Auth state
   const [isGuest, setIsGuest] = useState(true);
@@ -607,9 +625,11 @@ export default function ProfileScreen() {
     return null;
   }
 
+  const styles = getStyles(colors);
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
       <ScrollView style={styles.scrollView}>
         {/* Header */}
         <View style={styles.header}>
@@ -623,7 +643,7 @@ export default function ProfileScreen() {
           {/* Avatar */}
           <TouchableOpacity style={styles.avatar} onPress={pickImage} disabled={uploadingAvatar}>
             {uploadingAvatar ? (
-              <ActivityIndicator size="large" color="#EAB308" />
+              <ActivityIndicator size="large" color={colors.primary} />
             ) : avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
             ) : (
@@ -815,7 +835,7 @@ export default function ProfileScreen() {
                     <TextInput
                       style={styles.input}
                       placeholder="John Doe"
-                      placeholderTextColor="#6b7280"
+                      placeholderTextColor={colors.textSecondary}
                       value={fullName}
                       onChangeText={setFullName}
                       autoCapitalize="words"
@@ -826,7 +846,7 @@ export default function ProfileScreen() {
                     <TextInput
                       style={styles.input}
                       placeholder="johndoe"
-                      placeholderTextColor="#6b7280"
+                      placeholderTextColor={colors.textSecondary}
                       value={username}
                       onChangeText={setUsername}
                       autoCapitalize="none"
@@ -842,7 +862,7 @@ export default function ProfileScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="you@example.com"
-                  placeholderTextColor="#6b7280"
+                  placeholderTextColor={colors.textSecondary}
                   value={email}
                   onChangeText={setEmail}
                   autoCapitalize="none"
@@ -856,7 +876,7 @@ export default function ProfileScreen() {
                   <TextInput
                     style={styles.input}
                     placeholder="••••••••"
-                    placeholderTextColor="#6b7280"
+                    placeholderTextColor={colors.textSecondary}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -877,7 +897,7 @@ export default function ProfileScreen() {
                 disabled={loading}
               >
                 {loading ? (
-                  <ActivityIndicator color="#000" />
+                  <ActivityIndicator color={colors.background} />
                 ) : (
                   <Text style={styles.submitButtonText}>
                     {authMode === 'signin' ? 'Sign In' : authMode === 'signup' ? 'Create Account' : 'Send Reset Link'}
@@ -948,7 +968,7 @@ export default function ProfileScreen() {
 
                   <TouchableOpacity style={styles.settingsItem} onPress={handleDeleteAccount}>
                     <Text style={styles.settingsItemIcon}>🗑️</Text>
-                    <Text style={[styles.settingsItemText, { color: '#ef4444' }]}>Delete Account</Text>
+                    <Text style={[styles.settingsItemText, { color: colors.error }]}>Delete Account</Text>
                     <Text style={styles.settingsItemArrow}>›</Text>
                   </TouchableOpacity>
                 </View>
@@ -964,8 +984,8 @@ export default function ProfileScreen() {
                   <Switch
                     value={notificationsEnabled}
                     onValueChange={setNotificationsEnabled}
-                    trackColor={{ false: '#3f3f46', true: '#EAB308' }}
-                    thumbColor={notificationsEnabled ? '#fff' : '#9ca3af'}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={notificationsEnabled ? colors.text : colors.textSecondary}
                   />
                 </View>
 
@@ -975,9 +995,37 @@ export default function ProfileScreen() {
                   <Switch
                     value={locationEnabled}
                     onValueChange={setLocationEnabled}
-                    trackColor={{ false: '#3f3f46', true: '#EAB308' }}
-                    thumbColor={locationEnabled ? '#fff' : '#9ca3af'}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={locationEnabled ? colors.text : colors.textSecondary}
                   />
+                </View>
+
+                {/* Theme Selection */}
+                <View style={styles.settingsItem}>
+                  <Text style={styles.settingsItemIcon}>🎨</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingsItemText}>Appearance</Text>
+                    <View style={styles.themeButtons}>
+                      <TouchableOpacity
+                        style={[styles.themeButton, themeMode === 'light' && styles.themeButtonActive]}
+                        onPress={() => setThemeMode('light')}
+                      >
+                        <Text style={[styles.themeButtonText, themeMode === 'light' && styles.themeButtonTextActive]}>Light</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.themeButton, themeMode === 'dark' && styles.themeButtonActive]}
+                        onPress={() => setThemeMode('dark')}
+                      >
+                        <Text style={[styles.themeButtonText, themeMode === 'dark' && styles.themeButtonTextActive]}>Dark</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.themeButton, themeMode === 'auto' && styles.themeButtonActive]}
+                        onPress={() => setThemeMode('auto')}
+                      >
+                        <Text style={[styles.themeButtonText, themeMode === 'auto' && styles.themeButtonTextActive]}>Auto</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
               </View>
 
@@ -1067,7 +1115,7 @@ export default function ProfileScreen() {
                   <TextInput
                     style={styles.input}
                     placeholder="Your name"
-                    placeholderTextColor="#6b7280"
+                    placeholderTextColor={colors.textSecondary}
                     value={editName}
                     onChangeText={setEditName}
                     autoCapitalize="words"
@@ -1079,7 +1127,7 @@ export default function ProfileScreen() {
                   <TextInput
                     style={[styles.input, styles.bioInput]}
                     placeholder="Tell us about yourself..."
-                    placeholderTextColor="#6b7280"
+                    placeholderTextColor={colors.textSecondary}
                     value={editBio}
                     onChangeText={setEditBio}
                     multiline
@@ -1093,7 +1141,7 @@ export default function ProfileScreen() {
                   disabled={loading}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={colors.background} />
                   ) : (
                     <Text style={styles.submitButtonText}>Save Changes</Text>
                   )}
@@ -1114,10 +1162,10 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -1130,12 +1178,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: colors.border,
   },
   appName: {
     fontSize: 20,
     fontFamily: 'Orbitron_900Black',
-    color: '#EAB308',
+    color: colors.primary,
     letterSpacing: 2,
   },
   headerIcon: {
@@ -1151,9 +1199,9 @@ const styles = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 64,
-    backgroundColor: 'rgba(234, 179, 8, 0.2)',
+    backgroundColor: hexToRgba(colors.primary, 0.2),
     borderWidth: 4,
-    borderColor: '#EAB308',
+    borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -1170,14 +1218,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: '#000',
+    borderColor: colors.background,
   },
   avatarEditIcon: {
     fontSize: 16,
@@ -1185,12 +1233,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   userLocation: {
     fontSize: 16,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 24,
   },
   // Buttons
@@ -1204,7 +1252,7 @@ const styles = StyleSheet.create({
   signInButton: {
     flex: 1,
     height: 56,
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1212,7 +1260,7 @@ const styles = StyleSheet.create({
   signInButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.background,
   },
   signOutButton: {
     flex: 1,
@@ -1220,28 +1268,28 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#3f3f46',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   signOutButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
   },
   settingsButton: {
     width: 56,
     height: 56,
-    backgroundColor: '#27272a',
+    backgroundColor: colors.cardBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#3f3f46',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   settingsButtonText: {
     fontSize: 20,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   signUpButton: {
     width: '100%',
@@ -1250,14 +1298,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#3f3f46',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   signUpButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
   },
   // Section
   section: {
@@ -1267,7 +1315,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 16,
   },
   // Stats Grid
@@ -1278,10 +1326,10 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '47%',
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     padding: 24,
   },
   statHeader: {
@@ -1295,13 +1343,13 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     flex: 1,
   },
   statValue: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
   },
   // Level & Progress
   levelHeader: {
@@ -1311,7 +1359,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   levelBadge: {
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 4,
@@ -1319,13 +1367,13 @@ const styles = StyleSheet.create({
   levelBadgeText: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#000',
+    color: colors.background,
   },
   progressCard: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     padding: 24,
   },
   progressInfo: {
@@ -1335,30 +1383,30 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   progressBar: {
     height: 12,
-    backgroundColor: '#27272a',
+    backgroundColor: colors.border,
     borderRadius: 6,
     marginBottom: 16,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
   },
   progressMessage: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   // Badges
   badgesCard: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     padding: 32,
     alignItems: 'center',
   },
@@ -1366,7 +1414,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#27272a',
+    backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -1377,12 +1425,12 @@ const styles = StyleSheet.create({
   badgeTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 8,
   },
   badgeMessage: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     textAlign: 'center',
     maxWidth: 300,
   },
@@ -1393,7 +1441,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -1408,7 +1456,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
   },
   closeButton: {
     width: 32,
@@ -1418,11 +1466,11 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     fontSize: 24,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   modalDescription: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 24,
   },
   // Form
@@ -1435,32 +1483,32 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
   },
   input: {
     height: 48,
-    backgroundColor: '#27272a',
+    backgroundColor: colors.cardBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#3f3f46',
+    borderColor: colors.border,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#fff',
+    color: colors.text,
   },
   inputHint: {
     fontSize: 12,
-    color: '#6b7280',
+    color: colors.textSecondary,
     marginTop: 4,
   },
   forgotPasswordLink: {
     fontSize: 14,
-    color: '#EAB308',
+    color: colors.primary,
     textAlign: 'right',
     marginTop: -8,
   },
   submitButton: {
     height: 48,
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1472,7 +1520,7 @@ const styles = StyleSheet.create({
   submitButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.background,
   },
   switchModeContainer: {
     flexDirection: 'row',
@@ -1481,16 +1529,16 @@ const styles = StyleSheet.create({
   },
   switchModeText: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   switchModeLink: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#EAB308',
+    color: colors.primary,
   },
   // Settings Modal Styles
   settingsModalContent: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -1506,7 +1554,7 @@ const styles = StyleSheet.create({
   settingsSectionTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#9ca3af',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 12,
@@ -1514,7 +1562,7 @@ const styles = StyleSheet.create({
   settingsItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#27272a',
+    backgroundColor: colors.cardBackground,
     padding: 16,
     borderRadius: 12,
     marginBottom: 8,
@@ -1526,18 +1574,45 @@ const styles = StyleSheet.create({
   settingsItemText: {
     flex: 1,
     fontSize: 16,
-    color: '#fff',
+    color: colors.text,
   },
   settingsItemArrow: {
     fontSize: 20,
-    color: '#6b7280',
+    color: colors.textSecondary,
   },
   settingsItemValue: {
     fontSize: 14,
-    color: '#6b7280',
+    color: colors.textSecondary,
+  },
+  themeButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  themeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardBackground,
+    alignItems: 'center',
+  },
+  themeButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  themeButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  themeButtonTextActive: {
+    color: colors.background,
   },
   guestPrompt: {
-    backgroundColor: '#27272a',
+    backgroundColor: colors.cardBackground,
     padding: 24,
     borderRadius: 12,
     alignItems: 'center',
@@ -1545,12 +1620,12 @@ const styles = StyleSheet.create({
   },
   guestPromptText: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 16,
     textAlign: 'center',
   },
   guestPromptButton: {
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
@@ -1558,7 +1633,7 @@ const styles = StyleSheet.create({
   guestPromptButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.background,
   },
   // Edit Profile Styles
   bioInput: {
@@ -1571,14 +1646,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#3f3f46',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   // Badge styles
   badgesHeader: {
@@ -1589,8 +1664,8 @@ const styles = StyleSheet.create({
   },
   badgeCount: {
     fontSize: 14,
-    color: '#9ca3af',
-    backgroundColor: '#27272a',
+    color: colors.textSecondary,
+    backgroundColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
@@ -1602,10 +1677,10 @@ const styles = StyleSheet.create({
   },
   earnedBadgeCard: {
     width: '30%',
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#EAB308',
+    borderColor: colors.primary,
     padding: 16,
     alignItems: 'center',
   },
@@ -1616,13 +1691,13 @@ const styles = StyleSheet.create({
   earnedBadgeName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     textAlign: 'center',
     marginBottom: 4,
   },
   earnedBadgeDesc: {
     fontSize: 10,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   availableBadgesSection: {
@@ -1631,7 +1706,7 @@ const styles = StyleSheet.create({
   availableBadgesTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 12,
   },
   availableBadgesScroll: {
@@ -1639,10 +1714,10 @@ const styles = StyleSheet.create({
   },
   lockedBadgeCard: {
     width: 100,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#3f3f46',
+    borderColor: colors.border,
     padding: 12,
     alignItems: 'center',
     marginRight: 12,
@@ -1656,13 +1731,13 @@ const styles = StyleSheet.create({
   lockedBadgeName: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#6b7280',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 4,
   },
   lockedBadgeReq: {
     fontSize: 9,
-    color: '#6b7280',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 });

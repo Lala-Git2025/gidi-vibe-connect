@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Dimensions, Image, ActivityIndicator, RefreshControl } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
+import { useTheme } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 48) / 2;
@@ -17,6 +20,8 @@ interface Venue {
 }
 
 export default function ExploreScreen() {
+  const navigation = useNavigation();
+  const { colors, activeTheme } = useTheme();
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -28,6 +33,8 @@ export default function ExploreScreen() {
     Orbitron_700Bold,
     Orbitron_900Black,
   });
+
+  const styles = getStyles(colors);
 
   useEffect(() => {
     fetchVenues();
@@ -100,7 +107,7 @@ export default function ExploreScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#EAB308" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading venues...</Text>
         </View>
       </SafeAreaView>
@@ -109,23 +116,30 @@ export default function ExploreScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
       <ScrollView
         style={styles.scrollView}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#EAB308"
-            colors={["#EAB308"]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.appName}>EXPLORE</Text>
-          </View>
-          <Text style={styles.headerIcon}>🔔</Text>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+            style={styles.backButtonContainer}
+          >
+            <Text style={styles.backButton}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.appName}>EXPLORE</Text>
+          <View style={{ width: 40 }} />
         </View>
 
         {/* Page Title */}
@@ -141,7 +155,7 @@ export default function ExploreScreen() {
             <TextInput
               style={styles.searchInput}
               placeholder="Search venues or locations..."
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={colors.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -227,10 +241,10 @@ export default function ExploreScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -243,7 +257,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   // Header
   header: {
@@ -253,20 +267,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: colors.border,
   },
-  headerLeft: {
-    flexDirection: 'row',
+  backButtonContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
+  },
+  backButton: {
+    fontSize: 24,
+    color: colors.primary,
+    fontWeight: '600',
   },
   appName: {
     fontSize: 20,
     fontFamily: 'Orbitron_900Black',
-    color: '#EAB308',
+    color: colors.primary,
     letterSpacing: 2,
-  },
-  headerIcon: {
-    fontSize: 20,
   },
   // Title
   titleSection: {
@@ -277,12 +295,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   // Search
   searchSection: {
@@ -292,11 +310,11 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 8,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
   },
   searchIcon: {
     fontSize: 20,
@@ -305,7 +323,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     height: 44,
-    color: '#fff',
+    color: colors.text,
     fontSize: 14,
   },
   // Categories
@@ -315,7 +333,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     paddingHorizontal: 16,
     marginBottom: 12,
   },
@@ -328,20 +346,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     marginRight: 8,
   },
   categoryButtonActive: {
-    backgroundColor: '#EAB308',
-    borderColor: '#EAB308',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   categoryButtonText: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   categoryButtonTextActive: {
-    color: '#000',
+    color: colors.background,
   },
   // Venues
   venuesSection: {
@@ -356,7 +374,7 @@ const styles = StyleSheet.create({
   },
   venuesCount: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   venuesGrid: {
     flexDirection: 'row',
@@ -365,10 +383,10 @@ const styles = StyleSheet.create({
   },
   venueCard: {
     width: cardWidth,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   venueImageContainer: {
@@ -383,7 +401,7 @@ const styles = StyleSheet.create({
   venueImagePlaceholder: {
     width: '100%',
     height: 120,
-    backgroundColor: '#27272a',
+    backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -395,7 +413,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     left: 8,
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
@@ -403,7 +421,7 @@ const styles = StyleSheet.create({
   categoryBadgeText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#000',
+    color: colors.background,
   },
   venueDetails: {
     padding: 12,
@@ -411,7 +429,7 @@ const styles = StyleSheet.create({
   venueName: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 8,
   },
   venueLocation: {
@@ -425,7 +443,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     flex: 1,
   },
   venueRating: {
@@ -439,6 +457,6 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
   },
 });

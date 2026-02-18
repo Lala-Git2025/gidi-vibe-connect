@@ -1,335 +1,562 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Animated } from 'react-native';
 import { supabase } from '../config/supabase';
+import { useTheme } from '../contexts/ThemeContext';
 
-interface VibeData {
-  area: string;
-  count: number;
-  status: string;
+interface AreaVibe {
+  name: string;
+  venueCount: number;
+  vibe: string;
+  vibeType: 'Electric' | 'Buzzing' | 'Vibing' | 'Chill';
+  color: string;
 }
 
+// Actual Lagos neighborhoods
+const LAGOS_AREAS = [
+  { name: 'Victoria Island', aliases: ['Victoria Island', 'VI', 'V/I'] },
+  { name: 'Lekki', aliases: ['Lekki', 'Lekki Phase 1', 'Lekki Phase 2'] },
+  { name: 'Ikeja', aliases: ['Ikeja', 'Ikeja GRA'] },
+  { name: 'Ikoyi', aliases: ['Ikoyi'] },
+  { name: 'Surulere', aliases: ['Surulere'] },
+  { name: 'Yaba', aliases: ['Yaba'] },
+  { name: 'Ajah', aliases: ['Ajah'] },
+  { name: 'Festac', aliases: ['Festac', 'Festac Town'] },
+  { name: 'Lagos Island', aliases: ['Lagos Island', 'Island'] },
+  { name: 'Maryland', aliases: ['Maryland'] },
+];
+
+type VibeFilter = 'All' | 'Electric' | 'Buzzing' | 'Vibing' | 'Chill';
+
+const getVibeFilters = (colors: any): { label: string; value: VibeFilter; icon: string; color: string }[] => [
+  { label: 'All', value: 'All', icon: '🌍', color: colors.textSecondary },
+  { label: 'Electric', value: 'Electric', icon: '⚡️', color: colors.primary },
+  { label: 'Buzzing', value: 'Buzzing', icon: '🔥', color: colors.warning },
+  { label: 'Vibing', value: 'Vibing', icon: '✨', color: colors.error },
+  { label: 'Chill', value: 'Chill', icon: '🎵', color: colors.info },
+];
+
+const getVibeStatus = (count: number, colors: any) => {
+  if (count >= 15) return { status: 'Electric ⚡️', vibeType: 'Electric' as const, color: colors.primary };
+  if (count >= 8) return { status: 'Buzzing 🔥', vibeType: 'Buzzing' as const, color: colors.warning };
+  if (count >= 3) return { status: 'Vibing ✨', vibeType: 'Vibing' as const, color: colors.error };
+  return { status: 'Chill 🎵', vibeType: 'Chill' as const, color: colors.info };
+};
+
 export const VibeCheck = () => {
-  const [vibeData, setVibeData] = useState<VibeData | null>(null);
+  const { colors } = useTheme();
+  const [areaVibes, setAreaVibes] = useState<AreaVibe[]>([]);
   const [loading, setLoading] = useState(true);
-  const pulseAnim = useState(new Animated.Value(1))[0];
+  const [selectedVibe, setSelectedVibe] = useState<VibeFilter>('All');
+  const [displayOffset, setDisplayOffset] = useState(0);
+  const [fadeAnim] = useState(new Animated.Value(1));
+  const [pulseAnims] = useState([
+    new Animated.Value(1),
+    new Animated.Value(1),
+    new Animated.Value(1),
+    new Animated.Value(1),
+  ]);
+  const styles = getStyles(colors);
 
   useEffect(() => {
-    fetchVibeData();
+    fetchAreaVibes();
 
-    // Pulsing animation for live badge
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.2,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
+    // Start pulsing animations for each area slot
+    pulseAnims.forEach((anim, index) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, {
+            toValue: 1.3,
+            duration: 1500 + (index * 200), // Stagger the animations
+            useNativeDriver: false,
+          }),
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 1500 + (index * 200),
+            useNativeDriver: false,
+          }),
+        ])
+      ).start();
+    });
   }, []);
 
-  const fetchVibeData = async () => {
+  // Auto-rotate through areas every 5 seconds
+  useEffect(() => {
+    const filteredAreas = getFilteredAreas();
+    if (filteredAreas.length <= 4) return; // Don't rotate if 4 or fewer areas
+
+    const interval = setInterval(() => {
+      // Fade out
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        // Update offset
+        setDisplayOffset((prev) => {
+          const maxOffset = filteredAreas.length - 4;
+          return prev >= maxOffset ? 0 : prev + 1;
+        });
+
+        // Fade in
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [areaVibes, selectedVibe]);
+
+  const fetchAreaVibes = async () => {
     try {
       const { data, error } = await supabase
         .from('venues')
         .select('location, rating')
         .order('rating', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (error) throw error;
 
-      // Calculate which area is most active
+      // Count venues per area
       const areaCounts: Record<string, number> = {};
+
       (data || []).forEach(venue => {
-        const area = venue.location.split(',')[0].trim();
-        areaCounts[area] = (areaCounts[area] || 0) + 1;
+        const venueLoc = venue.location.toLowerCase();
+
+        LAGOS_AREAS.forEach(area => {
+          const matchesArea = area.aliases.some(alias =>
+            venueLoc.includes(alias.toLowerCase())
+          );
+
+          if (matchesArea) {
+            areaCounts[area.name] = (areaCounts[area.name] || 0) + 1;
+          }
+        });
       });
 
-      let maxArea = 'Victoria Island';
-      let maxCount = 0;
-      Object.entries(areaCounts).forEach(([area, count]) => {
-        if (count > maxCount) {
-          maxCount = count;
-          maxArea = area;
-        }
-      });
+      // Build area vibes with actual counts
+      const vibes: AreaVibe[] = LAGOS_AREAS.map(area => {
+        const count = areaCounts[area.name] || 0;
+        const { status, vibeType, color } = getVibeStatus(count, colors);
 
-      const status = maxCount >= 20 ? 'Electric ⚡️' : maxCount >= 10 ? 'Buzzing 🔥' : maxCount >= 5 ? 'Vibing ✨' : 'Chill 🎵';
+        return {
+          name: area.name,
+          venueCount: count,
+          vibe: status,
+          vibeType,
+          color,
+        };
+      }).filter(area => area.venueCount > 0) // Only show areas with venues
+        .sort((a, b) => b.venueCount - a.venueCount); // Sort by activity
 
-      setVibeData({ area: maxArea, count: maxCount, status });
+      setAreaVibes(vibes);
     } catch (error) {
-      console.error('Error fetching vibe data:', error);
-      // Fallback to default data
-      setVibeData({ area: 'Victoria Island', count: 24, status: 'Electric ⚡️' });
+      console.error('Error fetching area vibes:', error);
+      // Fallback data
+      const fallback: AreaVibe[] = [
+        { name: 'Victoria Island', venueCount: 24, vibe: 'Electric ⚡️', vibeType: 'Electric', color: colors.primary },
+        { name: 'Lekki', venueCount: 18, vibe: 'Buzzing 🔥', vibeType: 'Buzzing', color: colors.warning },
+        { name: 'Ikeja', venueCount: 12, vibe: 'Buzzing 🔥', vibeType: 'Buzzing', color: colors.warning },
+        { name: 'Ikoyi', venueCount: 8, vibe: 'Vibing ✨', vibeType: 'Vibing', color: colors.error },
+      ];
+      setAreaVibes(fallback);
     } finally {
       setLoading(false);
     }
   };
 
+  const getFilteredAreas = () => {
+    if (selectedVibe === 'All') return areaVibes;
+    return areaVibes.filter(area => area.vibeType === selectedVibe);
+  };
+
+  const getDisplayedAreas = () => {
+    const filtered = getFilteredAreas();
+    if (filtered.length <= 4) return filtered;
+
+    const displayed = [];
+    for (let i = 0; i < 4; i++) {
+      const index = (displayOffset + i) % filtered.length;
+      displayed.push(filtered[index]);
+    }
+    return displayed;
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="small" color="#EAB308" />
+        <View style={styles.loadingCard}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading Lagos Vibe Check...</Text>
+        </View>
       </View>
     );
   }
 
-  const area = vibeData?.area || 'Victoria Island';
-  const count = vibeData?.count || 24;
-  const status = vibeData?.status || 'Electric ⚡️';
+  const displayedAreas = getDisplayedAreas();
+  const filteredCount = getFilteredAreas().length;
 
   return (
     <View style={styles.container}>
-      {/* Glowing Border Container */}
-      <View style={styles.glowContainer}>
-        <View style={styles.card}>
-          {/* Lagos Map Background */}
-          <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1578041237426-2a5c5f90c31e?w=1200&q=80' }}
-            style={styles.backgroundImage}
-            resizeMode="cover"
-          />
-
-          {/* Dark Gradient Overlay for Readability */}
-          <View style={styles.gradient} />
-
-          {/* Map Grid Lines Effect */}
-          <View style={styles.mapOverlay}>
-            <View style={styles.gridLine} />
-            <View style={[styles.gridLine, { top: '33%' }]} />
-            <View style={[styles.gridLine, { top: '66%' }]} />
-            <View style={[styles.gridLineVertical, { left: '33%' }]} />
-            <View style={[styles.gridLineVertical, { left: '66%' }]} />
-          </View>
-
-          {/* Animated Pulsing Dots - Victoria Island (Center-Right) */}
-          <Animated.View style={[styles.pulsingDot, { top: '45%', left: '55%', transform: [{ scale: pulseAnim }] }]}>
-            <View style={[styles.dotOuter, styles.primaryDot]} />
-            <View style={[styles.dotMiddle, styles.primaryDot]} />
-            <View style={[styles.dotInner, styles.primaryDot]} />
-            <Text style={styles.areaLabel}>VI</Text>
-          </Animated.View>
-
-          {/* Animated Pulsing Dots - Lekki (Far Right) */}
-          <Animated.View style={[styles.pulsingDot, { top: '52%', left: '75%', transform: [{ scale: pulseAnim }] }]}>
-            <View style={[styles.dotOuter, styles.primaryDot]} />
-            <View style={[styles.dotMiddle, styles.primaryDot]} />
-            <View style={[styles.dotInner, styles.primaryDot]} />
-            <Text style={styles.areaLabel}>Lekki</Text>
-          </Animated.View>
-
-          {/* Animated Pulsing Dots - Ikeja (Left-Center, Mainland) */}
-          <Animated.View style={[styles.pulsingDot, { top: '35%', left: '25%', transform: [{ scale: pulseAnim }] }]}>
-            <View style={[styles.dotOuter, styles.greenDot]} />
-            <View style={[styles.dotMiddle, styles.greenDot]} />
-            <View style={[styles.dotInner, styles.greenDot]} />
-            <Text style={styles.areaLabel}>Ikeja</Text>
-          </Animated.View>
-
-          {/* Animated Pulsing Dots - Ikoyi (Near VI) */}
-          <Animated.View style={[styles.pulsingDot, { top: '50%', left: '48%', transform: [{ scale: pulseAnim }] }]}>
-            <View style={[styles.dotOuter, styles.blueDot]} />
-            <View style={[styles.dotMiddle, styles.blueDot]} />
-            <View style={[styles.dotInner, styles.blueDot]} />
-            <Text style={styles.areaLabel}>Ikoyi</Text>
-          </Animated.View>
-
-          {/* Animated Pulsing Dots - Surulere (Upper Center) */}
-          <Animated.View style={[styles.pulsingDot, { top: '28%', left: '42%', transform: [{ scale: pulseAnim }] }]}>
-            <View style={[styles.dotOuter, styles.purpleDot]} />
-            <View style={[styles.dotMiddle, styles.purpleDot]} />
-            <View style={[styles.dotInner, styles.purpleDot]} />
-            <Text style={styles.areaLabel}>Surulere</Text>
-          </Animated.View>
-
-          {/* Content */}
-          <View style={styles.content}>
-            <Animated.View style={[styles.liveBadge, { transform: [{ scale: pulseAnim }] }]}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE VIBE CHECK</Text>
-            </Animated.View>
-            <Text style={styles.title}>
-              {area} is <Text style={styles.statusText}>{status}</Text>
-            </Text>
-            <Text style={styles.subtitle}>{count} Venues active right now</Text>
-          </View>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>Lagos Vibe Check</Text>
+          <Text style={styles.subtitle}>
+            {filteredCount} area{filteredCount !== 1 ? 's' : ''} • Live now
+          </Text>
+        </View>
+        <View style={styles.liveBadge}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
         </View>
       </View>
+
+      {/* Vibe Filters */}
+      <View style={styles.filtersContainer}>
+        {getVibeFilters(colors).map((filter) => (
+          <TouchableOpacity
+            key={filter.value}
+            style={[
+              styles.filterChip,
+              selectedVibe === filter.value && styles.filterChipActive,
+              selectedVibe === filter.value && { borderColor: filter.color },
+            ]}
+            onPress={() => {
+              setSelectedVibe(filter.value);
+              setDisplayOffset(0); // Reset offset when changing filter
+            }}
+          >
+            <Text style={styles.filterIcon}>{filter.icon}</Text>
+            <Text
+              style={[
+                styles.filterText,
+                selectedVibe === filter.value && { color: filter.color },
+              ]}
+            >
+              {filter.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Areas List */}
+      {displayedAreas.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>🔍</Text>
+          <Text style={styles.emptyText}>
+            No areas match this vibe right now
+          </Text>
+        </View>
+      ) : (
+        <Animated.View style={[styles.areasList, { opacity: fadeAnim }]}>
+          {displayedAreas.map((area, index) => {
+            const pulseAnim = pulseAnims[index];
+            const glowOpacity = pulseAnim.interpolate({
+              inputRange: [1, 1.3],
+              outputRange: [0.6, 1],
+            });
+
+            return (
+              <View key={`${area.name}-${index}`} style={styles.areaItemContainer}>
+                {/* Outer Glow Container */}
+                <Animated.View
+                  style={[
+                    styles.outerGlow,
+                    {
+                      opacity: glowOpacity,
+                      borderColor: area.color,
+                      borderWidth: pulseAnim.interpolate({
+                        inputRange: [1, 1.3],
+                        outputRange: [3, 5],
+                      }),
+                    },
+                  ]}
+                >
+                  {/* Inner Glow */}
+                  <Animated.View
+                    style={[
+                      styles.innerGlow,
+                      {
+                        backgroundColor: area.color,
+                        opacity: pulseAnim.interpolate({
+                          inputRange: [1, 1.3],
+                          outputRange: [0.2, 0.4],
+                        }),
+                      },
+                    ]}
+                  />
+
+                  {/* Area Card */}
+                  <View style={styles.areaItem}>
+                    <View style={styles.areaLeft}>
+                      <Animated.View
+                        style={[
+                          styles.areaIndicator,
+                          {
+                            backgroundColor: area.color,
+                            opacity: pulseAnim.interpolate({
+                              inputRange: [1, 1.3],
+                              outputRange: [0.8, 1],
+                            }),
+                            transform: [{
+                              scale: pulseAnim.interpolate({
+                                inputRange: [1, 1.3],
+                                outputRange: [1, 1.05],
+                              }),
+                            }],
+                          },
+                        ]}
+                      />
+                      <View style={styles.areaInfo}>
+                        <Text style={styles.areaName}>{area.name}</Text>
+                        <Text style={styles.areaVenue}>{area.venueCount} venues active</Text>
+                      </View>
+                    </View>
+                    <View style={styles.areaRight}>
+                      <Animated.Text
+                        style={[
+                          styles.areaVibe,
+                          {
+                            color: area.color,
+                            opacity: pulseAnim.interpolate({
+                              inputRange: [1, 1.3],
+                              outputRange: [0.7, 1],
+                            }),
+                          },
+                        ]}
+                      >
+                        {area.vibe}
+                      </Animated.Text>
+                    </View>
+                  </View>
+                </Animated.View>
+              </View>
+            );
+          })}
+        </Animated.View>
+      )}
+
+      {/* Rotation Indicator */}
+      {filteredCount > 4 && (
+        <View style={styles.rotationIndicator}>
+          <Text style={styles.rotationText}>
+            Showing {displayedAreas.length} of {filteredCount} • Auto-rotating
+          </Text>
+          <View style={styles.dotsContainer}>
+            {Array.from({ length: Math.min(Math.ceil(filteredCount / 4), 5) }).map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  (displayOffset === i || (filteredCount > 20 && i === 4)) && styles.dotActive,
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+      )}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     paddingHorizontal: 16,
     marginBottom: 24,
   },
-  glowContainer: {
-    borderRadius: 24,
-    padding: 3,
-    backgroundColor: '#EAB308',
-    shadowColor: '#EAB308',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  card: {
-    height: 192,
-    borderRadius: 21,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  backgroundImage: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    opacity: 0.8,
-  },
-  gradient: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-  },
-  mapOverlay: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-  },
-  gridLine: {
-    position: 'absolute',
-    width: '100%',
-    height: 1,
-    backgroundColor: 'rgba(251, 191, 36, 0.15)',
-    top: 0,
-  },
-  gridLineVertical: {
-    position: 'absolute',
-    width: 1,
-    height: '100%',
-    backgroundColor: 'rgba(251, 191, 36, 0.15)',
-    left: 0,
-  },
-  pulsingDot: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
+  loadingCard: {
+    height: 250,
+    borderRadius: 16,
+    backgroundColor: colors.cardBackground,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
   },
-  areaLabel: {
-    position: 'absolute',
-    top: 42,
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#fff',
-    textShadowColor: 'rgba(0, 0, 0, 0.9)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 4,
+  loadingText: {
+    color: colors.textSecondary,
+    fontSize: 14,
   },
-  dotOuter: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    opacity: 0.4,
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  dotMiddle: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    opacity: 0.7,
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
   },
-  dotInner: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    opacity: 1,
-  },
-  primaryDot: {
-    backgroundColor: '#fbbf24',
-  },
-  greenDot: {
-    backgroundColor: '#34d399',
-  },
-  blueDot: {
-    backgroundColor: '#60a5fa',
-  },
-  purpleDot: {
-    backgroundColor: '#c084fc',
-  },
-  content: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
+  subtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#EAB308',
-    borderWidth: 2,
-    borderColor: '#fbbf24',
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 16,
-    marginBottom: 12,
+    borderRadius: 12,
     gap: 6,
-    shadowColor: '#EAB308',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
-    elevation: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#fff',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
   },
   liveText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#000',
-    letterSpacing: 1.5,
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 1,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 6,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+
+  // Filters
+  filtersContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+    flexWrap: 'wrap',
   },
-  statusText: {
-    color: '#fbbf24',
-    textShadowColor: 'rgba(251, 191, 36, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  subtitle: {
-    fontSize: 15,
-    color: '#fbbf24',
+  filterChipActive: {
+    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+    borderWidth: 2,
+  },
+  filterIcon: {
+    fontSize: 14,
+  },
+  filterText: {
+    fontSize: 13,
     fontWeight: '600',
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    color: colors.textSecondary,
+  },
+
+  // Areas List
+  areasList: {
+    backgroundColor: colors.border,
+    borderRadius: 16,
+    padding: 16,
+    gap: 16,
+  },
+  areaItemContainer: {
+    marginBottom: 4,
+  },
+  outerGlow: {
+    borderRadius: 14,
+    padding: 2,
+    position: 'relative',
+  },
+  innerGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 14,
+  },
+  areaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#3f3f46',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  areaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  areaIndicator: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+  },
+  areaInfo: {
+    flex: 1,
+  },
+  areaName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  areaVenue: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  areaRight: {
+    alignItems: 'flex-end',
+  },
+  areaVibe: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // Empty State
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 16,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    opacity: 0.5,
+    marginBottom: 12,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  // Rotation Indicator
+  rotationIndicator: {
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 8,
+  },
+  rotationText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  dotsContainer: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  dotActive: {
+    backgroundColor: colors.primary,
   },
 });

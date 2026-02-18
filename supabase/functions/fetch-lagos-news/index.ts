@@ -12,6 +12,85 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 );
 
+/**
+ * Deduplicate news articles based on title similarity
+ * If two articles have very similar titles, keep only one (preferably with an image)
+ */
+function deduplicateNews(articles: any[]): any[] {
+  const uniqueArticles: any[] = [];
+  const seenTitles = new Set<string>();
+
+  for (const article of articles) {
+    const normalizedTitle = normalizeTitle(article.title);
+
+    // Check if we've seen a similar title
+    let isDuplicate = false;
+    for (const seenTitle of seenTitles) {
+      if (areTitlesSimilar(normalizedTitle, seenTitle)) {
+        isDuplicate = true;
+
+        // If this article has an image and the existing one doesn't, replace it
+        const existingIndex = uniqueArticles.findIndex(
+          a => normalizeTitle(a.title) === seenTitle
+        );
+
+        if (existingIndex !== -1) {
+          const existing = uniqueArticles[existingIndex];
+          if (article.featured_image_url && !existing.featured_image_url) {
+            // Replace with article that has image
+            uniqueArticles[existingIndex] = article;
+            seenTitles.delete(seenTitle);
+            seenTitles.add(normalizedTitle);
+          }
+        }
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      uniqueArticles.push(article);
+      seenTitles.add(normalizedTitle);
+    }
+  }
+
+  return uniqueArticles;
+}
+
+/**
+ * Normalize title for comparison (lowercase, remove punctuation, extra spaces)
+ */
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ') // Remove punctuation
+    .replace(/\s+/g, ' ')      // Normalize spaces
+    .trim();
+}
+
+/**
+ * Check if two titles are similar (70% word overlap)
+ */
+function areTitlesSimilar(title1: string, title2: string): boolean {
+  const words1 = new Set(title1.split(' ').filter(w => w.length > 3));
+  const words2 = new Set(title2.split(' ').filter(w => w.length > 3));
+
+  if (words1.size === 0 || words2.size === 0) return false;
+
+  // Count common words
+  let commonWords = 0;
+  for (const word of words1) {
+    if (words2.has(word)) {
+      commonWords++;
+    }
+  }
+
+  // Calculate similarity as percentage of common words
+  const similarity = commonWords / Math.min(words1.size, words2.size);
+
+  // Consider titles similar if they share 70% or more words
+  return similarity >= 0.7;
+}
+
 serve(async (req) => {
   console.log('🚀 Fetch-lagos-news function called');
   
@@ -80,21 +159,25 @@ serve(async (req) => {
       is_published: true,
       views_count: 0,
       tags: ['Lagos', 'Nigeria', 'GIDI', 'Entertainment'],
-    })).filter((article: any) => 
-      article.title && 
-      article.title !== '[Removed]' && 
-      article.summary && 
+    })).filter((article: any) =>
+      article.title &&
+      article.title !== '[Removed]' &&
+      article.summary &&
       article.summary !== '[Removed]'
     ) || [];
 
     console.log(`✅ Processed ${processedNews.length} valid articles`);
 
+    // Remove duplicates based on title similarity
+    const deduplicatedNews = deduplicateNews(processedNews);
+    console.log(`🔍 After deduplication: ${deduplicatedNews.length} unique articles`);
+
     // Cache the news in our database (non-blocking)
-    if (processedNews.length > 0) {
+    if (deduplicatedNews.length > 0) {
       try {
         const { error: insertError } = await supabase
           .from('news_feed')
-          .insert(processedNews);
+          .insert(deduplicatedNews);
 
         if (insertError) {
           console.error('⚠️ Error caching news:', insertError.message);
@@ -107,7 +190,7 @@ serve(async (req) => {
     }
 
     // Return processed news or fallback
-    const finalData = processedNews.length > 0 ? processedNews : getFallbackNews();
+    const finalData = deduplicatedNews.length > 0 ? deduplicatedNews : getFallbackNews();
 
     return new Response(JSON.stringify({ 
       success: true,

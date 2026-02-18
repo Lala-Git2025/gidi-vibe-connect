@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface TrafficData {
   id: string;
@@ -80,13 +81,13 @@ const generateTrafficAlerts = (): TrafficData[] => {
   });
 };
 
-const getSeverityColor = (severity: string) => {
+const getSeverityColor = (severity: string, colors: any) => {
   switch (severity) {
-    case 'critical': return '#dc2626';
-    case 'heavy': return '#ef4444';
-    case 'moderate': return '#eab308';
-    case 'light': return '#22c55e';
-    default: return '#eab308';
+    case 'critical': return colors.error;
+    case 'heavy': return colors.error;
+    case 'moderate': return colors.primary;
+    case 'light': return colors.success;
+    default: return colors.primary;
   }
 };
 
@@ -101,6 +102,8 @@ const getSeverityEmoji = (severity: string) => {
 };
 
 export const TrafficAlert = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [trafficAlerts, setTrafficAlerts] = useState<TrafficData[]>([]);
 
   useEffect(() => {
@@ -134,7 +137,7 @@ export const TrafficAlert = () => {
         {trafficAlerts.map((traffic) => (
           <View key={traffic.id} style={styles.card}>
             <View style={styles.cardHeader}>
-              <View style={[styles.indicator, { backgroundColor: getSeverityColor(traffic.severity) }]}>
+              <View style={[styles.indicator, { backgroundColor: getSeverityColor(traffic.severity, colors) }]}>
                 <Text style={styles.emoji}>{getSeverityEmoji(traffic.severity)}</Text>
               </View>
               <Text style={styles.areaTag}>{traffic.area}</Text>
@@ -147,8 +150,8 @@ export const TrafficAlert = () => {
               <Text style={styles.description} numberOfLines={2}>
                 {traffic.description}
               </Text>
-              <View style={[styles.severityBadge, { backgroundColor: getSeverityColor(traffic.severity) + '20' }]}>
-                <Text style={[styles.severityText, { color: getSeverityColor(traffic.severity) }]}>
+              <View style={[styles.severityBadge, { backgroundColor: getSeverityColor(traffic.severity, colors) + '20' }]}>
+                <Text style={[styles.severityText, { color: getSeverityColor(traffic.severity, colors) }]}>
                   {traffic.severity.toUpperCase()}
                 </Text>
               </View>
@@ -160,7 +163,7 @@ export const TrafficAlert = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     marginBottom: 20,
   },
@@ -174,7 +177,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -182,10 +185,10 @@ const styles = StyleSheet.create({
   },
   card: {
     width: 200,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     padding: 12,
   },
   cardHeader: {
@@ -207,7 +210,7 @@ const styles = StyleSheet.create({
   areaTag: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#EAB308',
+    color: colors.primary,
     backgroundColor: 'rgba(234, 179, 8, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -219,11 +222,11 @@ const styles = StyleSheet.create({
   location: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
   },
   description: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     lineHeight: 16,
   },
   severityBadge: {
@@ -247,11 +250,11 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#22c55e',
+    backgroundColor: colors.success,
   },
   liveText: {
     fontSize: 11,
-    color: '#6b7280',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
 });

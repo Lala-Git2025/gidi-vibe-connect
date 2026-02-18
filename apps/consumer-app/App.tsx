@@ -10,141 +10,163 @@ import EventsScreen from './screens/EventsScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import NewsScreen from './screens/NewsScreen';
 import SocialScreen from './screens/SocialScreen';
+import DiscoverScreen from './screens/DiscoverScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
+function AppNavigator() {
+  const { colors } = useTheme();
+
+  return (
+    <NavigationContainer>
+      <Tab.Navigator
+        tabBar={(props) => {
+          // Custom tab bar to ensure only 5 visible tabs
+          const { state, descriptors, navigation } = props;
+          const visibleRoutes = state.routes.filter(route =>
+            route.name !== 'News' && route.name !== 'ExploreArea' && route.name !== 'Discover'
+          );
+
+          return (
+            <View style={{
+              flexDirection: 'row',
+              backgroundColor: colors.background,
+              borderTopColor: colors.border,
+              borderTopWidth: 1,
+              paddingBottom: Platform.OS === 'ios' ? 30 : 12,
+              paddingTop: 8,
+              height: Platform.OS === 'ios' ? 85 : 70,
+            }}>
+              {visibleRoutes.map((route, index) => {
+                const { options } = descriptors[route.key];
+                const isFocused = state.index === state.routes.findIndex(r => r.key === route.key);
+
+                const onPress = () => {
+                  const event = navigation.emit({
+                    type: 'tabPress',
+                    target: route.key,
+                    canPreventDefault: true,
+                  });
+
+                  if (!isFocused && !event.defaultPrevented) {
+                    navigation.navigate(route.name);
+                  }
+                };
+
+                const label = typeof options.tabBarLabel === 'function'
+                  ? route.name
+                  : (options.tabBarLabel || route.name);
+
+                return (
+                  <TouchableOpacity
+                    key={route.key}
+                    accessibilityRole="button"
+                    accessibilityState={isFocused ? { selected: true } : {}}
+                    onPress={onPress}
+                    style={{
+                      flex: 1,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {options.tabBarIcon && (
+                      <View style={{ marginBottom: 4 }}>
+                        {options.tabBarIcon({ focused: isFocused, color: isFocused ? colors.primary : colors.textSecondary, size: 26 })}
+                      </View>
+                    )}
+                    <Text style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: isFocused ? colors.primary : colors.textSecondary,
+                    }}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          );
+        }}
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        <Tab.Screen
+          name="Home"
+          component={HomeScreen}
+          options={{
+            tabBarIcon: () => <Text style={{ fontSize: 26 }}>🏠</Text>,
+            tabBarLabel: 'Home',
+          }}
+        />
+        <Tab.Screen
+          name="Explore"
+          component={ExploreScreen}
+          options={{
+            tabBarIcon: () => <Text style={{ fontSize: 26 }}>🔍</Text>,
+            tabBarLabel: 'Explore',
+          }}
+        />
+        <Tab.Screen
+          name="Events"
+          component={EventsScreen}
+          options={{
+            tabBarIcon: () => <Text style={{ fontSize: 26 }}>📅</Text>,
+            tabBarLabel: 'Events',
+          }}
+        />
+        <Tab.Screen
+          name="Social"
+          component={SocialScreen}
+          options={{
+            tabBarIcon: () => <Text style={{ fontSize: 26 }}>💬</Text>,
+            tabBarLabel: 'Social',
+          }}
+        />
+        <Tab.Screen
+          name="Profile"
+          component={ProfileScreen}
+          options={{
+            tabBarIcon: () => <Text style={{ fontSize: 26 }}>👤</Text>,
+            tabBarLabel: 'Profile',
+          }}
+        />
+        <Tab.Screen
+          name="News"
+          component={NewsScreen}
+          options={{
+            tabBarButton: () => null,
+          }}
+        />
+        <Tab.Screen
+          name="ExploreArea"
+          component={ExploreAreaScreen}
+          options={{
+            tabBarButton: () => null,
+          }}
+        />
+        <Tab.Screen
+          name="Discover"
+          component={DiscoverScreen}
+          options={{
+            tabBarButton: () => null,
+          }}
+        />
+      </Tab.Navigator>
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <Tab.Navigator
-          tabBar={(props) => {
-            // Custom tab bar to ensure only 5 visible tabs
-            const { state, descriptors, navigation } = props;
-            const visibleRoutes = state.routes.filter(route =>
-              route.name !== 'News' && route.name !== 'ExploreArea'
-            );
-
-            return (
-              <View style={{
-                flexDirection: 'row',
-                backgroundColor: '#000',
-                borderTopColor: '#27272a',
-                borderTopWidth: 1,
-                paddingBottom: Platform.OS === 'ios' ? 30 : 12,
-                paddingTop: 8,
-                height: Platform.OS === 'ios' ? 85 : 70,
-              }}>
-                {visibleRoutes.map((route, index) => {
-                  const { options } = descriptors[route.key];
-                  const isFocused = state.index === state.routes.findIndex(r => r.key === route.key);
-
-                  const onPress = () => {
-                    const event = navigation.emit({
-                      type: 'tabPress',
-                      target: route.key,
-                      canPreventDefault: true,
-                    });
-
-                    if (!isFocused && !event.defaultPrevented) {
-                      navigation.navigate(route.name);
-                    }
-                  };
-
-                  const label = typeof options.tabBarLabel === 'function'
-                    ? route.name
-                    : (options.tabBarLabel || route.name);
-
-                  return (
-                    <TouchableOpacity
-                      key={route.key}
-                      accessibilityRole="button"
-                      accessibilityState={isFocused ? { selected: true } : {}}
-                      onPress={onPress}
-                      style={{
-                        flex: 1,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                      }}
-                    >
-                      {options.tabBarIcon && (
-                        <View style={{ marginBottom: 4 }}>
-                          {options.tabBarIcon({ focused: isFocused, color: isFocused ? '#EAB308' : '#9ca3af', size: 26 })}
-                        </View>
-                      )}
-                      <Text style={{
-                        fontSize: 11,
-                        fontWeight: '600',
-                        color: isFocused ? '#EAB308' : '#9ca3af',
-                      }}>
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            );
-          }}
-          screenOptions={{
-            headerShown: false,
-          }}
-        >
-          <Tab.Screen
-            name="Home"
-            component={HomeScreen}
-            options={{
-              tabBarIcon: () => <Text style={{ fontSize: 26 }}>🏠</Text>,
-              tabBarLabel: 'Home',
-            }}
-          />
-          <Tab.Screen
-            name="Explore"
-            component={ExploreScreen}
-            options={{
-              tabBarIcon: () => <Text style={{ fontSize: 26 }}>🔍</Text>,
-              tabBarLabel: 'Explore',
-            }}
-          />
-          <Tab.Screen
-            name="Events"
-            component={EventsScreen}
-            options={{
-              tabBarIcon: () => <Text style={{ fontSize: 26 }}>📅</Text>,
-              tabBarLabel: 'Events',
-            }}
-          />
-          <Tab.Screen
-            name="Social"
-            component={SocialScreen}
-            options={{
-              tabBarIcon: () => <Text style={{ fontSize: 26 }}>💬</Text>,
-              tabBarLabel: 'Social',
-            }}
-          />
-          <Tab.Screen
-            name="Profile"
-            component={ProfileScreen}
-            options={{
-              tabBarIcon: () => <Text style={{ fontSize: 26 }}>👤</Text>,
-              tabBarLabel: 'Profile',
-            }}
-          />
-          <Tab.Screen
-            name="News"
-            component={NewsScreen}
-            options={{
-              tabBarButton: () => null,
-            }}
-          />
-          <Tab.Screen
-            name="ExploreArea"
-            component={ExploreAreaScreen}
-            options={{
-              tabBarButton: () => null,
-            }}
-          />
-        </Tab.Navigator>
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <AppNavigator />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

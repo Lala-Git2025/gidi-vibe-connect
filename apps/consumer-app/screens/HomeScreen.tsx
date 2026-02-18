@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linki
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { TrafficAlert } from '../components/TrafficAlert';
 import { VibeCheck } from '../components/VibeCheck';
@@ -13,6 +14,84 @@ import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-font
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 48) / 2;
 
+/**
+ * Deduplicate news articles based on title similarity
+ */
+function deduplicateNews(articles: any[]): any[] {
+  const uniqueArticles: any[] = [];
+  const seenTitles = new Set<string>();
+
+  for (const article of articles) {
+    const normalizedTitle = normalizeTitle(article.title);
+
+    // Check if we've seen a similar title
+    let isDuplicate = false;
+    for (const seenTitle of seenTitles) {
+      if (areTitlesSimilar(normalizedTitle, seenTitle)) {
+        isDuplicate = true;
+
+        // If this article has an image and the existing one doesn't, replace it
+        const existingIndex = uniqueArticles.findIndex(
+          a => normalizeTitle(a.title) === seenTitle
+        );
+
+        if (existingIndex !== -1) {
+          const existing = uniqueArticles[existingIndex];
+          if (article.featured_image_url && !existing.featured_image_url) {
+            // Replace with article that has image
+            uniqueArticles[existingIndex] = article;
+            seenTitles.delete(seenTitle);
+            seenTitles.add(normalizedTitle);
+          }
+        }
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      uniqueArticles.push(article);
+      seenTitles.add(normalizedTitle);
+    }
+  }
+
+  return uniqueArticles;
+}
+
+/**
+ * Normalize title for comparison
+ */
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ') // Remove punctuation
+    .replace(/\s+/g, ' ')      // Normalize spaces
+    .trim();
+}
+
+/**
+ * Check if two titles are similar (70% word overlap)
+ */
+function areTitlesSimilar(title1: string, title2: string): boolean {
+  const words1 = new Set(title1.split(' ').filter(w => w.length > 3));
+  const words2 = new Set(title2.split(' ').filter(w => w.length > 3));
+
+  if (words1.size === 0 || words2.size === 0) return false;
+
+  // Count common words
+  let commonWords = 0;
+  for (const word of words1) {
+    if (words2.has(word)) {
+      commonWords++;
+    }
+  }
+
+  // Calculate similarity
+  const similarity = commonWords / Math.min(words1.size, words2.size);
+
+  // Consider titles similar if they share 70% or more words
+  return similarity >= 0.7;
+}
+
 const categories = [
   { emoji: '🍸', label: "Bars & Lounges", screen: "Explore" },
   { emoji: '🍽️', label: "Restaurants", screen: "Explore" },
@@ -21,11 +100,12 @@ const categories = [
   { emoji: '☀️', label: "DayLife", screen: "Events" },
   { emoji: '📅', label: "Events", screen: "Events" },
   { emoji: '💬', label: "Social", screen: "Social" },
-  { emoji: '➕', label: "See More", screen: "Explore" },
+  { emoji: '➕', label: "See More", screen: "Discover" },
 ];
 
 export default function HomeScreen() {
   const navigation = useNavigation();
+  const { colors, activeTheme } = useTheme();
   const [liveNews, setLiveNews] = useState<Array<{
     title: string;
     summary: string;
@@ -42,6 +122,8 @@ export default function HomeScreen() {
     Orbitron_700Bold,
     Orbitron_900Black,
   });
+
+  const styles = getStyles(colors);
 
   const fetchLatestNews = async () => {
     try {
@@ -73,7 +155,10 @@ export default function HomeScreen() {
           return item.external_url.startsWith('http');
         });
 
-        const formattedNews = validNews.slice(0, 3).map(item => ({
+        // Remove duplicates based on title similarity
+        const deduplicatedNews = deduplicateNews(validNews);
+
+        const formattedNews = deduplicatedNews.slice(0, 3).map(item => ({
           title: item.title,
           summary: item.summary,
           time: formatTimeAgo(item.publish_date),
@@ -151,15 +236,15 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
       <ScrollView
         style={styles.scrollView}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#EAB308"
-            colors={["#EAB308"]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
       >
@@ -302,10 +387,10 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -318,7 +403,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: colors.border,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -328,14 +413,14 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 20,
     fontFamily: 'Orbitron_900Black',
-    color: '#EAB308',
+    color: colors.primary,
     letterSpacing: 2,
   },
   liveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#10B981',
+    backgroundColor: colors.success,
   },
   headerIcon: {
     fontSize: 20,
@@ -348,7 +433,7 @@ const styles = StyleSheet.create({
   },
   greetingTime: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     letterSpacing: 1,
     fontWeight: '500',
   },
@@ -360,12 +445,12 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
   },
   searchIcon: {
     fontSize: 20,
@@ -373,18 +458,18 @@ const styles = StyleSheet.create({
   },
   searchPlaceholder: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   // Explore Area Card
   exploreAreaCard: {
     marginHorizontal: 16,
     marginVertical: 16,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#EAB308',
+    borderColor: colors.primary,
     padding: 16,
-    shadowColor: '#EAB308',
+    shadowColor: colors.primary,
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 8,
@@ -403,16 +488,16 @@ const styles = StyleSheet.create({
   exploreAreaTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#EAB308',
+    color: colors.primary,
     marginBottom: 2,
   },
   exploreAreaSubtitle: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   exploreAreaArrow: {
     fontSize: 24,
-    color: '#EAB308',
+    color: colors.primary,
     fontWeight: 'bold',
   },
   // Categories
@@ -428,10 +513,10 @@ const styles = StyleSheet.create({
   categoryCard: {
     width: cardWidth,
     height: 96,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
@@ -442,7 +527,7 @@ const styles = StyleSheet.create({
   categoryLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     textAlign: 'center',
   },
   // Section
@@ -459,12 +544,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 16,
   },
   seeAll: {
     fontSize: 14,
-    color: '#EAB308',
+    color: colors.primary,
     fontWeight: '500',
   },
   // News
@@ -475,16 +560,16 @@ const styles = StyleSheet.create({
   newsCard: {
     width: 260,
     marginRight: 12,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   newsImagePlaceholder: {
     width: '100%',
     height: 100,
-    backgroundColor: '#27272a',
+    backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -505,7 +590,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     left: 8,
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
@@ -513,7 +598,7 @@ const styles = StyleSheet.create({
   newsCategoryText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#000',
+    color: colors.background,
   },
   newsContent: {
     padding: 10,
@@ -523,32 +608,32 @@ const styles = StyleSheet.create({
   },
   newsTime: {
     fontSize: 11,
-    color: '#6b7280',
+    color: colors.textSecondary,
   },
   newsTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 6,
     lineHeight: 18,
   },
   newsDescription: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 8,
     lineHeight: 16,
   },
   newsLink: {
     fontSize: 12,
-    color: '#EAB308',
+    color: colors.primary,
     fontWeight: '600',
   },
   // Traffic
   trafficCard: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     padding: 16,
   },
   trafficAlert: {
@@ -564,30 +649,30 @@ const styles = StyleSheet.create({
   trafficTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 2,
   },
   trafficLocation: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   trafficTime: {
     fontSize: 10,
-    color: '#6b7280',
+    color: colors.textSecondary,
   },
   // Vibe Check
   vibeCard: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     padding: 16,
   },
   vibeTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -601,12 +686,12 @@ const styles = StyleSheet.create({
   vibeStatValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#EAB308',
+    color: colors.primary,
     marginBottom: 4,
   },
   vibeStatLabel: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   // Venues
   venuesScroll: {
@@ -616,16 +701,16 @@ const styles = StyleSheet.create({
   venueCard: {
     width: 150,
     marginRight: 12,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     padding: 10,
   },
   venueImagePlaceholder: {
     width: '100%',
     height: 80,
-    backgroundColor: '#27272a',
+    backgroundColor: colors.border,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -637,12 +722,12 @@ const styles = StyleSheet.create({
   venueName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   venueLocation: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 8,
   },
   venueRating: {
@@ -656,6 +741,6 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
   },
 });

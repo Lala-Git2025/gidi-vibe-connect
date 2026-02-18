@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 
@@ -26,7 +28,6 @@ const LAGOS_AREAS = [
     shortName: 'VI',
     description: 'Upscale dining and nightlife hub',
     emoji: '🏙️',
-    color: '#EAB308',
     image: 'https://images.unsplash.com/photo-1568822617270-2e2b9c7c7a1e?w=800&q=85'
   },
   {
@@ -35,7 +36,6 @@ const LAGOS_AREAS = [
     shortName: 'Lekki',
     description: 'Trendy bars and beach clubs',
     emoji: '🏖️',
-    color: '#3b82f6',
     image: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800&q=85'
   },
   {
@@ -44,7 +44,6 @@ const LAGOS_AREAS = [
     shortName: 'Ikoyi',
     description: 'Fine dining and luxury lounges',
     emoji: '🍷',
-    color: '#8b5cf6',
     image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=85'
   },
   {
@@ -53,7 +52,6 @@ const LAGOS_AREAS = [
     shortName: 'Ikeja',
     description: 'Diverse entertainment options',
     emoji: '🎭',
-    color: '#ec4899',
     image: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&q=85'
   },
   {
@@ -62,7 +60,6 @@ const LAGOS_AREAS = [
     shortName: 'Yaba',
     description: 'Youth culture and nightlife',
     emoji: '🎵',
-    color: '#f97316',
     image: 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&q=85'
   },
   {
@@ -71,13 +68,13 @@ const LAGOS_AREAS = [
     shortName: 'Surulere',
     description: 'Local spots and live music',
     emoji: '🎸',
-    color: '#10b981',
     image: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?w=800&q=85'
   },
 ];
 
 export default function ExploreAreaScreen() {
   const navigation = useNavigation();
+  const { colors, activeTheme } = useTheme();
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +86,8 @@ export default function ExploreAreaScreen() {
     Orbitron_700Bold,
     Orbitron_900Black,
   });
+
+  const styles = getStyles(colors);
 
   useEffect(() => {
     fetchVenues();
@@ -159,10 +158,15 @@ export default function ExploreAreaScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
       <ScrollView style={styles.scrollView}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
             <Text style={styles.backButton}>←</Text>
           </TouchableOpacity>
           <Text style={styles.appName}>AREAS</Text>
@@ -263,7 +267,7 @@ export default function ExploreAreaScreen() {
                     />
                     <View style={styles.venueCardGradient} />
                     <View style={styles.venueCardContent}>
-                      <View style={[styles.venueCardBadge, { backgroundColor: '#10b981' }]}>
+                      <View style={[styles.venueCardBadge, { backgroundColor: colors.primary }]}>
                         <Text style={styles.venueCardBadgeText}>NEW</Text>
                       </View>
                       <Text style={styles.venueCardName}>{venue.name}</Text>
@@ -283,7 +287,7 @@ export default function ExploreAreaScreen() {
               {LAGOS_AREAS.find(a => a.id === selectedArea)?.name} Venues
             </Text>
             {loading ? (
-              <ActivityIndicator size="large" color="#EAB308" style={{ marginTop: 20 }} />
+              <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 20 }} />
             ) : (
               <View style={styles.venuesListGrid}>
                 {venues.map((venue) => (
@@ -315,10 +319,10 @@ export default function ExploreAreaScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -330,17 +334,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: colors.border,
   },
   backButton: {
     fontSize: 24,
-    color: '#EAB308',
+    color: colors.primary,
     fontWeight: '600',
   },
   appName: {
     fontSize: 20,
     fontFamily: 'Orbitron_900Black',
-    color: '#EAB308',
+    color: colors.primary,
     letterSpacing: 2,
   },
   titleSection: {
@@ -351,12 +355,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   // Areas
   areasSection: {
@@ -366,7 +370,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 16,
   },
   areasGrid: {
@@ -384,7 +388,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   areaCardActive: {
-    borderColor: '#EAB308',
+    borderColor: colors.primary,
   },
   areaImage: {
     width: '100%',
@@ -409,17 +413,17 @@ const styles = StyleSheet.create({
   areaName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   areaDescription: {
     fontSize: 11,
-    color: '#d1d5db',
+    color: colors.textSecondary,
     marginBottom: 8,
   },
   venueCountBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(234, 179, 8, 0.9)',
+    backgroundColor: colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -427,7 +431,7 @@ const styles = StyleSheet.create({
   venueCountText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#000',
+    color: colors.background,
   },
   // Collections
   collectionSection: {
@@ -440,12 +444,12 @@ const styles = StyleSheet.create({
   collectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   collectionSubtitle: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: colors.textSecondary,
   },
   collectionScroll: {
     paddingHorizontal: 16,
@@ -476,7 +480,7 @@ const styles = StyleSheet.create({
   },
   venueCardBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#EAB308',
+    backgroundColor: colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -485,17 +489,17 @@ const styles = StyleSheet.create({
   venueCardBadgeText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#000',
+    color: colors.background,
   },
   venueCardName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   venueCardLocation: {
     fontSize: 12,
-    color: '#d1d5db',
+    color: colors.textSecondary,
   },
   // Area Venues List
   areaVenuesSection: {
@@ -507,10 +511,10 @@ const styles = StyleSheet.create({
   },
   venueListCard: {
     flexDirection: 'row',
-    backgroundColor: '#18181b',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: colors.border,
     overflow: 'hidden',
     marginBottom: 12,
   },
@@ -526,17 +530,17 @@ const styles = StyleSheet.create({
   venueListName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 4,
   },
   venueListCategory: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginBottom: 6,
   },
   venueListRating: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(234, 179, 8, 0.2)',
+    backgroundColor: `${colors.primary}20`,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
@@ -544,6 +548,6 @@ const styles = StyleSheet.create({
   venueListRatingText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#EAB308',
+    color: colors.primary,
   },
 });

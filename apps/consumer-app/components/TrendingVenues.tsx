@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { supabase } from '../config/supabase';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Venue {
   id: string;
@@ -26,8 +27,10 @@ const getVisitorCount = () => {
 };
 
 export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
+  const { colors } = useTheme();
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
+  const styles = getStyles(colors);
 
   useEffect(() => {
     fetchTrendingVenues();
@@ -146,7 +149,7 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#EAB308" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -218,7 +221,7 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   scrollView: {
     marginHorizontal: -16,
     paddingHorizontal: 16,
@@ -238,7 +241,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyText: {
-    color: '#6b7280',
+    color: colors.textSecondary,
     fontSize: 14,
   },
   venueCard: {
@@ -278,7 +281,7 @@ const styles = StyleSheet.create({
   vibeText: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
   },
   bookmarkButton: {
     width: 36,
@@ -297,7 +300,7 @@ const styles = StyleSheet.create({
   venueName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
   },
   locationRow: {
     flexDirection: 'row',
@@ -309,7 +312,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 14,
-    color: '#d1d5db',
+    color: colors.textSecondary,
     flex: 1,
   },
   visitorsRow: {
@@ -324,13 +327,13 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#9ca3af',
+    backgroundColor: colors.textSecondary,
     borderWidth: 2,
-    borderColor: '#000',
+    borderColor: colors.background,
   },
   visitorsText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#EAB308',
+    color: colors.primary,
   },
 });
