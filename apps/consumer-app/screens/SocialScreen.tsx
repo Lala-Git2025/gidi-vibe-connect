@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import * as ImagePicker from 'expo-image-picker';
@@ -61,10 +61,35 @@ interface Post {
   comments_count: number;
   profiles?: {
     full_name: string;
+    avatar_url?: string | null;
   };
   communities?: {
     name: string;
   };
+}
+
+interface PeopleProfile {
+  user_id: string;
+  full_name: string;
+  avatar_url?: string | null;
+  bio?: string | null;
+  is_following: boolean;
+  followers_count: number;
+  following_count: number;
+}
+
+// Collapses to nothing if the remote image fails to load
+function PostImage({ uri, style }: { uri: string; style: any }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <Image
+      source={{ uri }}
+      style={style}
+      resizeMode="cover"
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 export default function SocialScreen() {
@@ -91,6 +116,17 @@ export default function SocialScreen() {
   const [newCommunityColor, setNewCommunityColor] = useState('#4338CA');
   const [creatingCommunity, setCreatingCommunity] = useState(false);
 
+  // People tab state
+  const [people, setPeople] = useState<PeopleProfile[]>([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
+  const [peopleSearch, setPeopleSearch] = useState('');
+
+  // User profile modal state
+  const [viewingProfile, setViewingProfile] = useState<PeopleProfile | null>(null);
+  const [viewingProfilePosts, setViewingProfilePosts] = useState<Post[]>([]);
+  const [viewingProfileLoading, setViewingProfileLoading] = useState(false);
+
   const styles = getStyles(colors);
 
   // Returns the stored color or derives a consistent one from the name hash
@@ -106,35 +142,60 @@ export default function SocialScreen() {
     Orbitron_900Black,
   });
 
-  // Fetch communities and posts
+  // Fetch communities and posts — wait for currentUser before posts so edit buttons render immediately
   useEffect(() => {
-    fetchCurrentUser();
+    fetchCurrentUser().then(() => fetchFeedPosts());
     fetchCommunities();
-    fetchFeedPosts();
   }, []);
 
+  // Debug: log currentUserId vs post user_ids to diagnose delete button visibility
+  useEffect(() => {
+    if (currentUserId && feedPosts.length > 0) {
+      console.log('[SocialScreen] currentUserId:', currentUserId);
+      console.log('[SocialScreen] feedPost user_ids:', feedPosts.map(p => p.user_id));
+      console.log('[SocialScreen] owned posts:', feedPosts.filter(p => p.user_id === currentUserId).length);
+    }
+  }, [currentUserId, feedPosts]);
+
   const fetchCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      setCurrentUserId(user.id);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      // Not logged in — feed still loads, edit/delete buttons just won't show
+      return;
+    }
 
-      // Ensure profile has full_name from auth metadata if empty
-      const { data: profile } = await supabase
+    console.log('[SocialScreen] Current user id:', user.id);
+    setCurrentUserId(user.id);
+
+    // Check if profile exists and whether full_name is empty
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('user_id', user.id)
+      .single();
+
+    console.log('[SocialScreen] Profile row:', profile, 'error:', profileError?.message);
+
+    const authFullName = user.user_metadata?.full_name;
+    const emailUsername = user.email?.split('@')[0];
+    const nameToUse = authFullName || emailUsername || 'User';
+
+    if (!profile) {
+      // Profile row missing — create it (handles users who pre-date trigger)
+      console.warn('[SocialScreen] Profile missing, creating one with name:', nameToUse);
+      await supabase.from('profiles').upsert(
+        { user_id: user.id, full_name: nameToUse, role: 'Consumer' },
+        { onConflict: 'user_id', ignoreDuplicates: false }
+      );
+    } else if (!profile.full_name || profile.full_name.trim() === '') {
+      // Profile exists but name is empty — sync from auth metadata / email
+      console.warn('[SocialScreen] Profile has empty name, syncing to:', nameToUse);
+      const { error: updateError } = await supabase
         .from('profiles')
-        .select('full_name')
-        .eq('user_id', user.id)
-        .single();
-
-      // If profile exists but full_name is empty, sync from auth metadata
-      if (profile && (!profile.full_name || profile.full_name.trim() === '')) {
-        const authFullName = user.user_metadata?.full_name;
-        const emailUsername = user.email?.split('@')[0];
-        const nameToUse = authFullName || emailUsername || 'User';
-
-        await supabase
-          .from('profiles')
-          .update({ full_name: nameToUse })
-          .eq('user_id', user.id);
+        .update({ full_name: nameToUse })
+        .eq('user_id', user.id);
+      if (updateError) {
+        console.error('[SocialScreen] Failed to update profile name:', updateError.message);
       }
     }
   };
@@ -165,21 +226,35 @@ export default function SocialScreen() {
 
   const fetchFeedPosts = async () => {
     try {
-      const { data, error } = await supabase
+      // Step 1: fetch posts + community names (no profiles join — FK points to profiles.user_id not profiles.id)
+      const { data: posts, error } = await supabase
         .from('social_posts')
-        .select(`
-          *,
-          profiles!social_posts_user_id_fkey(full_name),
-          communities(name)
-        `)
+        .select('*, communities(name)')
         .order('created_at', { ascending: false })
         .limit(20);
 
       if (error) throw error;
+      if (!posts || posts.length === 0) { setFeedPosts([]); return; }
 
-      if (data) {
-        setFeedPosts(data);
-      }
+      // Step 2: fetch profiles for all unique authors in a single query
+      const userIds = [...new Set(posts.map((p: any) => p.user_id as string))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, avatar_url')
+        .in('user_id', userIds);
+
+      const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
+
+      console.log('[SocialScreen] posts user_ids:', userIds);
+      console.log('[SocialScreen] profiles returned:', profiles?.map((p: any) => ({ uid: p.user_id, name: p.full_name })));
+
+      // Step 3: attach profile data to each post
+      const mergedPosts = posts.map((post: any) => {
+        const prof = profileMap.get(post.user_id) ?? null;
+        if (!prof) console.warn('[SocialScreen] No profile found for post.user_id:', post.user_id);
+        return { ...post, profiles: prof };
+      });
+      setFeedPosts(mergedPosts);
     } catch (error) {
       console.error('Error fetching posts:', error);
     }
@@ -266,7 +341,7 @@ export default function SocialScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -313,26 +388,36 @@ export default function SocialScreen() {
       // Upload image if selected
       let imageUrl = null;
       if (selectedImage) {
-        const response = await fetch(selectedImage);
-        const blob = await response.blob();
-        const fileExt = selectedImage.split('.').pop() || 'jpg';
+        const rawExt = selectedImage.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
+        const fileExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(rawExt) ? rawExt : 'jpg';
         const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+        const mimeType = fileExt === 'jpg' ? 'image/jpeg' : `image/${fileExt}`;
+
+        // Use XMLHttpRequest to read the file as ArrayBuffer — more reliable in React Native
+        const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.onload = () => resolve(xhr.response as ArrayBuffer);
+          xhr.onerror = () => reject(new Error('Failed to read image file'));
+          xhr.responseType = 'arraybuffer';
+          xhr.open('GET', selectedImage, true);
+          xhr.send(null);
+        });
 
         const { error: uploadError } = await supabase.storage
           .from('social-media')
-          .upload(fileName, blob, {
-            contentType: `image/${fileExt}`,
+          .upload(fileName, arrayBuffer, {
+            contentType: mimeType,
             upsert: false,
           });
 
         if (uploadError) {
-          console.error('Image upload error:', uploadError);
-        } else {
-          const { data: { publicUrl } } = supabase.storage
-            .from('social-media')
-            .getPublicUrl(fileName);
-          imageUrl = publicUrl;
+          throw new Error(`Image upload failed: ${uploadError.message}`);
         }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('social-media')
+          .getPublicUrl(fileName);
+        imageUrl = publicUrl;
       }
 
       if (editingPost) {
@@ -363,6 +448,18 @@ export default function SocialScreen() {
           });
 
         if (error) throw error;
+
+        // Ensure user_stats row exists (in case user pre-dates gamification rollout)
+        await supabase.from('user_stats').upsert(
+          { user_id: user.id },
+          { onConflict: 'user_id', ignoreDuplicates: true }
+        );
+
+        // Track stats
+        await supabase.rpc('increment_user_stat', { p_user_id: user.id, p_stat_name: 'posts_created', p_xp_amount: 10 });
+        if (imageUrl) {
+          await supabase.rpc('increment_user_stat', { p_user_id: user.id, p_stat_name: 'photos_uploaded', p_xp_amount: 5 });
+        }
 
         Alert.alert('Success', 'Your post has been created!');
       }
@@ -489,6 +586,216 @@ export default function SocialScreen() {
     }
   };
 
+  // ── People / Follow helpers ─────────────────────────────────────────
+
+  const fetchFollowing = async (userId: string): Promise<Set<string>> => {
+    const { data } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+    const ids = new Set((data ?? []).map((r: any) => r.following_id as string));
+    setFollowingIds(ids);
+    return ids;
+  };
+
+  const fetchPeople = async () => {
+    if (!currentUserId) return;
+    setPeopleLoading(true);
+    try {
+      const [{ data: profiles }, { data: followingData }] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('user_id, full_name, avatar_url, bio')
+          .neq('user_id', currentUserId)
+          .order('full_name'),
+        supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', currentUserId),
+      ]);
+
+      const followingSet = new Set((followingData ?? []).map((r: any) => r.following_id as string));
+      setFollowingIds(followingSet);
+
+      // Batch follower counts for all profiles
+      const userIds = (profiles ?? []).map((p: any) => p.user_id);
+      const { data: followerRows } = await supabase
+        .from('follows')
+        .select('following_id')
+        .in('following_id', userIds);
+
+      const followerCounts: Record<string, number> = {};
+      (followerRows ?? []).forEach((r: any) => {
+        followerCounts[r.following_id] = (followerCounts[r.following_id] || 0) + 1;
+      });
+
+      const { data: followingRows } = await supabase
+        .from('follows')
+        .select('follower_id')
+        .in('follower_id', userIds);
+
+      const followingCounts: Record<string, number> = {};
+      (followingRows ?? []).forEach((r: any) => {
+        followingCounts[r.follower_id] = (followingCounts[r.follower_id] || 0) + 1;
+      });
+
+      setPeople(
+        (profiles ?? []).map((p: any) => ({
+          user_id: p.user_id,
+          full_name: p.full_name || 'User',
+          avatar_url: p.avatar_url,
+          bio: p.bio,
+          is_following: followingSet.has(p.user_id),
+          followers_count: followerCounts[p.user_id] || 0,
+          following_count: followingCounts[p.user_id] || 0,
+        }))
+      );
+    } catch (err) {
+      console.error('Error fetching people:', err);
+    } finally {
+      setPeopleLoading(false);
+    }
+  };
+
+  const handleFollowToggle = async (targetUserId: string) => {
+    if (!currentUserId) {
+      Alert.alert('Sign In Required', 'Please sign in to follow people.');
+      return;
+    }
+
+    const isCurrentlyFollowing = followingIds.has(targetUserId);
+
+    // Optimistic update
+    const newIds = new Set(followingIds);
+    if (isCurrentlyFollowing) {
+      newIds.delete(targetUserId);
+    } else {
+      newIds.add(targetUserId);
+    }
+    setFollowingIds(newIds);
+
+    // Update people list
+    setPeople(prev =>
+      prev.map(p =>
+        p.user_id === targetUserId
+          ? {
+              ...p,
+              is_following: !isCurrentlyFollowing,
+              followers_count: p.followers_count + (isCurrentlyFollowing ? -1 : 1),
+            }
+          : p
+      )
+    );
+
+    // Update profile modal if open
+    if (viewingProfile?.user_id === targetUserId) {
+      setViewingProfile(prev =>
+        prev
+          ? {
+              ...prev,
+              is_following: !isCurrentlyFollowing,
+              followers_count: prev.followers_count + (isCurrentlyFollowing ? -1 : 1),
+            }
+          : null
+      );
+    }
+
+    try {
+      if (isCurrentlyFollowing) {
+        await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', currentUserId)
+          .eq('following_id', targetUserId);
+      } else {
+        await supabase.from('follows').insert({
+          follower_id: currentUserId,
+          following_id: targetUserId,
+        });
+      }
+    } catch (err) {
+      // Revert on error
+      console.error('Follow toggle error:', err);
+      setFollowingIds(followingIds);
+      setPeople(prev =>
+        prev.map(p =>
+          p.user_id === targetUserId
+            ? {
+                ...p,
+                is_following: isCurrentlyFollowing,
+                followers_count: p.followers_count + (isCurrentlyFollowing ? 1 : -1),
+              }
+            : p
+        )
+      );
+    }
+  };
+
+  const openUserProfile = async (userId: string) => {
+    if (userId === currentUserId) return; // Don't open own profile in modal
+
+    setViewingProfileLoading(true);
+    setViewingProfile({
+      user_id: userId,
+      full_name: '',
+      is_following: followingIds.has(userId),
+      followers_count: 0,
+      following_count: 0,
+    });
+
+    try {
+      const [
+        { data: profile },
+        { count: followersCount },
+        { count: followingCount },
+        { data: posts },
+      ] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('user_id, full_name, avatar_url, bio')
+          .eq('user_id', userId)
+          .single(),
+        supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('following_id', userId),
+        supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('follower_id', userId),
+        supabase
+          .from('social_posts')
+          .select('id, content, media_urls, created_at, user_id, likes_count, comments_count')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(12),
+      ]);
+
+      setViewingProfile({
+        user_id: userId,
+        full_name: profile?.full_name || 'User',
+        avatar_url: profile?.avatar_url,
+        bio: profile?.bio,
+        is_following: followingIds.has(userId),
+        followers_count: followersCount ?? 0,
+        following_count: followingCount ?? 0,
+      });
+      setViewingProfilePosts((posts ?? []) as Post[]);
+    } catch (err) {
+      console.error('Error loading profile:', err);
+    } finally {
+      setViewingProfileLoading(false);
+    }
+  };
+
+  // Load people list when People tab is selected
+  const handleTabPress = (tab: Tab) => {
+    setActiveTab(tab);
+    if (tab === 'people' && people.length === 0) {
+      fetchPeople();
+    }
+  };
+
   if (!fontsLoaded) {
     return null;
   }
@@ -526,7 +833,7 @@ export default function SocialScreen() {
       <View style={styles.tabs}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'feed' && styles.tabActive]}
-          onPress={() => setActiveTab('feed')}
+          onPress={() => handleTabPress('feed')}
         >
           <Text style={[styles.tabText, activeTab === 'feed' && styles.tabTextActive]}>
             📈 Feed
@@ -534,7 +841,7 @@ export default function SocialScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'communities' && styles.tabActive]}
-          onPress={() => setActiveTab('communities')}
+          onPress={() => handleTabPress('communities')}
         >
           <Text style={[styles.tabText, activeTab === 'communities' && styles.tabTextActive]}>
             👥 Communities
@@ -542,7 +849,7 @@ export default function SocialScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'people' && styles.tabActive]}
-          onPress={() => setActiveTab('people')}
+          onPress={() => handleTabPress('people')}
         >
           <Text style={[styles.tabText, activeTab === 'people' && styles.tabTextActive]}>
             👤 People
@@ -584,9 +891,11 @@ export default function SocialScreen() {
                       </Text>
                     </View>
                     <View style={styles.postAuthorInfo}>
-                      <Text style={styles.postAuthor}>
-                        {(post.profiles?.full_name && post.profiles.full_name.trim()) || 'Anonymous User'}
-                      </Text>
+                      <TouchableOpacity onPress={() => openUserProfile(post.user_id)}>
+                        <Text style={styles.postAuthor}>
+                          {(post.profiles?.full_name && post.profiles.full_name.trim()) || 'Anonymous User'}
+                        </Text>
+                      </TouchableOpacity>
                       <View style={styles.postMeta}>
                         <Text style={styles.postMetaText}>{post.communities?.name || 'General'}</Text>
                         <Text style={styles.postMetaText}> • </Text>
@@ -594,6 +903,7 @@ export default function SocialScreen() {
                       </View>
                     </View>
                     {/* Edit/Delete Menu for User's Own Posts */}
+                    {/* DEBUG: uncomment to diagnose → console.log('currentUserId:', currentUserId, 'post.user_id:', post.user_id, 'match:', currentUserId === post.user_id) */}
                     {currentUserId === post.user_id && (
                       <View style={styles.postMenu}>
                         <TouchableOpacity
@@ -615,6 +925,9 @@ export default function SocialScreen() {
                   {/* Post Content */}
                   <View style={styles.postContent}>
                     <Text style={styles.postContentText}>{post.content}</Text>
+                    {post.media_urls && post.media_urls.length > 0 && (
+                      <PostImage uri={post.media_urls[0]} style={styles.postImage} />
+                    )}
                   </View>
 
                   {/* Post Actions */}
@@ -700,13 +1013,83 @@ export default function SocialScreen() {
 
         {/* People Tab */}
         {activeTab === 'people' && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateIcon}>👤</Text>
-            <Text style={styles.emptyStateTitle}>Find People</Text>
-            <Text style={styles.emptyStateText}>
-              Discover and connect with other members of the GIDI community
-            </Text>
-          </View>
+          <>
+            <View style={styles.peopleSearchBar}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search people..."
+                placeholderTextColor={colors.textSecondary}
+                value={peopleSearch}
+                onChangeText={setPeopleSearch}
+                autoCapitalize="none"
+              />
+            </View>
+
+            {peopleLoading ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.emptyStateText}>Finding people...</Text>
+              </View>
+            ) : people.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateIcon}>👤</Text>
+                <Text style={styles.emptyStateTitle}>No People Yet</Text>
+                <Text style={styles.emptyStateText}>
+                  Be the first to join the GIDI community!
+                </Text>
+              </View>
+            ) : (
+              people
+                .filter(p =>
+                  !peopleSearch.trim() ||
+                  p.full_name.toLowerCase().includes(peopleSearch.toLowerCase())
+                )
+                .map(person => (
+                  <TouchableOpacity
+                    key={person.user_id}
+                    style={styles.personCard}
+                    onPress={() => openUserProfile(person.user_id)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.personAvatarWrap}>
+                      {person.avatar_url ? (
+                        <Image source={{ uri: person.avatar_url }} style={styles.personAvatarImg} />
+                      ) : (
+                        <Text style={styles.personAvatarText}>
+                          {getInitials(person.full_name)}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.personInfo}>
+                      <Text style={styles.personName}>{person.full_name}</Text>
+                      <Text style={styles.personFollowers}>
+                        {person.followers_count} {person.followers_count === 1 ? 'follower' : 'followers'}
+                      </Text>
+                      {person.bio ? (
+                        <Text style={styles.personBio} numberOfLines={1}>{person.bio}</Text>
+                      ) : null}
+                    </View>
+                    {currentUserId ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.followBtn,
+                          person.is_following && styles.followingBtn,
+                        ]}
+                        onPress={() => handleFollowToggle(person.user_id)}
+                      >
+                        <Text style={[
+                          styles.followBtnText,
+                          person.is_following && styles.followingBtnText,
+                        ]}>
+                          {person.is_following ? 'Following' : 'Follow'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </TouchableOpacity>
+                ))
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -936,6 +1319,115 @@ export default function SocialScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      {/* User Profile Modal */}
+      <Modal
+        visible={!!viewingProfile}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setViewingProfile(null)}
+      >
+        <SafeAreaView style={styles.container}>
+          {/* Modal Header */}
+          <View style={styles.profileModalHeader}>
+            <TouchableOpacity onPress={() => setViewingProfile(null)} style={styles.profileModalBack}>
+              <Text style={styles.profileModalBackText}>← Back</Text>
+            </TouchableOpacity>
+          </View>
+
+          {viewingProfileLoading || !viewingProfile?.full_name ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : (
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+              {/* Profile Header */}
+              <View style={styles.profileModalInfo}>
+                <View style={styles.profileModalAvatar}>
+                  {viewingProfile.avatar_url ? (
+                    <Image source={{ uri: viewingProfile.avatar_url }} style={styles.profileModalAvatarImg} />
+                  ) : (
+                    <Text style={styles.profileModalAvatarText}>
+                      {getInitials(viewingProfile.full_name)}
+                    </Text>
+                  )}
+                </View>
+                <Text style={styles.profileModalName}>{viewingProfile.full_name}</Text>
+                {viewingProfile.bio ? (
+                  <Text style={styles.profileModalBio}>{viewingProfile.bio}</Text>
+                ) : null}
+
+                {/* Stats row */}
+                <View style={styles.profileModalStats}>
+                  <View style={styles.profileModalStat}>
+                    <Text style={styles.profileModalStatNum}>{viewingProfilePosts.length}</Text>
+                    <Text style={styles.profileModalStatLabel}>Posts</Text>
+                  </View>
+                  <View style={styles.profileModalStatDivider} />
+                  <View style={styles.profileModalStat}>
+                    <Text style={styles.profileModalStatNum}>{viewingProfile.followers_count}</Text>
+                    <Text style={styles.profileModalStatLabel}>Followers</Text>
+                  </View>
+                  <View style={styles.profileModalStatDivider} />
+                  <View style={styles.profileModalStat}>
+                    <Text style={styles.profileModalStatNum}>{viewingProfile.following_count}</Text>
+                    <Text style={styles.profileModalStatLabel}>Following</Text>
+                  </View>
+                </View>
+
+                {/* Follow / Unfollow */}
+                {currentUserId ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.profileModalFollowBtn,
+                      viewingProfile.is_following && styles.profileModalFollowingBtn,
+                    ]}
+                    onPress={() => handleFollowToggle(viewingProfile.user_id)}
+                  >
+                    <Text style={[
+                      styles.profileModalFollowBtnText,
+                      viewingProfile.is_following && styles.profileModalFollowingBtnText,
+                    ]}>
+                      {viewingProfile.is_following ? 'Following' : 'Follow'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {/* Posts grid */}
+              {viewingProfilePosts.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateIcon}>📝</Text>
+                  <Text style={styles.emptyStateText}>No posts yet</Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={[styles.sectionTitle, { paddingHorizontal: 16, marginBottom: 8 }]}>Posts</Text>
+                  {viewingProfilePosts.map(post => (
+                    <View key={post.id} style={[styles.postCard, { marginHorizontal: 16 }]}>
+                      <Text style={styles.postContentText}>{post.content}</Text>
+                      {post.media_urls && post.media_urls.length > 0 && (
+                        <PostImage uri={post.media_urls[0]} style={styles.postImage} />
+                      )}
+                      <View style={[styles.postActions, { marginTop: 8 }]}>
+                        <View style={styles.actionButton}>
+                          <Text style={styles.actionIcon}>👍</Text>
+                          <Text style={styles.actionText}>{post.likes_count || 0}</Text>
+                        </View>
+                        <View style={styles.actionButton}>
+                          <Text style={styles.actionIcon}>💬</Text>
+                          <Text style={styles.actionText}>{post.comments_count || 0}</Text>
+                        </View>
+                        <Text style={styles.postMetaText}>{formatTimeAgo(post.created_at)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                  <View style={{ height: 32 }} />
+                </>
+              )}
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1120,6 +1612,12 @@ const getStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 20,
   },
+  postImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginTop: 10,
+  },
   postActions: {
     flexDirection: 'row',
     gap: 24,
@@ -1172,6 +1670,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   communityIconText: {
     fontSize: 24,
+    fontFamily: '',
   },
   communityName: {
     fontSize: 15,
@@ -1418,6 +1917,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   ccPreviewEmoji: {
     fontSize: 28,
+    fontFamily: '',
   },
   ccPreviewText: {
     flex: 1,
@@ -1451,6 +1951,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   emojiCellText: {
     fontSize: 22,
+    fontFamily: '',
   },
 
   // Color palette
@@ -1469,5 +1970,192 @@ const getStyles = (colors: any) => StyleSheet.create({
   colorSwatchSelected: {
     borderColor: colors.text,
     transform: [{ scale: 1.15 }],
+  },
+
+  // ── People tab ────────────────────────────────────────────────────────
+  peopleSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    height: 44,
+  },
+  personCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    marginBottom: 10,
+    gap: 12,
+  },
+  personAvatarWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  personAvatarImg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  personAvatarText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  personInfo: {
+    flex: 1,
+  },
+  personName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  personFollowers: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  personBio: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  followBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+  },
+  followingBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  followBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  followingBtnText: {
+    color: colors.primary,
+  },
+
+  // ── User Profile Modal ────────────────────────────────────────────────
+  profileModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  profileModalBack: {
+    paddingVertical: 4,
+    paddingRight: 16,
+  },
+  profileModalBackText: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  profileModalInfo: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  profileModalAvatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 14,
+    borderWidth: 3,
+    borderColor: colors.primary,
+  },
+  profileModalAvatarImg: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+  },
+  profileModalAvatarText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  profileModalName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  profileModalBio: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
+    maxWidth: 280,
+    lineHeight: 20,
+  },
+  profileModalStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+    marginBottom: 20,
+  },
+  profileModalStat: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  profileModalStatNum: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  profileModalStatLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  profileModalStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: colors.border,
+  },
+  profileModalFollowBtn: {
+    paddingHorizontal: 40,
+    paddingVertical: 12,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+  },
+  profileModalFollowingBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  profileModalFollowBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  profileModalFollowingBtnText: {
+    color: colors.primary,
   },
 });

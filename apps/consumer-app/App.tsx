@@ -1,7 +1,7 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Text, Platform, View, TouchableOpacity } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View, TouchableOpacity } from 'react-native';
 
 import HomeScreen from './screens/HomeScreen';
 import ExploreScreen from './screens/ExploreScreen';
@@ -18,6 +18,7 @@ const Tab = createBottomTabNavigator();
 
 function AppNavigator() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <NavigationContainer>
@@ -35,9 +36,8 @@ function AppNavigator() {
               backgroundColor: colors.background,
               borderTopColor: colors.border,
               borderTopWidth: 1,
-              paddingBottom: Platform.OS === 'ios' ? 30 : 12,
+              paddingBottom: insets.bottom + 8,
               paddingTop: 8,
-              height: Platform.OS === 'ios' ? 85 : 70,
             }}>
               {visibleRoutes.map((route, index) => {
                 const { options } = descriptors[route.key];
@@ -97,7 +97,7 @@ function AppNavigator() {
           name="Home"
           component={HomeScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26 }}>🏠</Text>,
+            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>🏠</Text>,
             tabBarLabel: 'Home',
           }}
         />
@@ -105,7 +105,7 @@ function AppNavigator() {
           name="Explore"
           component={ExploreScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26 }}>🔍</Text>,
+            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>🔍</Text>,
             tabBarLabel: 'Explore',
           }}
         />
@@ -113,7 +113,7 @@ function AppNavigator() {
           name="Events"
           component={EventsScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26 }}>📅</Text>,
+            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>📅</Text>,
             tabBarLabel: 'Events',
           }}
         />
@@ -121,7 +121,7 @@ function AppNavigator() {
           name="Social"
           component={SocialScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26 }}>💬</Text>,
+            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>💬</Text>,
             tabBarLabel: 'Social',
           }}
         />
@@ -129,7 +129,7 @@ function AppNavigator() {
           name="Profile"
           component={ProfileScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26 }}>👤</Text>,
+            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>👤</Text>,
             tabBarLabel: 'Profile',
           }}
         />

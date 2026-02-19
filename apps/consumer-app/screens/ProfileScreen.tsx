@@ -2,7 +2,8 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Switch, Linking, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../contexts/ThemeContext';
@@ -54,9 +55,12 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
 
-  // Avatar state
+  // Avatar + profile data state
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileBio, setProfileBio] = useState('');
+  const [profileUsername, setProfileUsername] = useState('');
 
   // Gamification state
   const [userStats, setUserStats] = useState({
@@ -104,6 +108,9 @@ export default function ProfileScreen() {
       } else {
         // Clear data on sign out
         setAvatarUrl(null);
+        setProfileName('');
+        setProfileBio('');
+        setProfileUsername('');
         setUserStats({
           venues_visited: 0, events_attended: 0, reviews_written: 0,
           photos_uploaded: 0, posts_created: 0, xp: 0, level: 1,
@@ -114,6 +121,18 @@ export default function ProfileScreen() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Re-fetch stats whenever the Profile tab comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      supabase.auth.getUser().then(({ data: { user: u } }) => {
+        if (u) {
+          fetchUserStats(u.id);
+          fetchUserBadges(u.id);
+        }
+      });
+    }, [])
+  );
 
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -252,17 +271,18 @@ export default function ProfileScreen() {
 
   const fetchAvatar = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
-        .select('avatar_url')
+        .select('avatar_url, full_name, bio, username')
         .eq('user_id', userId)
         .single();
 
-      if (data?.avatar_url) {
-        setAvatarUrl(data.avatar_url);
-      }
+      if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+      if (data?.full_name) setProfileName(data.full_name);
+      if (data?.bio) setProfileBio(data.bio);
+      if (data?.username) setProfileUsername(data.username);
     } catch (error) {
-      console.log('Error fetching avatar:', error);
+      console.log('Error fetching profile:', error);
     }
   };
 
@@ -344,7 +364,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const userName = isGuest ? "Guest User" : (user?.user_metadata?.full_name || user?.email || "User");
+  const userName = isGuest ? "Guest User" : (profileName || user?.user_metadata?.full_name || user?.email || "User");
   const location = "Lagos, Nigeria";
 
   const stats = [
@@ -515,12 +535,9 @@ export default function ProfileScreen() {
       if (error) throw error;
 
       Alert.alert(
-        'Password Reset',
-        'Since email is not configured, please contact support or sign up again with a new password using the same email.',
-        [
-          { text: 'Sign Up Again', onPress: () => setAuthMode('signup') },
-          { text: 'OK', onPress: () => setAuthMode('signin') }
-        ]
+        'Reset Email Sent',
+        'If an account with that email exists, you will receive a password reset link shortly. Check your inbox and spam folder.',
+        [{ text: 'OK', onPress: () => setAuthMode('signin') }]
       );
     } catch (error: any) {
       console.error('Forgot password error:', error);
@@ -545,8 +562,8 @@ export default function ProfileScreen() {
       Alert.alert('Sign In Required', 'Please sign in to edit your profile.');
       return;
     }
-    setEditName(user?.user_metadata?.full_name || '');
-    setEditBio('');
+    setEditName(profileName || user?.user_metadata?.full_name || '');
+    setEditBio(profileBio);
     setEditProfileModalVisible(true);
     setSettingsModalVisible(false);
   };
@@ -571,6 +588,8 @@ export default function ProfileScreen() {
         .update({ full_name: editName.trim(), bio: editBio.trim() })
         .eq('user_id', user.id);
 
+      setProfileName(editName.trim());
+      setProfileBio(editBio.trim());
       Alert.alert('Success', 'Profile updated successfully');
       setEditProfileModalVisible(false);
     } catch (error: any) {
@@ -658,7 +677,13 @@ export default function ProfileScreen() {
 
           {/* User Info */}
           <Text style={styles.userName}>{userName}</Text>
+          {!isGuest && profileUsername ? (
+            <Text style={styles.userUsername}>@{profileUsername}</Text>
+          ) : null}
           <Text style={styles.userLocation}>{location}</Text>
+          {!isGuest && profileBio ? (
+            <Text style={styles.userBio}>{profileBio}</Text>
+          ) : null}
 
           {/* Buttons */}
           <View style={styles.buttonContainer}>
@@ -727,7 +752,7 @@ export default function ProfileScreen() {
           <View style={styles.progressCard}>
             <View style={styles.progressInfo}>
               <Text style={styles.progressText}>{xpProgress} / {xpNeeded} XP</Text>
-              <Text style={styles.progressText}>{xpPercentage}%</Text>
+              <Text style={styles.progressText}>{Math.round(xpPercentage)}%</Text>
             </View>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${xpPercentage}%` }]} />
@@ -1188,6 +1213,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   headerIcon: {
     fontSize: 20,
+    fontFamily: '',
   },
   // Profile Header
   profileHeader: {
@@ -1208,6 +1234,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   avatarIcon: {
     fontSize: 64,
+    fontFamily: '',
   },
   avatarImage: {
     width: '100%',
@@ -1229,6 +1256,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   avatarEditIcon: {
     fontSize: 16,
+    fontFamily: '',
   },
   userName: {
     fontSize: 24,
@@ -1236,10 +1264,22 @@ const getStyles = (colors: any) => StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
+  userUsername: {
+    fontSize: 14,
+    color: colors.primary,
+    marginBottom: 2,
+  },
   userLocation: {
     fontSize: 16,
     color: colors.textSecondary,
-    marginBottom: 24,
+    marginBottom: 8,
+  },
+  userBio: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    maxWidth: 280,
+    marginBottom: 16,
   },
   // Buttons
   buttonContainer: {
@@ -1247,6 +1287,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     gap: 12,
     width: '100%',
     maxWidth: 400,
+    marginTop: 16,
     marginBottom: 12,
   },
   signInButton: {
@@ -1340,6 +1381,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   statIcon: {
     fontSize: 24,
+    fontFamily: '',
   },
   statLabel: {
     fontSize: 12,
@@ -1421,6 +1463,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   badgeIcon: {
     fontSize: 32,
+    fontFamily: '',
   },
   badgeTitle: {
     fontSize: 18,
@@ -1570,6 +1613,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   settingsItemIcon: {
     fontSize: 20,
     marginRight: 12,
+    fontFamily: '',
   },
   settingsItemText: {
     flex: 1,
@@ -1687,6 +1731,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   earnedBadgeIcon: {
     fontSize: 32,
     marginBottom: 8,
+    fontFamily: '',
   },
   earnedBadgeName: {
     fontSize: 12,
@@ -1727,6 +1772,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 24,
     marginBottom: 8,
     opacity: 0.5,
+    fontFamily: '',
   },
   lockedBadgeName: {
     fontSize: 11,
