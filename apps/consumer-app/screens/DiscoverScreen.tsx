@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
+import { Ionicons } from '@expo/vector-icons';
 
 interface FriendActivity {
   id: string;
@@ -99,12 +100,12 @@ export default function DiscoverScreen() {
     }
   };
 
-  const getActivityIcon = (type: string) => {
+  const getActivityIcon = (type: string): keyof typeof Ionicons.glyphMap => {
     switch (type) {
-      case 'check-in': return '📍';
-      case 'review': return '⭐';
-      case 'post': return '📸';
-      default: return '💬';
+      case 'check-in': return 'location';
+      case 'review': return 'star';
+      case 'post': return 'camera';
+      default: return 'chatbubble';
     }
   };
 
@@ -133,7 +134,7 @@ export default function DiscoverScreen() {
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Text style={styles.backButton}>← Back</Text>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Discover</Text>
           <View style={{ width: 60 }} />
@@ -141,7 +142,7 @@ export default function DiscoverScreen() {
 
         {/* Friends Activity */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>👥 Friends Activity</Text>
+          <Text style={styles.sectionTitle}>Friends Activity</Text>
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
@@ -154,7 +155,7 @@ export default function DiscoverScreen() {
             <View style={styles.activityList}>
               {friendsActivity.map((activity) => (
                 <View key={activity.id} style={styles.activityItem}>
-                  <Text style={styles.activityIcon}>{getActivityIcon(activity.activity_type)}</Text>
+                  <Ionicons name={getActivityIcon(activity.activity_type)} size={24} color={colors.primary} />
                   <View style={styles.activityContent}>
                     <Text style={styles.activityText}>
                       <Text style={styles.friendName}>{activity.friend_name}</Text>
@@ -171,7 +172,7 @@ export default function DiscoverScreen() {
 
         {/* Venue Categories */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🏢 Venue Categories</Text>
+          <Text style={styles.sectionTitle}>Venue Categories</Text>
           <View style={styles.grid}>
             {VENUE_CATEGORIES.map((item, index) => (
               <TouchableOpacity
@@ -188,7 +189,7 @@ export default function DiscoverScreen() {
 
         {/* Experience Types */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>✨ Experience Types</Text>
+          <Text style={styles.sectionTitle}>Experience Types</Text>
           <View style={styles.grid}>
             {EXPERIENCE_TYPES.map((item, index) => (
               <TouchableOpacity
@@ -205,7 +206,7 @@ export default function DiscoverScreen() {
 
         {/* Curated Collections */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💎 Curated Collections</Text>
+          <Text style={styles.sectionTitle}>Curated Collections</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.horizontalList}>
               {CURATED_COLLECTIONS.map((item, index) => (
@@ -224,7 +225,7 @@ export default function DiscoverScreen() {
 
         {/* Neighborhood Guides */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📍 Neighborhood Guides</Text>
+          <Text style={styles.sectionTitle}>Neighborhood Guides</Text>
           <View style={styles.grid}>
             {NEIGHBORHOOD_GUIDES.map((item, index) => (
               <TouchableOpacity
@@ -305,6 +306,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   activityIcon: {
     fontSize: 24,
+    fontFamily: '',
   },
   activityContent: {
     flex: 1,
@@ -347,6 +349,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   gridEmoji: {
     fontSize: 32,
     marginBottom: 8,
+    fontFamily: '',
   },
   gridLabel: {
     fontSize: 11,
@@ -373,6 +376,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   collectionEmoji: {
     fontSize: 32,
     marginBottom: 8,
+    fontFamily: '',
   },
   collectionLabel: {
     fontSize: 12,

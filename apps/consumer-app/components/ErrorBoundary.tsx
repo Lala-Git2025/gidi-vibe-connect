@@ -1,6 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { useTheme } from '../contexts/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
   children: ReactNode;
@@ -13,7 +13,17 @@ interface State {
   errorInfo: ErrorInfo | null;
 }
 
-// Functional component that uses the theme hook
+// Hardcoded dark theme colors — ErrorBoundary renders outside ThemeProvider,
+// so useTheme() cannot be used here.
+const fallbackColors = {
+  background: '#000000',
+  cardBackground: '#18181b',
+  text: '#FFFFFF',
+  textSecondary: '#9CA3AF',
+  error: '#EF4444',
+  primary: '#EAB308',
+};
+
 function ErrorFallback({
   error,
   errorInfo,
@@ -23,7 +33,7 @@ function ErrorFallback({
   errorInfo: ErrorInfo | null;
   onReset: () => void;
 }) {
-  const { colors } = useTheme();
+  const colors = fallbackColors;
 
   const dynamicStyles = StyleSheet.create({
     container: {
@@ -85,7 +95,7 @@ function ErrorFallback({
   return (
     <View style={dynamicStyles.container}>
       <View style={styles.content}>
-        <Text style={styles.emoji}>⚠️</Text>
+        <Ionicons name="warning" size={64} color="#f59e0b" style={{ marginBottom: 16 }} />
         <Text style={dynamicStyles.title}>Oops! Something went wrong</Text>
         <Text style={dynamicStyles.message}>
           We're sorry for the inconvenience. The app encountered an unexpected error.

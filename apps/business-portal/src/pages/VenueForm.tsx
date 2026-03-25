@@ -60,6 +60,7 @@ export default function VenueForm() {
 
   const [errors, setErrors] = useState<Partial<VenueFormData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Load existing venue data if editing
   useEffect(() => {
@@ -129,6 +130,7 @@ export default function VenueForm() {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
+    setSubmitError(null);
 
     try {
       const venueData = {
@@ -151,18 +153,15 @@ export default function VenueForm() {
 
       if (isEditing && venueId) {
         await updateVenue.mutateAsync({ id: venueId, ...venueData });
-        alert('Venue updated successfully!');
         navigate(`/venues/${venueId}`);
       } else {
         const newVenue = await createVenue.mutateAsync(venueData);
-        alert('Venue created successfully!');
         navigate(`/venues/${newVenue.id}`);
       }
     } catch (error) {
-      alert(
-        `Failed to ${isEditing ? 'update' : 'create'} venue: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`
+      console.error('Venue save error:', error);
+      setSubmitError(
+        error instanceof Error ? error.message : 'An unknown error occurred. Check the console for details.'
       );
     } finally {
       setIsSubmitting(false);
@@ -429,6 +428,13 @@ export default function VenueForm() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Submit Error */}
+        {submitError && (
+          <div className="mt-6 p-4 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
+            <strong>Error:</strong> {submitError}
+          </div>
+        )}
 
         {/* Submit Button */}
         <div className="flex justify-end gap-4 mt-6">

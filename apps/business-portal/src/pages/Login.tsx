@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
 import { Button } from '../components/ui/button';
@@ -7,11 +7,18 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn } = useBusinessAuth();
+  const { signIn, user } = useBusinessAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Navigate once user is set in context
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,9 +30,8 @@ export default function Login() {
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
-      navigate('/dashboard');
     }
+    // navigation handled by useEffect above
   };
 
   return (

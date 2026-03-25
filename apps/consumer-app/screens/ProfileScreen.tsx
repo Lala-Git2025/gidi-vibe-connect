@@ -7,6 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../contexts/ThemeContext';
+import { Feather, Ionicons } from '@expo/vector-icons';
 
 // Helper function to convert hex color to rgba
 const hexToRgba = (hex: string, opacity: number): string => {
@@ -125,7 +126,8 @@ export default function ProfileScreen() {
   // Re-fetch stats whenever the Profile tab comes into focus
   useFocusEffect(
     useCallback(() => {
-      supabase.auth.getUser().then(({ data: { user: u } }) => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        const u = session?.user ?? null;
         if (u) {
           fetchUserStats(u.id);
           fetchUserBadges(u.id);
@@ -135,7 +137,8 @@ export default function ProfileScreen() {
   );
 
   const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
     setUser(user);
     setIsGuest(!user);
 
@@ -152,70 +155,82 @@ export default function ProfileScreen() {
 
   const fetchUserStats = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // Count posts and photos directly from social_posts (always accurate)
+      const [{ count: postsCount }, { count: photosCount }] = await Promise.all([
+        supabase
+          .from('social_posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId),
+        supabase
+          .from('social_posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .not('media_urls', 'is', null),
+      ]);
+
+      // Try user_stats for venue/event/review counts (these need manual tracking)
+      const { data } = await supabase
         .from('user_stats')
-        .select('*')
+        .select('venues_visited, events_attended, reviews_written, xp, level')
         .eq('user_id', userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
-        // PGRST116 = no rows returned
-        console.log('Error fetching user stats:', error);
-        return;
-      }
-
-      if (data) {
-        setUserStats({
-          venues_visited: data.venues_visited || 0,
-          events_attended: data.events_attended || 0,
-          reviews_written: data.reviews_written || 0,
-          photos_uploaded: data.photos_uploaded || 0,
-          posts_created: data.posts_created || 0,
-          xp: data.xp || 0,
-          level: data.level || 1,
-        });
-      } else {
-        // Create stats record if it doesn't exist
-        await supabase.from('user_stats').insert({ user_id: userId });
-      }
+      setUserStats({
+        venues_visited: data?.venues_visited || 0,
+        events_attended: data?.events_attended || 0,
+        reviews_written: data?.reviews_written || 0,
+        photos_uploaded: photosCount ?? 0,
+        posts_created: postsCount ?? 0,
+        xp: data?.xp || 0,
+        level: data?.level || 1,
+      });
     } catch (error) {
       console.log('Error fetching user stats:', error);
     }
   };
 
+  // Supabase project may have badges table named 'badges' or 'badge_definitions'
+  const BADGES_TABLE = 'badges';
+  const BADGES_TABLE_ALT = 'badge_definitions';
+
   const fetchUserBadges = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('user_badges')
-        .select(`
-          id,
-          earned_at,
-          badges (
-            id,
-            name,
-            description,
-            icon,
-            category
-          )
-        `)
-        .eq('user_id', userId);
+      // Try 'badges' first, fall back to 'badge_definitions'
+      let data: any[] | null = null;
+      let lastError: any = null;
 
-      if (error) {
-        console.log('Error fetching user badges:', error);
+      for (const table of [BADGES_TABLE, BADGES_TABLE_ALT]) {
+        const { data: rows, error } = await supabase
+          .from('user_badges')
+          .select(`id, earned_at, ${table} ( * )`)
+          .eq('user_id', userId);
+
+        if (!error) {
+          data = rows;
+          break;
+        }
+        lastError = error;
+      }
+
+      if (!data) {
+        console.log('Error fetching user badges:', lastError);
         return;
       }
 
-      if (data) {
-        const formattedBadges = data.map((ub: any) => ({
-          id: ub.badges.id,
-          name: ub.badges.name,
-          description: ub.badges.description,
-          icon: ub.badges.icon,
-          category: ub.badges.category,
-          earned_at: ub.earned_at,
-        }));
-        setUserBadges(formattedBadges);
-      }
+      const formattedBadges = data
+        .filter((ub: any) => ub[BADGES_TABLE] || ub[BADGES_TABLE_ALT])
+        .map((ub: any) => {
+          const badge = ub[BADGES_TABLE] || ub[BADGES_TABLE_ALT];
+          return {
+            id: badge.id,
+            name: badge.name,
+            description: badge.description,
+            icon: badge.icon,
+            category: badge.category,
+            earned_at: ub.earned_at,
+          };
+        });
+      setUserBadges(formattedBadges);
     } catch (error) {
       console.log('Error fetching user badges:', error);
     }
@@ -223,18 +238,17 @@ export default function ProfileScreen() {
 
   const fetchAllBadges = async () => {
     try {
-      const { data, error } = await supabase
-        .from('badges')
-        .select('*')
-        .order('requirement_value', { ascending: true });
+      // Try 'badges' first, fall back to 'badge_definitions'
+      for (const table of [BADGES_TABLE, BADGES_TABLE_ALT]) {
+        const { data, error } = await supabase
+          .from(table as any)
+          .select('*')
+          .order('requirement_value', { ascending: true });
 
-      if (error) {
-        console.log('Error fetching badges:', error);
-        return;
-      }
-
-      if (data) {
-        setAllBadges(data);
+        if (!error && data) {
+          setAllBadges(data);
+          return;
+        }
       }
     } catch (error) {
       console.log('Error fetching all badges:', error);
@@ -368,10 +382,10 @@ export default function ProfileScreen() {
   const location = "Lagos, Nigeria";
 
   const stats = [
-    { icon: "📍", label: "Venues Visited", value: userStats.venues_visited },
-    { icon: "📅", label: "Events Attended", value: userStats.events_attended },
-    { icon: "⭐", label: "Reviews Written", value: userStats.reviews_written },
-    { icon: "📷", label: "Photos Uploaded", value: userStats.photos_uploaded },
+    { icon: "location-outline", label: "Venues Visited", value: userStats.venues_visited },
+    { icon: "calendar-outline", label: "Events Attended", value: userStats.events_attended },
+    { icon: "star-outline", label: "Reviews Written", value: userStats.reviews_written },
+    { icon: "camera-outline", label: "Photos Uploaded", value: userStats.photos_uploaded },
   ];
 
   // Calculate XP required for next level
@@ -654,7 +668,7 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <View style={{ width: 24 }} />
           <Text style={styles.appName}>PROFILE</Text>
-          <Text style={styles.headerIcon}>🔔</Text>
+          <Ionicons name="notifications-outline" size={22} color={colors.text} />
         </View>
 
         {/* Profile Header */}
@@ -666,11 +680,11 @@ export default function ProfileScreen() {
             ) : avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
             ) : (
-              <Text style={styles.avatarIcon}>👤</Text>
+              <Ionicons name="person-outline" size={48} color={colors.textSecondary} />
             )}
             {!isGuest && (
               <View style={styles.avatarEditBadge}>
-                <Text style={styles.avatarEditIcon}>📷</Text>
+                <Ionicons name="camera-outline" size={14} color={colors.background} />
               </View>
             )}
           </TouchableOpacity>
@@ -693,10 +707,10 @@ export default function ProfileScreen() {
                   style={styles.signInButton}
                   onPress={() => openAuthModal('signin')}
                 >
-                  <Text style={styles.signInButtonText}>🔑 Sign In</Text>
+                  <Text style={styles.signInButtonText}>Sign In</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.settingsButton} onPress={openSettings}>
-                  <Text style={styles.settingsButtonText}>⚙️</Text>
+                  <Ionicons name="settings-outline" size={20} color={colors.text} />
                 </TouchableOpacity>
               </>
             ) : (
@@ -705,10 +719,10 @@ export default function ProfileScreen() {
                   style={styles.signOutButton}
                   onPress={handleSignOut}
                 >
-                  <Text style={styles.signOutButtonText}>🚪 Sign Out</Text>
+                  <Text style={styles.signOutButtonText}>Sign Out</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.settingsButton} onPress={openSettings}>
-                  <Text style={styles.settingsButtonText}>⚙️</Text>
+                  <Ionicons name="settings-outline" size={20} color={colors.text} />
                 </TouchableOpacity>
               </>
             )}
@@ -731,7 +745,7 @@ export default function ProfileScreen() {
             {stats.map((stat, index) => (
               <View key={index} style={styles.statCard}>
                 <View style={styles.statHeader}>
-                  <Text style={styles.statIcon}>{stat.icon}</Text>
+                  <Ionicons name={stat.icon as any} size={20} color={colors.primary} />
                   <Text style={styles.statLabel}>{stat.label}</Text>
                 </View>
                 <Text style={styles.statValue}>{stat.value}</Text>
@@ -785,7 +799,7 @@ export default function ProfileScreen() {
           ) : (
             <View style={styles.badgesCard}>
               <View style={styles.badgeIconContainer}>
-                <Text style={styles.badgeIcon}>🏆</Text>
+                <Ionicons name="trophy-outline" size={48} color={colors.textSecondary} />
               </View>
               <Text style={styles.badgeTitle}>No Badges Yet</Text>
               <Text style={styles.badgeMessage}>
@@ -839,7 +853,7 @@ export default function ProfileScreen() {
                 onPress={() => setAuthModalVisible(false)}
                 style={styles.closeButton}
               >
-                <Text style={styles.closeButtonText}>✕</Text>
+                <Ionicons name="close" size={20} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -975,7 +989,7 @@ export default function ProfileScreen() {
                 onPress={() => setSettingsModalVisible(false)}
                 style={styles.closeButton}
               >
-                <Text style={styles.closeButtonText}>✕</Text>
+                <Ionicons name="close" size={20} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -986,13 +1000,13 @@ export default function ProfileScreen() {
                   <Text style={styles.settingsSectionTitle}>Account</Text>
 
                   <TouchableOpacity style={styles.settingsItem} onPress={handleEditProfile}>
-                    <Text style={styles.settingsItemIcon}>✏️</Text>
+                    <Feather name="edit-2" size={18} color={colors.text} style={styles.settingsItemIcon} />
                     <Text style={styles.settingsItemText}>Edit Profile</Text>
                     <Text style={styles.settingsItemArrow}>›</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity style={styles.settingsItem} onPress={handleDeleteAccount}>
-                    <Text style={styles.settingsItemIcon}>🗑️</Text>
+                    <Ionicons name="trash-outline" size={18} color={colors.error} style={styles.settingsItemIcon} />
                     <Text style={[styles.settingsItemText, { color: colors.error }]}>Delete Account</Text>
                     <Text style={styles.settingsItemArrow}>›</Text>
                   </TouchableOpacity>
@@ -1004,7 +1018,7 @@ export default function ProfileScreen() {
                 <Text style={styles.settingsSectionTitle}>Preferences</Text>
 
                 <View style={styles.settingsItem}>
-                  <Text style={styles.settingsItemIcon}>🔔</Text>
+                  <Ionicons name="notifications-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
                   <Text style={styles.settingsItemText}>Push Notifications</Text>
                   <Switch
                     value={notificationsEnabled}
@@ -1015,7 +1029,7 @@ export default function ProfileScreen() {
                 </View>
 
                 <View style={styles.settingsItem}>
-                  <Text style={styles.settingsItemIcon}>📍</Text>
+                  <Ionicons name="location-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
                   <Text style={styles.settingsItemText}>Location Services</Text>
                   <Switch
                     value={locationEnabled}
@@ -1027,7 +1041,7 @@ export default function ProfileScreen() {
 
                 {/* Theme Selection */}
                 <View style={styles.settingsItem}>
-                  <Text style={styles.settingsItemIcon}>🎨</Text>
+                  <Ionicons name="color-palette-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.settingsItemText}>Appearance</Text>
                     <View style={styles.themeButtons}>
@@ -1059,19 +1073,19 @@ export default function ProfileScreen() {
                 <Text style={styles.settingsSectionTitle}>Support</Text>
 
                 <TouchableOpacity style={styles.settingsItem} onPress={handleContactSupport}>
-                  <Text style={styles.settingsItemIcon}>📧</Text>
+                  <Ionicons name="mail-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
                   <Text style={styles.settingsItemText}>Contact Support</Text>
                   <Text style={styles.settingsItemArrow}>›</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.settingsItem} onPress={handlePrivacyPolicy}>
-                  <Text style={styles.settingsItemIcon}>🔒</Text>
+                  <Ionicons name="lock-closed-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
                   <Text style={styles.settingsItemText}>Privacy Policy</Text>
                   <Text style={styles.settingsItemArrow}>›</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.settingsItem} onPress={handleTermsOfService}>
-                  <Text style={styles.settingsItemIcon}>📄</Text>
+                  <Ionicons name="document-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
                   <Text style={styles.settingsItemText}>Terms of Service</Text>
                   <Text style={styles.settingsItemArrow}>›</Text>
                 </TouchableOpacity>
@@ -1082,7 +1096,7 @@ export default function ProfileScreen() {
                 <Text style={styles.settingsSectionTitle}>About</Text>
 
                 <View style={styles.settingsItem}>
-                  <Text style={styles.settingsItemIcon}>📱</Text>
+                  <Ionicons name="phone-portrait-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
                   <Text style={styles.settingsItemText}>App Version</Text>
                   <Text style={styles.settingsItemValue}>1.0.0</Text>
                 </View>
@@ -1128,7 +1142,7 @@ export default function ProfileScreen() {
                   onPress={() => setEditProfileModalVisible(false)}
                   style={styles.closeButton}
                 >
-                  <Text style={styles.closeButtonText}>✕</Text>
+                  <Ionicons name="close" size={20} color={colors.text} />
                 </TouchableOpacity>
               </View>
 

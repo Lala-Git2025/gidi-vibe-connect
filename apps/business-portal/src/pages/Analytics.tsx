@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Phone, Globe, Navigation, TrendingUp, Lock } from 'lucide-react';
+import { Eye, Phone, Globe, TrendingUp, Lock } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -231,7 +231,7 @@ export default function Analytics() {
                     fill="#8884d8"
                     dataKey="value"
                   >
-                    {engagementData.map((entry, index) => (
+                    {engagementData.map((_entry, index) => (
                       <Cell
                         key={`cell-${index}`}
                         fill={CHART_COLORS[index % CHART_COLORS.length]}

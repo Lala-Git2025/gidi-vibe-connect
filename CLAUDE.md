@@ -4,137 +4,191 @@ This file contains persistent context, decisions, and conventions for the Gidi V
 
 ## Project Overview
 
-**Gidi Vibe Connect** is a mobile app for discovering Lagos nightlife, events, venues, and social connections. Built with React Native (Expo) and Supabase backend.
+**Gidi Vibe Connect** is a mobile app + business web portal for discovering Lagos nightlife, events, venues, and social connections. Built with React Native (Expo) and Supabase backend.
 
 ### Tech Stack
-- **Frontend:** React Native with Expo (SDK 52)
+- **Consumer App:** React Native with Expo (SDK 54), `newArchEnabled: false`
+- **Business Portal:** React + Vite + Tailwind CSS + shadcn/ui (runs on port 3001)
 - **Backend:** Supabase (PostgreSQL, Auth, Storage, Edge Functions)
-- **State Management:** React Context (ThemeContext)
-- **Navigation:** React Navigation (Bottom Tabs)
-- **Fonts:** Orbitron (brand font)
+- **State Management:** React Context (ThemeContext for consumer app, BusinessAuthContext for portal)
+- **Navigation:** React Navigation v7 (Bottom Tabs) — custom tab bar
+- **Icons:** Ionicons from `@expo/vector-icons` (all UI icons — no bare emoji)
+- **Fonts:** Orbitron via `@expo-google-fonts/orbitron` (brand headers only)
+- **Data Fetching (portal):** @tanstack/react-query
 
 ## Project Structure
 
 ```
 gidi-vibe-connect/
 ├── apps/
-│   ├── consumer-app/          # Main mobile app
-│   │   ├── screens/           # App screens (Home, Explore, Events, Social, Profile)
-│   │   ├── contexts/          # React contexts (ThemeContext)
+│   ├── consumer-app/          # Main mobile app (React Native + Expo)
+│   │   ├── screens/           # App screens
+│   │   ├── components/        # Shared components
+│   │   ├── contexts/          # ThemeContext
 │   │   ├── config/            # Supabase client config
-│   │   └── App.tsx            # Root component with navigation
-│   └── business-portal/       # Web portal for venue owners (planned)
+│   │   └── App.tsx            # Root component with custom tab bar
+│   └── business-portal/       # Web portal for venue owners + admins
+│       └── src/
+│           ├── pages/         # Dashboard, Venues, Events, Analytics, admin/*
+│           ├── hooks/         # useVenues.ts, useEvents.ts
+│           ├── contexts/      # BusinessAuthContext
+│           └── components/    # DashboardLayout, Sidebar, Header
 ├── supabase/
-│   ├── migrations/            # Database migrations
-│   └── functions/             # Edge functions
-└── packages/                  # Shared packages (if any)
+│   ├── migrations/            # All DB migrations (timestamped)
+│   └── functions/             # Edge functions (create-venue, get-traffic)
+└── scripts/
+    └── lagos-news-agent.js    # Auto news scraper (macOS launchd, every 3h)
 ```
 
-## Key Screens
+## Key Screens (Consumer App)
 
 | Screen | File | Purpose |
 |--------|------|---------|
-| Home | `HomeScreen.tsx` | Landing page with featured content |
-| Explore | `ExploreScreen.tsx` | Search and discover venues |
+| Home | `HomeScreen.tsx` | Stories, trending venues, news, traffic, vibe check |
+| Explore | `ExploreScreen.tsx` | Search and discover venues by category/area |
 | Events | `EventsScreen.tsx` | Browse and RSVP to events |
-| Social | `SocialScreen.tsx` | Community posts, People tab, Stories |
-| Profile | `ProfileScreen.tsx` | User profile, auth, settings |
+| Social | `SocialScreen.tsx` | Feed, Communities, People tabs + Stories |
+| Profile | `ProfileScreen.tsx` | User profile, auth (sign in/up/guest/forgot) |
+| News | `NewsScreen.tsx` | Full news feed (navigated programmatically) |
+| ExploreArea | `ExploreAreaScreen.tsx` | Lagos area grid |
+| Discover | `DiscoverScreen.tsx` | Activity feed |
+
+## Business Portal Pages
+
+| Route | Page | Roles |
+|-------|------|-------|
+| `/dashboard` | Dashboard | Business Owner, Admin, Super Admin |
+| `/venues` | Venue list | Business Owner+ |
+| `/venues/:id` | Venue details + admin promotion panel | Business Owner+ |
+| `/analytics` | Analytics | Premium+ |
+| `/events` | Events | Business Owner+ |
+| `/offers` | Offers | Premium+ |
+| `/subscription` | Subscription plans | All |
+| `/settings` | Account settings | All |
+| `/admin` | Admin Overview | Admin, Super Admin only |
+| `/admin/venues` | All venues + promote/remove | Admin, Super Admin only |
+| `/admin/promotions` | Active/expired promotion tracking | Admin, Super Admin only |
+| `/admin/users` | User search + role management | Admin, Super Admin only |
 
 ## Database Schema (Supabase)
 
 ### Core Tables
-- **profiles** - User profiles (user_id, full_name, bio, avatar_url, username, role)
-- **venues** - Nightlife venues
-- **events** - Events at venues
-- **posts** - Social feed posts
-- **communities** - User communities/groups
-- **follows** - User follow relationships
-- **stories** - User stories (My Vibe feature)
+- **profiles** - `user_id, full_name, username, bio, avatar_url, role` (role: Consumer | Business Owner | Content Creator | Admin | Super Admin)
+- **venues** - `name, location, category (TEXT), rating, is_promoted, promoted_until, promotion_label, amenities[], tags[], instagram_handle, owner_id`
+- **events** - `title, venue_name, date, organizer_id, is_published, source`
+- **posts** - `content, user_id, community_id, image_url`
+- **communities** - `name, description, icon, color, member_count`
+- **community_members** - join records
+- **follows** - `follower_id, following_id`
+- **stories** - `user_id, image_url, media_type, filter_effect, overlays (JSON), expires_at`
+- **story_views** - `story_id, viewer_id`
+- **venue_check_ins** - `user_id, venue_id, checked_in_at`
+- **event_rsvps** - `user_id, event_id, status`
+- **venue_reviews** - `user_id, venue_id, rating, comment`
+- **business_subscriptions** - `user_id, tier, max_venues, max_events_per_month, etc.`
+- **news** - `title, content, image_url, publish_date, source_url`
+
+### Views
+- **trending_venues** — Time-decayed hot score. Promoted venues score 999999. Score formula: `(checkins_24h × 10 + checkins_7d × 3 + live_rating × 20) / (hours_since_last_activity + 2)^1.5`
 
 ### Storage Buckets
 - **avatars** - Profile pictures
 - **social-media** - Post images and story media
+- **venue-photos** - Business portal venue photos
+- **event-images** - Event banners
 
 ## Authentication
 
 - Supabase Auth with email/password
 - Guest mode supported (limited features)
 - Profile auto-created via `handle_new_user` trigger
-- Password reset via email (requires SMTP setup)
+- Password reset via email (requires SMTP setup — not yet configured)
+- Business portal: `BusinessAuthContext` handles sign in/up, subscription, profile, verification
 
-## Theming
+## Theming (Consumer App)
 
-Uses `ThemeContext` for dark/light mode support:
+Uses `ThemeContext` for dark/light mode:
 ```tsx
 const { colors, activeTheme } = useTheme();
 ```
-
 Always use `colors.xxx` from theme context, never hardcode colors.
 
 ## Conventions & Patterns
+
+### Icons
+- **All UI icons in consumer app**: Ionicons from `@expo/vector-icons` — NEVER bare emoji for UI
+- **Community icons**: Unicode via `COMMUNITY_ICON_MAP` (Unicode escape sequences)
+- **Sticker overlays**: `fontFamily: ''` in StoryViewer/StoryEditor — intentional exception for user emoji
 
 ### Code Style
 - TypeScript for all new code
 - Functional components with hooks
 - Use `useFocusEffect` for data refresh on screen focus
-- Use `useSafeAreaInsets` for proper padding (not Platform.OS checks)
-
-### Emoji Icons
-- Tab bar uses emoji icons with `fontFamily: ''` fix for Android
-- Example: `<Text style={{ fontSize: 26, fontFamily: '' }}>🏠</Text>`
+- Use `useSafeAreaInsets` for bottom padding (not `Platform.OS` checks)
+- Business portal data fetching via `@tanstack/react-query`
 
 ### Error Handling
-- Use try/catch with console.log for non-critical errors
-- Use Alert.alert for user-facing errors
-- Graceful fallbacks (e.g., PostImage component hides on load failure)
+- `try/catch` with `console.log` for non-critical errors
+- `Alert.alert` for user-facing errors in consumer app
+- Graceful fallbacks (e.g., TrendingVenues falls back to hardcoded data on DB error)
 
 ### Profile Data
-- Always fetch profile data from `profiles` table, not just auth metadata
+- Always fetch from `profiles` table; fallback to auth metadata, then email prefix
 - Sync auth metadata to profiles on first load if empty
+
+### Admin Access
+- Role check: `profile?.role === 'Admin' || profile?.role === 'Super Admin'`
+- `DashboardLayout` allows: `['Business Owner', 'Admin', 'Super Admin']`
+- RLS policies: owners see/edit own venues; admins can SELECT/UPDATE all venues
+- To make a user admin: `UPDATE profiles SET role = 'Admin' WHERE user_id = '<uuid>';`
 
 ## Recent Decisions
 
-### Feb 2026
-- **Profile names:** Fetch from DB profiles table, fallback to auth metadata, then email prefix
-- **Tab bar padding:** Use `useSafeAreaInsets` for consistent bottom padding
-- **People tab:** Added to Social screen with follow/unfollow functionality
-- **Stories:** My Vibe feature implemented for sharing moments
+### March 2026
+- **Ionic icons**: All emoji icons replaced with Ionicons — `newArchEnabled: false` in app.json
+- **Trending algorithm**: `trending_venues` Postgres view with time-decayed hot score; promoted venues pin to top
+- **Paid promotions**: Businesses pay to be `is_promoted`; admin sets badge + days via VenueDetails panel
+- **Admin portal**: `/admin/*` routes inside business portal (not separate app) — reuses all components
+- **Admin RLS fix**: Migration `20260314000001_admin_venue_rls.sql` — admins bypass owner_id filter on venues
+- **useVenue hook**: Skips `.eq('owner_id')` filter for Admin/Super Admin roles
+
+### February 2026
+- **People tab**: Added to Social screen with follow/unfollow functionality
+- **Stories (My Vibe)**: Create, view, expire, filter effects, text/sticker overlays
+- **Tab bar padding**: Use `useSafeAreaInsets` for consistent bottom padding
 
 ## Common Commands
 
 ```bash
-# Start the app
-cd apps/consumer-app && npx expo start
+# Consumer App
+cd apps/consumer-app
+npx expo run:ios          # iOS simulator (native build — expo-video requires this)
+npx expo run:android      # Android emulator
 
-# Run on iOS simulator
-npx expo run:ios
+# Business Portal
+cd apps/business-portal
+npm run dev               # http://localhost:3001
 
-# Run on Android emulator
-npx expo run:android
+# Database
+npx supabase db push      # Apply pending migrations
 
-# Apply Supabase migrations
-supabase db push
-
-# Generate Supabase types
-supabase gen types typescript --local > types/supabase.ts
+# News agent (manual)
+node scripts/lagos-news-agent.js
 ```
 
 ## Environment Variables
 
-Required in `apps/consumer-app/config/supabase.ts`:
-- `SUPABASE_URL` - Supabase project URL
-- `SUPABASE_ANON_KEY` - Supabase anonymous key
+### Consumer App (`apps/consumer-app/config/supabase.ts`)
+- `SUPABASE_URL` — Supabase project URL
+- `SUPABASE_ANON_KEY` — Supabase anonymous key
+
+### Business Portal (`apps/business-portal/.env`)
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
 
 ## Known Issues / TODOs
 
-- [ ] SMTP not configured - password reset emails won't send
-- [ ] Stories upload needs social-media bucket with proper RLS
-- [ ] Business portal is scaffolded but not fully implemented
-
-## Tips for Claude
-
-1. **Always read files before editing** - understand existing patterns
-2. **Use ThemeContext colors** - never hardcode color values
-3. **Check ProfileScreen for auth patterns** - it handles sign in/up/guest mode
-4. **Database changes need migrations** - create in `supabase/migrations/`
-5. **Test on both iOS and Android** - some fixes are platform-specific
+- [ ] SMTP not configured — password reset emails won't send
+- [ ] `get-traffic` Edge Function not deployed — TrafficAlert uses mock data (`TOMTOM_API_KEY` not set)
+- [ ] `expo-video` requires native build — cannot use Expo Go QR scanning
+- [ ] Stories `social-media` bucket RLS may need review for public read access

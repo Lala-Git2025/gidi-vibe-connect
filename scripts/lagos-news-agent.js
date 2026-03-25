@@ -466,38 +466,30 @@ async function scrapeRealLagosNews() {
           continue;
         }
 
-        if (details.imageUrl) {
-          // Final URL validation before adding to database
-          if (!article.url || !article.url.startsWith('http')) {
-            console.log(`   ⚠️  Skipped - missing or invalid URL\n`);
-            continue;
-          }
+        // Accept articles with or without images — don't skip image-less articles
+        // from sources like Linda Ikeji and Instablog9ja that use lazy-loaded images
+        seenUrls.add(article.url);
+        existingUrls.add(article.url);
 
-          // Mark this URL as seen in both sets to prevent duplicates
-          seenUrls.add(article.url);
-          existingUrls.add(article.url);
+        newsItems.push({
+          title: article.title.substring(0, 100),
+          summary: details.summary || `Latest update from ${source.name} on Lagos news.`,
+          category: source.category,
+          source: source.name,              // ← store actual source name
+          external_url: article.url,
+          featured_image_url: details.imageUrl || null,  // null when not found
+          publish_date: details.publishDate,
+          sentiment: 'neutral',
+          priority: newsItems.length + 1
+        });
 
-          newsItems.push({
-            title: article.title.substring(0, 100),
-            summary: details.summary || `Latest update from ${source.name} on Lagos news.`,
-            category: source.category,
-            external_url: article.url,
-            featured_image_url: details.imageUrl,
-            publish_date: details.publishDate,
-            sentiment: 'neutral',
-            priority: newsItems.length + 1
-          });
+        console.log(`   ✅ Added article from ${source.name}${details.imageUrl ? ' (with image)' : ' (no image)'}\n`);
 
-          console.log(`   ✅ Added article with real details\n`);
-        } else {
-          console.log(`   ⚠️  Skipped - no image found\n`);
-        }
-
-        // Limit to 15 total articles
-        if (newsItems.length >= 15) break;
+        // Limit to 25 total articles (raised from 15 to get more sources represented)
+        if (newsItems.length >= 25) break;
       }
 
-      if (newsItems.length >= 15) break;
+      if (newsItems.length >= 25) break;
 
       // Small delay between sources to be respectful
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -530,7 +522,7 @@ async function uploadToSupabase(newsItems) {
       featured_image_url: item.featured_image_url,
       publish_date: item.publish_date || new Date().toISOString(),
       is_active: true,
-      source: 'AI Agent',
+      source: item.source || 'Lagos News',
     }));
 
     const { data, error } = await supabase

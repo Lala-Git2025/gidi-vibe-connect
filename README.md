@@ -1,420 +1,247 @@
-# 🌟 Gidi Connect - Lagos Lifestyle & Social Discovery Platform
+# Gidi Connect — Lagos Lifestyle & Social Discovery Platform
 
 Your ultimate guide to experiencing Lagos nightlife, events, dining, and social connections.
 
 ---
 
-## 📱 Project Overview
+## Project Overview
 
-Gidi Connect is a multi-platform application (Web + Mobile) that helps users discover, explore, and connect with Lagos's vibrant lifestyle scene. Built with modern web technologies and React Native for native mobile experiences.
+Gidi Connect is a multi-platform application (mobile + web) that helps users discover, explore, and connect with Lagos's vibrant lifestyle scene. The ecosystem consists of a React Native consumer app and a React web business portal, both backed by Supabase.
 
 ---
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
-gidi-vibe-connect-1/
+gidi-vibe-connect/
 ├── apps/
 │   ├── consumer-app/          # React Native mobile app (iOS/Android)
-│   ├── mobile-app/            # Secondary mobile app instance
-│   ├── admin-portal/          # Admin dashboard
-│   └── business-portal/       # Business management portal
-├── src/                       # Main web application (React + Vite)
-│   ├── components/            # Reusable UI components
-│   ├── pages/                 # Web app pages/routes
-│   └── integrations/          # Third-party integrations
+│   └── business-portal/       # Web portal for venue owners + platform admins
+├── supabase/
+│   ├── migrations/            # Timestamped Postgres migrations
+│   └── functions/             # Supabase Edge Functions
 ├── scripts/
-│   └── lagos-news-agent.js    # AI-powered news scraper
-├── ios/                       # iOS native project (Capacitor)
-├── android/                   # Android native project (Capacitor)
-└── docs/                      # Documentation
+│   └── lagos-news-agent.js    # Automated Lagos news scraper
+└── .github/workflows/         # CI/CD (news agent workflow)
 ```
 
 ---
 
-## 🚀 Applications
+## Applications
 
-### 1. Consumer Mobile App (React Native)
+### 1. Consumer Mobile App
 **Location**: `apps/consumer-app/`
 **Platform**: iOS & Android
-**Technology**: React Native + Expo
+**Technology**: React Native + Expo SDK 54
+
+**Screens**: Home, Explore, Events, Social, Profile, News, ExploreArea, Discover
 
 **Features**:
-- 🏠 Home feed with real-time Lagos news
-- 🔍 Venue exploration by category & area
-- 📅 Events calendar & booking
-- 💬 Social communities & interactions
-- 👤 User profiles & preferences
-- 📰 Live news from 9 Nigerian sources
-- 🚦 Real-time traffic updates
-- 🎯 Venue vibe check
-- 🔥 Trending venues
+- Home feed: stories, trending venues, live news, traffic, vibe check
+- Venue discovery by category and area
+- Events calendar & RSVP
+- Social: feed, communities, People tab, follow/unfollow
+- My Vibe (Stories): image/video stories with filters, text overlays, stickers
+- Real-time Lagos traffic severity cards
+- Area vibe metrics (crowd, music, price, wait)
+- Trending venues with hot-score algorithm + paid promotion slots
+- User auth: sign in, sign up, guest mode, forgot password
 
 📖 **[Complete Feature Documentation](CONSUMER-APP-FEATURES.md)**
 
-### 2. Web Application
-**Location**: `src/`
-**Platform**: Web (PWA)
-**Technology**: React + Vite + TypeScript
+---
+
+### 2. Business Portal
+**Location**: `apps/business-portal/`
+**Platform**: Web (React + Vite, port 3001)
+**Technology**: React 18 + TypeScript + Tailwind CSS + shadcn/ui + React Query
+
+**Roles**: Business Owner, Admin, Super Admin
 
 **Features**:
-- Responsive design (mobile-first)
-- Progressive Web App capabilities
-- Offline support
-- All consumer-app features adapted for web
-
-### 3. Admin Portal
-**Location**: `apps/admin-portal/`
-**Purpose**: Platform management & moderation
-
-### 4. Business Portal
-**Location**: `apps/business-portal/`
-**Purpose**: Venue owner dashboard & analytics
-
----
-
-## 🛠️ Technologies
-
-### Frontend
-- **React** 19.1.0
-- **React Native** 0.81.5
-- **TypeScript** 5.9.2
-- **Vite** (build tool)
-- **Expo** ~54.0.30
-- **React Navigation** 7.1.26
-- **Tailwind CSS** (web)
-- **shadcn/ui** (web components)
-
-### Backend & Infrastructure
-- **Supabase** (Database + Auth + Storage)
-- **Capacitor** (Native mobile features)
-- **AI/ML**: Google Gemini API (news generation)
-- **Automation**: macOS launchd (news auto-update)
-
-### Navigation
-- **Web**: React Router
-- **Mobile**: React Navigation (Custom Bottom Tabs)
+- Venue management: create, edit, photos, amenities, tags
+- Event management: create, publish, image upload
+- Analytics dashboard (Premium)
+- Offers & promotions page (Premium)
+- Subscription management (Free / Premium / Enterprise)
+- Account settings + business verification flow
+- **Admin section** (Admin/Super Admin only):
+  - Platform overview stats (users, venues, active promotions, new signups)
+  - Venue manager: promote any venue, set badge label + duration
+  - Promotions tracker: active vs expired, expiry countdown
+  - User manager: search, filter by role, inline role changes
 
 ---
 
-## 🌐 Key Features
+## Tech Stack
 
-### 📰 AI-Powered News System
-- **Real-time scraping** from 9 Nigerian news sources:
-  - Premium Times, Punch, BellaNaija, Pulse Nigeria, Legit.ng
-  - NotJustOk, Information Nigeria, Vanguard, The Cable
-- **Auto-updates** every 3 hours (24/7)
-- **Real images** extracted via Open Graph tags
-- **Real publish dates** from article metadata
-- **Date validation**: Only articles from last 60 days
-- **Duplicate prevention**: URL tracking
-- **Categories**: General news, events, nightlife, entertainment
+### Consumer App
+| Concern | Technology |
+|---|---|
+| Platform | React Native (Expo SDK 54) |
+| Navigation | React Navigation v7 (custom bottom tabs) |
+| Icons | Ionicons (`@expo/vector-icons`) |
+| Font | Orbitron (`@expo-google-fonts/orbitron`) |
+| Video | expo-video ~3.0 |
+| Backend | Supabase |
+| Language | TypeScript |
+| State | React Context (ThemeContext) |
 
-📖 **[News System Documentation](NEWS-AUTO-UPDATE.md)**
+### Business Portal
+| Concern | Technology |
+|---|---|
+| Framework | React 18 + Vite |
+| Styling | Tailwind CSS + shadcn/ui |
+| Data | @tanstack/react-query + Supabase |
+| Icons | lucide-react |
+| Router | React Router v6 |
+| Language | TypeScript |
 
-### 🗺️ Venue Discovery
-- Browse by category (restaurants, bars, nightlife, etc.)
-- Explore by area (Victoria Island, Lekki, Ikeja, etc.)
-- Real-time crowd levels & vibe check
-- Trending venues with ratings
-- Professional venue images
-
-### 📅 Events & Experiences
-- Upcoming events calendar
-- Event details & ticketing
-- RSVP functionality
-- Category filtering
-
-### 💬 Social Features
-- Community groups by interest
-- User posts & interactions
-- Follow system
-- Like, comment, share
-
-### 🚦 Live Updates
-- Real-time traffic alerts
-- Venue atmosphere metrics
-- Crowd levels
-- Wait time estimates
+### Backend
+| Concern | Technology |
+|---|---|
+| Database | Supabase (PostgreSQL) |
+| Auth | Supabase Auth (email/password) |
+| Storage | Supabase Storage (avatars, social-media, venue-photos, event-images) |
+| Edge Functions | create-venue, get-traffic |
+| News automation | macOS launchd (every 3 hours) |
 
 ---
 
-## 🎨 Design System
+## Key Features
 
-### Color Palette
-- **Primary**: Golden Yellow (#EAB308)
-- **Background**: Pure Black (#000)
-- **Surface**: Dark Gray (#18181b)
-- **Text**: White, Light Gray, Medium Gray
-- **Borders**: Darker Gray (#27272a)
-- **Accent**: Green (#10B981) for live indicators
+### Trending Venues Algorithm
+Venues are ranked by a time-decayed composite hot score:
+```
+score = (checkins_24h × 10 + checkins_7d × 3 + live_rating × 20)
+        ÷ (hours_since_last_activity + 2)^1.5
+```
+Paid/promoted venues are pinned to the top (score = 999,999). Computed via the `trending_venues` Postgres view — no cron needed.
 
-### Typography
-- **Headers**: 18-24px, bold, golden yellow
-- **Body**: 12-14px, normal, white/gray
-- **Uppercase**: Section titles and navigation
+### News System
+Auto-updates every 3 hours via macOS launchd. Sources: 14 Nigerian outlets including Premium Times, Punch, BellaNaija, Pulse Nigeria, Linda Ikeji, Instablog9ja, and more.
 
-### Spacing
-- Container: 16px padding
-- Card padding: 10-16px
-- Section margins: 32px
-- Border radius: 8-16px
+### Stories (My Vibe)
+Short-lived user moments: image or video, filter effects, text overlays, sticker picker. Stored with `expires_at`; viewed via full-screen animated viewer with progress bar.
+
+### Communities
+8 seeded Lagos communities + user-created ones. Join/leave with optimistic UI. Member count via DB trigger.
 
 ---
 
-## 📦 Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
-- Node.js 18+ & npm
-- iOS: macOS + Xcode (for iOS development)
-- Android: Android Studio (for Android development)
-- Expo CLI (for React Native)
+- Node.js 18+
+- iOS: macOS + Xcode
+- Android: Android Studio
 
-### Web Application
+### Consumer App
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/gidi-vibe-connect-1.git
-cd gidi-vibe-connect-1
-
-# Install dependencies
+cd apps/consumer-app
 npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-npm run preview
+npx expo run:ios       # iOS simulator (native build required for expo-video)
+npx expo run:android   # Android emulator
 ```
 
-### Consumer Mobile App
+### Business Portal
 ```bash
-# Navigate to consumer app
-cd apps/consumer-app
-
-# Install dependencies
+cd apps/business-portal
 npm install
+cp .env.example .env   # Fill in Supabase credentials
+npm run dev            # http://localhost:3001
+```
 
-# Start Expo dev server
-npm start
-
-# Run on iOS simulator
-npm run ios
-
-# Run on Android emulator
-npm run android
+### Database
+```bash
+npx supabase db push   # Apply all pending migrations
 ```
 
 ### Environment Variables
-Create `.env` file in project root:
-```bash
-# Supabase Configuration
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# Google Gemini API (for news generation)
-GEMINI_API_KEY=your_gemini_api_key
+**Consumer app** (`apps/consumer-app/config/supabase.ts`):
+```
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+```
+
+**Business portal** (`apps/business-portal/.env`):
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
+VITE_APP_NAME=Gidi Business Portal
+VITE_CONSUMER_APP_URL=http://localhost:8080
 ```
 
 ---
 
-## 🔧 Development Commands
+## Database Schema
 
-### Web App
-```bash
-npm run dev                 # Start dev server
-npm run build               # Build for production
-npm run preview             # Preview production build
-npm run lint                # Run ESLint
-```
+See [CONSUMER-APP-FEATURES.md](CONSUMER-APP-FEATURES.md#database-schema) for the full schema.
 
-### Mobile App
-```bash
-npm start                   # Start Expo dev server
-npm run ios                 # Run on iOS
-npm run android             # Run on Android
-npm run web                 # Run in web browser
-```
+Key tables: `profiles`, `venues`, `events`, `posts`, `communities`, `follows`, `stories`, `story_views`, `venue_check_ins`, `event_rsvps`, `venue_reviews`, `business_subscriptions`, `news`
 
-### News System
-```bash
-npm run news-agent          # Run news scraper manually
-npm run news-auto:status    # Check auto-update status
-npm run news-auto:logs      # View live logs
-npm run news-auto:install   # Install auto-update (macOS)
-npm run news-auto:uninstall # Uninstall auto-update
+Key views: `trending_venues` (hot-score ranked + promoted venues)
+
+---
+
+## Making a User Admin
+
+Run in Supabase SQL Editor:
+```sql
+UPDATE profiles SET role = 'Admin' WHERE user_id = '<user-uuid>';
+-- or
+UPDATE profiles SET role = 'Super Admin' WHERE user_id = '<user-uuid>';
 ```
 
 ---
 
-## 📱 Native Deployment
+## Documentation
 
-### iOS Deployment
-1. Open iOS project: `npx cap open ios`
-2. Configure signing in Xcode
-3. Select device/simulator
-4. Build & run (▶️ button)
-5. For App Store: Product → Archive
-
-### Android Deployment
-1. Open Android project: `npx cap open android`
-2. Let Gradle sync complete
-3. Select device/emulator
-4. Build & run (▶️ button)
-5. For Play Store: Build → Generate Signed Bundle
-
-📖 **[Native Deployment Guide](NATIVE-DEPLOYMENT.md)**
+- **[CONSUMER-APP-FEATURES.md](CONSUMER-APP-FEATURES.md)** — Complete feature documentation (all screens, components, schema, updates)
+- **[CLAUDE.md](CLAUDE.md)** — Project conventions and context for AI-assisted development
+- **[NEWS-AUTO-UPDATE.md](NEWS-AUTO-UPDATE.md)** — News scraper & automation setup
+- **[NATIVE-DEPLOYMENT.md](NATIVE-DEPLOYMENT.md)** — iOS & Android deployment guide
+- **[SUPABASE-EMAIL-SETUP.md](SUPABASE-EMAIL-SETUP.md)** — SMTP / email configuration
 
 ---
 
-## 📚 Documentation
+## Current Status
 
-- **[Consumer App Features](CONSUMER-APP-FEATURES.md)** - Complete feature documentation
-- **[News Auto-Update System](NEWS-AUTO-UPDATE.md)** - News scraper & automation
-- **[Native Deployment](NATIVE-DEPLOYMENT.md)** - iOS & Android deployment guide
-- **[Mobile Optimization](MOBILE_OPTIMIZATION_GUIDE.md)** - PWA & mobile best practices
-- **[Xcode Build Updates](XCODE-BUILD-UPDATES.md)** - iOS-specific build notes
+### Completed
+- [x] Consumer mobile app — all screens and features
+- [x] Business portal — venue, event, analytics, subscription management
+- [x] Admin portal — platform stats, venue promotion manager, user management
+- [x] Supabase auth (email/password, guest mode)
+- [x] My Vibe (Stories) with editor, filters, overlays
+- [x] People tab with follow/unfollow
+- [x] Communities (join/leave, 8 seeded + user-created)
+- [x] Trending venues with paid promotion support
+- [x] Real-time news from 14 Nigerian sources (auto-updated every 3h)
+- [x] Traffic severity cards
+- [x] Ionicons migration (replaced all emoji icons — iOS 26 fix)
+- [x] Admin RLS policies (admins can view/manage all venues)
 
----
-
-## 🗄️ Database Schema
-
-### Supabase Tables
-
-#### news
-- `id` (uuid) - Primary key
-- `title` (text) - Article title
-- `summary` (text) - Article description
-- `category` (text) - general, events, nightlife
-- `publish_date` (timestamp) - Article publish date
-- `featured_image_url` (text) - Article image URL
-- `external_url` (text) - Original article link
-- `is_active` (boolean) - Active status
-- `source` (text) - "AI Agent"
-- `created_at` (timestamp) - Creation timestamp
-
-#### venues
-- `id` (uuid) - Primary key
-- `name` (text) - Venue name
-- `location` (text) - Venue address/area
-- `rating` (numeric) - Rating (0-5)
-- `professional_media_urls` (text[]) - Venue images
+### Known Issues
+- [ ] SMTP not configured — password reset emails won't send
+- [ ] `get-traffic` Edge Function not deployed (TrafficAlert uses mock data)
+- [ ] `expo-video` requires native build — Expo Go QR not supported
 
 ---
 
-## 🎯 Current Status
+## Deployment
 
-### ✅ Completed Features
-- [x] Consumer mobile app (React Native)
-- [x] Web application (React + Vite)
-- [x] Real news scraping from 9 sources
-- [x] Auto-update system (every 3 hours)
-- [x] Custom navigation with tab bar
-- [x] Real-time traffic updates
-- [x] Venue discovery & exploration
-- [x] Events calendar
-- [x] Social communities
-- [x] User profiles
-- [x] Pull-to-refresh
-- [x] Image lazy loading
-- [x] Date validation for news
-- [x] Duplicate prevention
-- [x] iOS & Android native projects
-- [x] Logo removal & text-based headers
-- [x] Card size optimization
-
-### 🚧 In Progress
-- [ ] User authentication system
-- [ ] Push notifications
-- [ ] Favorites & bookmarks
-- [ ] Event booking system
-- [ ] User reviews & ratings
-
-### 📋 Planned Features
-- [ ] Social sharing
-- [ ] Photo uploads
-- [ ] Chat/messaging
-- [ ] Payment integration
-- [ ] Analytics dashboard
-- [ ] Admin moderation tools
-- [ ] Business portal features
+### Business Portal
+```bash
+cd apps/business-portal
+npm run build
+# Deploy dist/ to Vercel / Netlify
+# DNS: CNAME business → <hosting-provider>.app
+# Access at: business.gidiconnect.com
+```
 
 ---
 
-## 🏆 Recent Updates
+**Built for Lagos | Powered by React Native, React, and Supabase**
 
-### January 2026
-- ✅ Created comprehensive consumer-app documentation
-- ✅ Logo removed from all screens (text-based design)
-- ✅ Custom tab bar implementation (fixed spacing issues)
-- ✅ Card size optimization (news: 260x100px, venues: 150x80px)
-- ✅ Replicated features to mobile-app and web app
-- ✅ Verified all components and screens
-
-### December 2025
-- ✅ Implemented real news scraping (9 sources)
-- ✅ Added date validation (60-day window)
-- ✅ Added duplicate prevention
-- ✅ Added entertainment news sources
-- ✅ Auto-update system installed (macOS launchd)
-- ✅ Logging system for news agent
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
-
----
-
-## 📄 License
-
-This project is proprietary software. All rights reserved.
-
----
-
-## 👥 Team
-
-**Gidi Connect Development Team**
-- Product Design
-- Frontend Development
-- Backend Development
-- Mobile Development
-- QA & Testing
-
----
-
-## 📞 Support
-
-For questions, issues, or feature requests:
-- **Documentation**: See docs in this repository
-- **Issues**: GitHub Issues
-- **Email**: support@gidiconnect.com
-
----
-
-## 🔗 Resources
-
-### Official Links
-- **Web App**: [https://gidiconnect.com](https://gidiconnect.com)
-- **Project URL**: https://lovable.dev/projects/d5e140f4-4717-4812-b448-e72fc18e063e
-
-### Technologies
-- [React Documentation](https://react.dev)
-- [React Native Documentation](https://reactnative.dev)
-- [Expo Documentation](https://docs.expo.dev)
-- [Supabase Documentation](https://supabase.com/docs)
-- [Capacitor Documentation](https://capacitorjs.com/docs)
-- [Tailwind CSS](https://tailwindcss.com)
-- [TypeScript](https://www.typescriptlang.org)
-
----
-
-**Built with ❤️ for Lagos | Powered by React, React Native, and Supabase**
-
-**Last Updated**: January 9, 2026 | **Version**: 1.0.0
+**Last Updated**: March 25, 2026 | **Version**: 1.5.0

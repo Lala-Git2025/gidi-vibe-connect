@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, Image, RefreshControl } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, Image, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
@@ -10,6 +10,7 @@ import { VibeCheck } from '../components/VibeCheck';
 import { TrendingVenues } from '../components/TrendingVenues';
 import { StorySection } from '../components/StorySection';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 48) / 2;
@@ -92,15 +93,15 @@ function areTitlesSimilar(title1: string, title2: string): boolean {
   return similarity >= 0.7;
 }
 
-const categories = [
-  { emoji: '🍸', label: "Bars & Lounges", screen: "Explore" },
-  { emoji: '🍽️', label: "Restaurants", screen: "Explore" },
-  { emoji: '📰', label: "GIDI News", screen: "News" },
-  { emoji: '🎵', label: "Nightlife", screen: "Explore" },
-  { emoji: '☀️', label: "DayLife", screen: "Events" },
-  { emoji: '📅', label: "Events", screen: "Events" },
-  { emoji: '💬', label: "Social", screen: "Social" },
-  { emoji: '➕', label: "See More", screen: "Discover" },
+const categories: { icon: string; label: string; screen: string }[] = [
+  { icon: 'wine', label: "Bars & Lounges", screen: "Explore" },
+  { icon: 'restaurant', label: "Restaurants", screen: "Explore" },
+  { icon: 'newspaper', label: "GIDI News", screen: "News" },
+  { icon: 'musical-notes', label: "Nightlife", screen: "Explore" },
+  { icon: 'sunny', label: "DayLife", screen: "Events" },
+  { icon: 'calendar', label: "Events", screen: "Events" },
+  { icon: 'chatbubbles', label: "Social", screen: "Social" },
+  { icon: 'apps', label: "See More", screen: "Discover" },
 ];
 
 export default function HomeScreen() {
@@ -254,8 +255,8 @@ export default function HomeScreen() {
             <Text style={styles.appName}>GIDI CONNECT</Text>
             <View style={styles.liveDot} />
           </View>
-          <TouchableOpacity onPress={() => alert('Notifications coming soon!')}>
-            <Text style={styles.headerIcon}>🔔</Text>
+          <TouchableOpacity onPress={() => Alert.alert('Coming Soon', 'Notifications are on the way!')}>
+            <Ionicons name="notifications-outline" size={22} color={colors.text} />
           </TouchableOpacity>
         </View>
 
@@ -270,7 +271,7 @@ export default function HomeScreen() {
           onPress={() => navigation.navigate('Explore' as never)}
         >
           <View style={styles.searchBar}>
-            <Text style={styles.searchIcon}>🔍</Text>
+            <Ionicons name="search" size={18} color={colors.textSecondary} style={{ marginRight: 12 }} />
             <Text style={styles.searchPlaceholder}>Search your destination here...</Text>
           </View>
         </TouchableOpacity>
@@ -281,12 +282,12 @@ export default function HomeScreen() {
           onPress={() => navigation.navigate('ExploreArea' as never)}
         >
           <View style={styles.exploreAreaContent}>
-            <Text style={styles.exploreAreaEmoji}>🗺️</Text>
+            <Ionicons name="map" size={32} color={colors.primary} />
             <View style={styles.exploreAreaText}>
               <Text style={styles.exploreAreaTitle}>Explore the Area</Text>
               <Text style={styles.exploreAreaSubtitle}>Discover venues by neighborhood</Text>
             </View>
-            <Text style={styles.exploreAreaArrow}>→</Text>
+            <Ionicons name="arrow-forward" size={24} color={colors.primary} />
           </View>
         </TouchableOpacity>
 
@@ -299,7 +300,7 @@ export default function HomeScreen() {
                 style={styles.categoryCard}
                 onPress={() => handleCategoryPress(category)}
               >
-                <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                <Ionicons name={category.icon as any} size={28} color={colors.primary} />
                 <Text style={styles.categoryLabel}>{category.label}</Text>
               </TouchableOpacity>
             ))}
@@ -309,10 +310,11 @@ export default function HomeScreen() {
         {/* Stories Section */}
         <StorySection />
 
-        {/* Live News Section */}
+        {/* Live News Section — hidden when no articles loaded yet */}
+        {liveNews.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>🔴 LIVE - GIDI News</Text>
+            <Text style={styles.sectionTitle}>LIVE - GIDI News</Text>
             <TouchableOpacity onPress={openNews}>
               <Text style={styles.seeAll}>See All →</Text>
             </TouchableOpacity>
@@ -324,9 +326,8 @@ export default function HomeScreen() {
                 style={styles.newsCard}
                 onPress={() => {
                   if (news.external_url) {
-                    Linking.openURL(news.external_url).catch(err => {
-                      console.error('Failed to open URL:', err);
-                      alert('Could not open article');
+                    Linking.openURL(news.external_url).catch(() => {
+                      Alert.alert('Error', 'Could not open article');
                     });
                   }
                 }}
@@ -344,7 +345,7 @@ export default function HomeScreen() {
                   </View>
                 ) : (
                   <View style={styles.newsImagePlaceholder}>
-                    <Text style={styles.newsIcon}>📰</Text>
+                    <Ionicons name="newspaper" size={40} color={colors.textSecondary} />
                     <View style={styles.newsCategoryBadge}>
                       <Text style={styles.newsCategoryText}>{news.category}</Text>
                     </View>
@@ -362,20 +363,21 @@ export default function HomeScreen() {
             ))}
           </ScrollView>
         </View>
+        )}
 
         {/* Traffic Update - Dynamic (header is inside TrafficAlert component) */}
         <TrafficAlert />
 
         {/* Vibe Check Section - Dynamic */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🎯 Vibe Check</Text>
+          <Text style={styles.sectionTitle}>Vibe Check</Text>
         </View>
         <VibeCheck />
 
         {/* Trending Venues - Dynamic */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>🔥 Trending Venues</Text>
+            <Text style={styles.sectionTitle}>Trending Venues</Text>
             <TouchableOpacity onPress={() => navigation.navigate('Explore' as never)}>
               <Text style={styles.seeAll}>See All →</Text>
             </TouchableOpacity>
@@ -424,6 +426,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   headerIcon: {
     fontSize: 20,
+    fontFamily: '',
   },
   // Greeting
   greetingSection: {
@@ -455,6 +458,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   searchIcon: {
     fontSize: 20,
     marginRight: 12,
+    fontFamily: '',
   },
   searchPlaceholder: {
     fontSize: 14,
@@ -481,6 +485,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   exploreAreaEmoji: {
     fontSize: 32,
+    fontFamily: '',
   },
   exploreAreaText: {
     flex: 1,
@@ -499,6 +504,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 24,
     color: colors.primary,
     fontWeight: 'bold',
+    fontFamily: '',
   },
   // Categories
   categoriesSection: {
@@ -523,6 +529,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   categoryEmoji: {
     fontSize: 32,
+    fontFamily: '',
   },
   categoryLabel: {
     fontSize: 12,

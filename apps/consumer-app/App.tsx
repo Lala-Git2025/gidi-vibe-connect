@@ -2,6 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, View, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen from './screens/HomeScreen';
 import ExploreScreen from './screens/ExploreScreen';
@@ -97,7 +98,7 @@ function AppNavigator() {
           name="Home"
           component={HomeScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>🏠</Text>,
+            tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
             tabBarLabel: 'Home',
           }}
         />
@@ -105,7 +106,7 @@ function AppNavigator() {
           name="Explore"
           component={ExploreScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>🔍</Text>,
+            tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
             tabBarLabel: 'Explore',
           }}
         />
@@ -113,7 +114,7 @@ function AppNavigator() {
           name="Events"
           component={EventsScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>📅</Text>,
+            tabBarIcon: ({ color, size }) => <Ionicons name="calendar" size={size} color={color} />,
             tabBarLabel: 'Events',
           }}
         />
@@ -121,7 +122,7 @@ function AppNavigator() {
           name="Social"
           component={SocialScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>💬</Text>,
+            tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble" size={size} color={color} />,
             tabBarLabel: 'Social',
           }}
         />
@@ -129,7 +130,7 @@ function AppNavigator() {
           name="Profile"
           component={ProfileScreen}
           options={{
-            tabBarIcon: () => <Text style={{ fontSize: 26, fontFamily: '' }}>👤</Text>,
+            tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} />,
             tabBarLabel: 'Profile',
           }}
         />

@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
+import { Ionicons } from '@expo/vector-icons';
 
 type Tab = 'feed' | 'communities' | 'people';
 
@@ -25,6 +26,18 @@ const COMMUNITY_EMOJIS = [
   // Business & Social
   '💼', '💰', '📈', '💡', '🤝', '👥', '❤️', '🌟',
 ];
+
+// Hardcoded icon map for seeded communities — bypasses any DB encoding issues
+const COMMUNITY_ICON_MAP: Record<string, string> = {
+  'Nightlife Lagos':    '\u{1F319}', // 🌙
+  'Restaurant Reviews': '\u{1F37D}', // 🍽️
+  'Events & Concerts':  '\u{1F3B5}', // 🎵
+  'Island Vibes':       '\u{1F3DD}', // 🏝️
+  'Mainland Connect':   '\u{1F3D9}', // 🏙️
+  'Foodies United':     '\u{1F355}', // 🍕
+  'Party People':       '\u{1F389}', // 🎉
+  'Culture & Arts':     '\u{1F3A8}', // 🎨
+};
 
 const COLOR_PALETTE = [
   { label: 'Indigo',  color: '#4338CA' },
@@ -61,6 +74,7 @@ interface Post {
   comments_count: number;
   profiles?: {
     full_name: string;
+    username?: string | null;
     avatar_url?: string | null;
   };
   communities?: {
@@ -116,6 +130,9 @@ export default function SocialScreen() {
   const [newCommunityColor, setNewCommunityColor] = useState('#4338CA');
   const [creatingCommunity, setCreatingCommunity] = useState(false);
 
+  // Feed search
+  const [feedSearch, setFeedSearch] = useState('');
+
   // People tab state
   const [people, setPeople] = useState<PeopleProfile[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
@@ -148,33 +165,22 @@ export default function SocialScreen() {
     fetchCommunities();
   }, []);
 
-  // Debug: log currentUserId vs post user_ids to diagnose delete button visibility
-  useEffect(() => {
-    if (currentUserId && feedPosts.length > 0) {
-      console.log('[SocialScreen] currentUserId:', currentUserId);
-      console.log('[SocialScreen] feedPost user_ids:', feedPosts.map(p => p.user_id));
-      console.log('[SocialScreen] owned posts:', feedPosts.filter(p => p.user_id === currentUserId).length);
-    }
-  }, [currentUserId, feedPosts]);
-
-  const fetchCurrentUser = async () => {
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+const fetchCurrentUser = async () => {
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
     if (authError || !user) {
       // Not logged in — feed still loads, edit/delete buttons just won't show
       return;
     }
 
-    console.log('[SocialScreen] Current user id:', user.id);
     setCurrentUserId(user.id);
 
     // Check if profile exists and whether full_name is empty
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from('profiles')
       .select('full_name')
       .eq('user_id', user.id)
       .single();
-
-    console.log('[SocialScreen] Profile row:', profile, 'error:', profileError?.message);
 
     const authFullName = user.user_metadata?.full_name;
     const emailUsername = user.email?.split('@')[0];
@@ -202,6 +208,10 @@ export default function SocialScreen() {
 
   const fetchCommunities = async () => {
     try {
+      // Get current user so we can check their membership status
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id ?? null;
+
       const { data, error } = await supabase
         .from('communities')
         .select('*')
@@ -211,11 +221,20 @@ export default function SocialScreen() {
       if (error) throw error;
 
       if (data) {
-        const communitiesWithJoinStatus = data.map(community => ({
+        // Check which communities the user has actually joined
+        let joinedIds = new Set<string>();
+        if (uid) {
+          const { data: memberRows } = await supabase
+            .from('community_members')
+            .select('community_id')
+            .eq('user_id', uid);
+          joinedIds = new Set((memberRows ?? []).map((r: any) => r.community_id as string));
+        }
+
+        setCommunities(data.map(community => ({
           ...community,
-          is_joined: false
-        }));
-        setCommunities(communitiesWithJoinStatus);
+          is_joined: joinedIds.has(community.id),
+        })));
       }
     } catch (error) {
       console.error('Error fetching communities:', error);
@@ -240,20 +259,16 @@ export default function SocialScreen() {
       const userIds = [...new Set(posts.map((p: any) => p.user_id as string))];
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('user_id, full_name, avatar_url')
+        .select('user_id, full_name, username, avatar_url')
         .in('user_id', userIds);
 
       const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
 
-      console.log('[SocialScreen] posts user_ids:', userIds);
-      console.log('[SocialScreen] profiles returned:', profiles?.map((p: any) => ({ uid: p.user_id, name: p.full_name })));
-
       // Step 3: attach profile data to each post
-      const mergedPosts = posts.map((post: any) => {
-        const prof = profileMap.get(post.user_id) ?? null;
-        if (!prof) console.warn('[SocialScreen] No profile found for post.user_id:', post.user_id);
-        return { ...post, profiles: prof };
-      });
+      const mergedPosts = posts.map((post: any) => ({
+        ...post,
+        profiles: profileMap.get(post.user_id) ?? null,
+      }));
       setFeedPosts(mergedPosts);
     } catch (error) {
       console.error('Error fetching posts:', error);
@@ -261,47 +276,49 @@ export default function SocialScreen() {
   };
 
   const handleJoinCommunity = async (communityId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
+
+    if (!user) {
+      Alert.alert('Authentication Required', 'Please sign in to join communities');
+      return;
+    }
+
+    const community = communities.find(c => c.id === communityId);
+    if (!community) return;
+    const isJoined = community.is_joined;
+
+    // Optimistic update — flip join state and adjust member count
+    setCommunities(prev => prev.map(c =>
+      c.id === communityId
+        ? { ...c, is_joined: !isJoined, member_count: c.member_count + (isJoined ? -1 : 1) }
+        : c
+    ));
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        Alert.alert('Authentication Required', 'Please sign in to join communities');
-        return;
-      }
-
-      const community = communities.find(c => c.id === communityId);
-      const isJoined = community?.is_joined;
-
       if (isJoined) {
         const { error } = await supabase
           .from('community_members')
           .delete()
           .eq('user_id', user.id)
           .eq('community_id', communityId);
-
         if (error) throw error;
-
-        Alert.alert('Left Community', `You've left ${community?.name}`);
       } else {
         const { error } = await supabase
           .from('community_members')
-          .insert({
-            user_id: user.id,
-            community_id: communityId,
-            role: 'member'
-          });
-
+          .insert({ user_id: user.id, community_id: communityId, role: 'member' });
         if (error) throw error;
-
-        Alert.alert('Joined Community', `Welcome to ${community?.name}!`);
       }
 
-      setCommunities(communities.map(c =>
-        c.id === communityId ? { ...c, is_joined: !isJoined } : c
-      ));
+      // member_count is updated automatically by the DB trigger on community_members
 
-      fetchCommunities();
-    } catch (error) {
+    } catch (error: any) {
+      // Revert optimistic update on failure
+      setCommunities(prev => prev.map(c =>
+        c.id === communityId
+          ? { ...c, is_joined: isJoined, member_count: community.member_count }
+          : c
+      ));
       console.error('Error joining/leaving community:', error);
       Alert.alert('Error', 'Failed to update community membership');
     }
@@ -361,7 +378,8 @@ export default function SocialScreen() {
     setSubmitting(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
 
       if (!user) {
         Alert.alert('Authentication Required', 'Please sign in to create posts');
@@ -550,7 +568,8 @@ export default function SocialScreen() {
 
     setCreatingCommunity(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
       if (!user) {
         Alert.alert('Authentication Required', 'Please sign in to create a community');
         return;
@@ -587,16 +606,6 @@ export default function SocialScreen() {
   };
 
   // ── People / Follow helpers ─────────────────────────────────────────
-
-  const fetchFollowing = async (userId: string): Promise<Set<string>> => {
-    const { data } = await supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', userId);
-    const ids = new Set((data ?? []).map((r: any) => r.following_id as string));
-    setFollowingIds(ids);
-    return ids;
-  };
 
   const fetchPeople = async () => {
     if (!currentUserId) return;
@@ -811,22 +820,31 @@ export default function SocialScreen() {
           accessibilityRole="button"
           style={styles.backButtonContainer}
         >
-          <Text style={styles.backButton}>←</Text>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerLeft}>
           <Text style={styles.appName}>SOCIAL</Text>
         </View>
-        <Text style={styles.headerIcon}>🔔</Text>
+        <Ionicons name="notifications-outline" size={22} color={colors.text} />
       </View>
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Text style={styles.searchIcon}>🔍</Text>
+        <Ionicons name="search" size={18} color={colors.textSecondary} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search communities, people, or posts..."
           placeholderTextColor={colors.textSecondary}
+          value={feedSearch}
+          onChangeText={setFeedSearch}
+          autoCapitalize="none"
+          returnKeyType="search"
         />
+        {feedSearch.length > 0 && (
+          <TouchableOpacity onPress={() => setFeedSearch('')}>
+            <Ionicons name="close" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Tabs */}
@@ -836,7 +854,7 @@ export default function SocialScreen() {
           onPress={() => handleTabPress('feed')}
         >
           <Text style={[styles.tabText, activeTab === 'feed' && styles.tabTextActive]}>
-            📈 Feed
+            Feed
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -844,7 +862,7 @@ export default function SocialScreen() {
           onPress={() => handleTabPress('communities')}
         >
           <Text style={[styles.tabText, activeTab === 'communities' && styles.tabTextActive]}>
-            👥 Communities
+            Communities
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -852,7 +870,7 @@ export default function SocialScreen() {
           onPress={() => handleTabPress('people')}
         >
           <Text style={[styles.tabText, activeTab === 'people' && styles.tabTextActive]}>
-            👤 People
+            People
           </Text>
         </TouchableOpacity>
       </View>
@@ -867,33 +885,48 @@ export default function SocialScreen() {
               style={styles.createPostButton}
               onPress={handleOpenCreateModal}
             >
-              <Text style={styles.createPostIcon}>📷</Text>
+              <Ionicons name="camera" size={24} color={colors.primary} />
               <Text style={styles.createPostText}>Create Post</Text>
             </TouchableOpacity>
 
             {/* Feed Posts */}
             {feedPosts.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyStateIcon}>💬</Text>
+                <Ionicons name="chatbubble-outline" size={48} color={colors.textSecondary} />
                 <Text style={styles.emptyStateTitle}>No Posts Yet</Text>
                 <Text style={styles.emptyStateText}>
                   Be the first to share something with the community!
                 </Text>
               </View>
             ) : (
-              feedPosts.map((post: Post) => (
+              feedPosts
+                .filter(post => {
+                  if (!feedSearch.trim()) return true;
+                  const q = feedSearch.toLowerCase();
+                  return (
+                    post.content.toLowerCase().includes(q) ||
+                    (post.profiles?.full_name ?? '').toLowerCase().includes(q) ||
+                    (post.communities?.name ?? '').toLowerCase().includes(q)
+                  );
+                })
+                .map((post: Post) => (
                 <View key={post.id} style={styles.postCard}>
                   {/* Post Header */}
                   <View style={styles.postHeader}>
                     <View style={styles.avatar}>
                       <Text style={styles.avatarText}>
-                        {getInitials((post.profiles?.full_name && post.profiles.full_name.trim()) || 'Anonymous')}
+                        {getInitials(
+                          post.profiles?.full_name?.trim() ||
+                          post.profiles?.username?.trim() ||
+                          'A'
+                        )}
                       </Text>
                     </View>
                     <View style={styles.postAuthorInfo}>
                       <TouchableOpacity onPress={() => openUserProfile(post.user_id)}>
                         <Text style={styles.postAuthor}>
-                          {(post.profiles?.full_name && post.profiles.full_name.trim()) || 'Anonymous User'}
+                          {post.profiles?.full_name?.trim() ||
+                           (post.profiles?.username ? `@${post.profiles.username}` : 'Anonymous User')}
                         </Text>
                       </TouchableOpacity>
                       <View style={styles.postMeta}>
@@ -910,13 +943,15 @@ export default function SocialScreen() {
                           style={styles.menuButton}
                           onPress={() => handleEditPost(post)}
                         >
-                          <Text style={styles.menuButtonText}>✏️</Text>
+                          <Ionicons name="pencil-outline" size={18} color={colors.text} />
+                          <Text style={styles.menuButtonLabel}>Edit</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={styles.menuButton}
+                          style={[styles.menuButton, styles.menuButtonDelete]}
                           onPress={() => handleDeletePost(post.id)}
                         >
-                          <Text style={styles.menuButtonText}>🗑️</Text>
+                          <Ionicons name="trash-outline" size={18} color={colors.error} />
+                          <Text style={[styles.menuButtonLabel, { color: colors.error }]}>Delete</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -933,15 +968,15 @@ export default function SocialScreen() {
                   {/* Post Actions */}
                   <View style={styles.postActions}>
                     <TouchableOpacity style={styles.actionButton}>
-                      <Text style={styles.actionIcon}>👍</Text>
+                      <Ionicons name="thumbs-up-outline" size={18} color={colors.textSecondary} />
                       <Text style={styles.actionText}>{post.likes_count || 0}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.actionButton}>
-                      <Text style={styles.actionIcon}>💬</Text>
+                      <Ionicons name="chatbubble-outline" size={18} color={colors.textSecondary} />
                       <Text style={styles.actionText}>{post.comments_count || 0}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.actionButton}>
-                      <Text style={styles.actionIcon}>📤</Text>
+                      <Ionicons name="share-outline" size={18} color={colors.textSecondary} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -971,7 +1006,7 @@ export default function SocialScreen() {
               </View>
             ) : communities.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyStateIcon}>👥</Text>
+                <Ionicons name="people-outline" size={48} color={colors.textSecondary} />
                 <Text style={styles.emptyStateTitle}>No Communities Yet</Text>
                 <Text style={styles.emptyStateText}>
                   Be the first to create a community!
@@ -983,7 +1018,9 @@ export default function SocialScreen() {
                   <View style={styles.communityInfo}>
                     {/* Colored icon background derived from community's stored color */}
                     <View style={[styles.communityIcon, { backgroundColor: getCommunityColor(community) }]}>
-                      <Text style={styles.communityIconText}>{community.icon}</Text>
+                      <Text style={styles.communityIconText}>
+                        {COMMUNITY_ICON_MAP[community.name] ?? community.icon}
+                      </Text>
                     </View>
                     <View style={styles.communityTextBlock}>
                       <Text style={styles.communityName}>{community.name}</Text>
@@ -1015,7 +1052,7 @@ export default function SocialScreen() {
         {activeTab === 'people' && (
           <>
             <View style={styles.peopleSearchBar}>
-              <Text style={styles.searchIcon}>🔍</Text>
+              <Ionicons name="search" size={18} color={colors.textSecondary} />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search people..."
@@ -1033,7 +1070,7 @@ export default function SocialScreen() {
               </View>
             ) : people.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyStateIcon}>👤</Text>
+                <Ionicons name="person-outline" size={48} color={colors.textSecondary} />
                 <Text style={styles.emptyStateTitle}>No People Yet</Text>
                 <Text style={styles.emptyStateText}>
                   Be the first to join the GIDI community!
@@ -1108,7 +1145,7 @@ export default function SocialScreen() {
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
+                <Ionicons name="close" size={20} color={colors.text} />
               </TouchableOpacity>
               <Text style={styles.modalTitle}>{editingPost ? 'Edit Post' : 'Create Post'}</Text>
               <TouchableOpacity
@@ -1142,7 +1179,7 @@ export default function SocialScreen() {
 
               {/* Location Input */}
               <View style={styles.modalInputGroup}>
-                <Text style={styles.modalInputLabel}>📍 Location (Optional)</Text>
+                <Text style={styles.modalInputLabel}>Location (Optional)</Text>
                 <TextInput
                   style={styles.modalInput}
                   placeholder="Where are you?"
@@ -1154,7 +1191,7 @@ export default function SocialScreen() {
 
               {/* Community Selection */}
               <View style={styles.modalInputGroup}>
-                <Text style={styles.modalInputLabel}>👥 Community (Optional)</Text>
+                <Text style={styles.modalInputLabel}>Community (Optional)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.communityOptions}>
                     <TouchableOpacity
@@ -1188,7 +1225,7 @@ export default function SocialScreen() {
                 style={styles.imagePickerButton}
                 onPress={handlePickImage}
               >
-                <Text style={styles.imagePickerIcon}>📷</Text>
+                <Ionicons name="camera" size={24} color={colors.primary} />
                 <Text style={styles.imagePickerText}>
                   {selectedImage ? 'Change Image' : 'Add Image'}
                 </Text>
@@ -1221,7 +1258,7 @@ export default function SocialScreen() {
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setShowCreateCommunityModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
+                <Ionicons name="close" size={20} color={colors.text} />
               </TouchableOpacity>
               <Text style={styles.modalTitle}>New Community</Text>
               <TouchableOpacity
@@ -1330,7 +1367,7 @@ export default function SocialScreen() {
           {/* Modal Header */}
           <View style={styles.profileModalHeader}>
             <TouchableOpacity onPress={() => setViewingProfile(null)} style={styles.profileModalBack}>
-              <Text style={styles.profileModalBackText}>← Back</Text>
+              <Ionicons name="arrow-back" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
 
@@ -1396,7 +1433,7 @@ export default function SocialScreen() {
               {/* Posts grid */}
               {viewingProfilePosts.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateIcon}>📝</Text>
+                  <Ionicons name="document-text-outline" size={64} color={colors.textSecondary} style={{ opacity: 0.5, marginBottom: 16 }} />
                   <Text style={styles.emptyStateText}>No posts yet</Text>
                 </View>
               ) : (
@@ -1410,11 +1447,11 @@ export default function SocialScreen() {
                       )}
                       <View style={[styles.postActions, { marginTop: 8 }]}>
                         <View style={styles.actionButton}>
-                          <Text style={styles.actionIcon}>👍</Text>
+                          <Ionicons name="thumbs-up-outline" size={16} color={colors.textSecondary} />
                           <Text style={styles.actionText}>{post.likes_count || 0}</Text>
                         </View>
                         <View style={styles.actionButton}>
-                          <Text style={styles.actionIcon}>💬</Text>
+                          <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
                           <Text style={styles.actionText}>{post.comments_count || 0}</Text>
                         </View>
                         <Text style={styles.postMetaText}>{formatTimeAgo(post.created_at)}</Text>
@@ -1591,12 +1628,23 @@ const getStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
   },
   menuButton: {
-    padding: 8,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: colors.border,
+    gap: 2,
+  },
+  menuButtonDelete: {
+    backgroundColor: colors.error + '18',
   },
   menuButtonText: {
-    fontSize: 16,
+    fontSize: 14,
+  },
+  menuButtonLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   postContent: {
     marginBottom: 12,
@@ -1917,7 +1965,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   ccPreviewEmoji: {
     fontSize: 28,
-    fontFamily: '',
   },
   ccPreviewText: {
     flex: 1,

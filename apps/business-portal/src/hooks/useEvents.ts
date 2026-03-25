@@ -114,13 +114,19 @@ export function useCreateEvent() {
     mutationFn: async (eventData: CreateEventData) => {
       if (!user) throw new Error('User not authenticated');
 
-      // Check if user can create more events this month
-      const { data: canCreate, error: limitError } = await supabase
-        .rpc('check_event_creation_limit', { p_user_id: user.id });
+      // Check event limit directly (avoids RPC which can hang on free-tier projects)
+      const maxEvents = subscription?.max_events_per_month ?? 5;
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
 
-      if (limitError) throw limitError;
-      if (!canCreate) {
-        const maxEvents = subscription?.max_events_per_month || 5;
+      const { count: eventsThisMonth, error: countError } = await supabase
+        .from('events')
+        .select('*', { count: 'exact', head: true })
+        .eq('organizer_id', user.id)
+        .gte('created_at', monthStart.toISOString());
+
+      if (!countError && eventsThisMonth !== null && eventsThisMonth >= maxEvents) {
         throw new Error(
           `Monthly event limit reached. You can create up to ${maxEvents} event(s) per month on your ${subscription?.tier || 'Free'} plan. Upgrade to add more events.`
         );

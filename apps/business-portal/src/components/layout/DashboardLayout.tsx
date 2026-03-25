@@ -1,10 +1,10 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, Link } from 'react-router-dom';
 import { useBusinessAuth } from '../../contexts/BusinessAuthContext';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
 export function DashboardLayout() {
-  const { user, profile, loading } = useBusinessAuth();
+  const { user, profile, loading, signOut } = useBusinessAuth();
 
   // Show loading spinner while checking auth
   if (loading) {
@@ -20,8 +20,18 @@ export function DashboardLayout() {
     return <Navigate to="/login" replace />;
   }
 
-  // Check if user is a Business Owner
-  if (profile && profile.role !== 'Business Owner') {
+  // Wait for profile to load before checking role
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Check if user has an allowed role
+  const allowedRoles = ['Business Owner', 'Admin', 'Super Admin'];
+  if (!allowedRoles.includes(profile.role)) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center">
@@ -29,7 +39,21 @@ export function DashboardLayout() {
           <p className="text-muted-foreground mb-4">
             This portal is only accessible to business owners.
           </p>
-          <p className="text-sm">Current role: {profile.role}</p>
+          <p className="text-sm text-muted-foreground mb-6">Current role: {profile?.role}</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => signOut()}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+            >
+              Sign out &amp; use a different account
+            </button>
+            <Link
+              to="/login"
+              className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-accent"
+            >
+              Back to Login
+            </Link>
+          </div>
         </div>
       </div>
     );

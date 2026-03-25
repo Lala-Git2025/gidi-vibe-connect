@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../config/supabase';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 
@@ -167,7 +168,7 @@ export default function ExploreAreaScreen() {
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Text style={styles.backButton}>←</Text>
+            <Ionicons name="arrow-back" size={24} color={colors.primary} />
           </TouchableOpacity>
           <Text style={styles.appName}>AREAS</Text>
           <View style={{ width: 24 }} />
@@ -181,7 +182,7 @@ export default function ExploreAreaScreen() {
 
         {/* Areas Grid */}
         <View style={styles.areasSection}>
-          <Text style={styles.sectionTitle}>📍 Areas & Neighborhoods</Text>
+          <Text style={styles.sectionTitle}>Areas & Neighborhoods</Text>
           <View style={styles.areasGrid}>
             {LAGOS_AREAS.map((area) => (
               <TouchableOpacity
@@ -219,7 +220,7 @@ export default function ExploreAreaScreen() {
             {/* Trending Now */}
             <View style={styles.collectionSection}>
               <View style={styles.collectionHeader}>
-                <Text style={styles.collectionTitle}>🔥 Trending Now</Text>
+                <Text style={styles.collectionTitle}>Trending Now</Text>
                 <Text style={styles.collectionSubtitle}>Hottest spots in Lagos</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.collectionScroll}>
@@ -237,10 +238,10 @@ export default function ExploreAreaScreen() {
                     <View style={styles.venueCardGradient} />
                     <View style={styles.venueCardContent}>
                       <View style={styles.venueCardBadge}>
-                        <Text style={styles.venueCardBadgeText}>⭐ {venue.rating}</Text>
+                        <Text style={styles.venueCardBadgeText}>{venue.rating}</Text>
                       </View>
                       <Text style={styles.venueCardName}>{venue.name}</Text>
-                      <Text style={styles.venueCardLocation}>📍 {venue.location}</Text>
+                      <Text style={styles.venueCardLocation}>{venue.location}</Text>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -250,7 +251,7 @@ export default function ExploreAreaScreen() {
             {/* New & Hot */}
             <View style={styles.collectionSection}>
               <View style={styles.collectionHeader}>
-                <Text style={styles.collectionTitle}>✨ New & Hot</Text>
+                <Text style={styles.collectionTitle}>New & Hot</Text>
                 <Text style={styles.collectionSubtitle}>Latest additions to explore</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.collectionScroll}>
@@ -271,7 +272,7 @@ export default function ExploreAreaScreen() {
                         <Text style={styles.venueCardBadgeText}>NEW</Text>
                       </View>
                       <Text style={styles.venueCardName}>{venue.name}</Text>
-                      <Text style={styles.venueCardLocation}>📍 {venue.location}</Text>
+                      <Text style={styles.venueCardLocation}>{venue.location}</Text>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -305,7 +306,7 @@ export default function ExploreAreaScreen() {
                       <Text style={styles.venueListName}>{venue.name}</Text>
                       <Text style={styles.venueListCategory}>{venue.category}</Text>
                       <View style={styles.venueListRating}>
-                        <Text style={styles.venueListRatingText}>⭐ {venue.rating}</Text>
+                        <Ionicons name="star" size={11} color="#f59e0b" /><Text style={styles.venueListRatingText}> {venue.rating}</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -409,6 +410,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   areaEmoji: {
     fontSize: 32,
     marginBottom: 8,
+    fontFamily: '',
   },
   areaName: {
     fontSize: 18,

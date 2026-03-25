@@ -10,24 +10,14 @@ import VenueDetails from './pages/VenueDetails';
 import Analytics from './pages/Analytics';
 import Events from './pages/Events';
 import EventForm from './pages/EventForm';
-
-// Placeholder pages - will build these in Phase 2+
-
-function EventDetails() {
-  return <div><h1 className="text-2xl font-bold">Event Details</h1><p className="text-muted-foreground mt-2">View event details</p></div>;
-}
-
-function Offers() {
-  return <div><h1 className="text-2xl font-bold">Offers</h1><p className="text-muted-foreground mt-2">Manage exclusive offers</p></div>;
-}
-
-function Subscription() {
-  return <div><h1 className="text-2xl font-bold">Subscription</h1><p className="text-muted-foreground mt-2">Manage your subscription plan</p></div>;
-}
-
-function Settings() {
-  return <div><h1 className="text-2xl font-bold">Settings</h1><p className="text-muted-foreground mt-2">Account settings</p></div>;
-}
+import EventDetails from './pages/EventDetails';
+import Offers from './pages/Offers';
+import Subscription from './pages/Subscription';
+import Settings from './pages/Settings';
+import AdminOverview from './pages/admin/AdminOverview';
+import AdminVenues from './pages/admin/AdminVenues';
+import AdminPromotions from './pages/admin/AdminPromotions';
+import AdminUsers from './pages/admin/AdminUsers';
 
 function App() {
   return (
@@ -53,6 +43,10 @@ function App() {
             <Route path="/offers" element={<Offers />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/admin" element={<AdminOverview />} />
+            <Route path="/admin/venues" element={<AdminVenues />} />
+            <Route path="/admin/promotions" element={<AdminPromotions />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
           </Route>
 
           {/* Default redirect */}

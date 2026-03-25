@@ -19,19 +19,27 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    // Refresh session on mount to ensure JWT is not stale
+    supabase.auth.refreshSession().then(({ data: { session } }) => {
       if (session?.user) {
+        setUser(session.user);
         fetchUserData(session.user.id);
       } else {
-        setLoading(false);
+        // Fall back to existing session if refresh fails
+        supabase.auth.getSession().then(({ data: { session: existing } }) => {
+          setUser(existing?.user ?? null);
+          if (existing?.user) {
+            fetchUserData(existing.user.id);
+          } else {
+            setLoading(false);
+          }
+        });
       }
     });
 
     // Listen for auth changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchUserData(session.user.id);
@@ -58,34 +66,34 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
         .eq('user_id', userId)
         .single();
 
-      if (profileError) throw profileError;
-      setProfile(profileData);
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        // Profile may not exist yet (trigger latency) — continue anyway
+      } else {
+        setProfile(profileData);
+      }
 
       // Fetch subscription
-      const { data: subscriptionData, error: subscriptionError } = await supabase
+      const { data: subscriptionData } = await supabase
         .from('business_subscriptions')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (!subscriptionError) {
-        setSubscription(subscriptionData);
-      }
+      setSubscription(subscriptionData ?? null);
 
       // Fetch verification
-      const { data: verificationData, error: verificationError } = await supabase
+      const { data: verificationData } = await supabase
         .from('verification_requests')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (!verificationError) {
-        setVerification(verificationData);
-      }
+      setVerification(verificationData ?? null);
     } catch (error) {
       console.error('Error fetching user data:', error);
     } finally {
@@ -110,6 +118,10 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
 
       if (authError) return { error: authError };
       if (!authData.user) return { error: new Error('User creation failed') };
+
+      // Set user immediately so navigation works before onAuthStateChange fires
+      setUser(authData.user);
+      setLoading(false);
 
       // 2. Create business subscription (Free tier)
       const { error: subscriptionError } = await supabase
@@ -159,10 +171,15 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+
+      if (!error && data.user) {
+        setUser(data.user);
+        setLoading(false);
+      }
 
       return { error };
     } catch (error) {
@@ -183,11 +200,9 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (data) {
-      setSubscription(data);
-    }
+    setSubscription(data ?? null);
   };
 
   const value = {

@@ -1,950 +1,798 @@
-# 📱 Gidi Connect Consumer App - Complete Feature Documentation
+# Gidi Connect — Complete Feature Documentation
 
-Complete documentation of all features, components, screens, and updates in the consumer-app (React Native mobile application).
-
----
-
-## 📋 Table of Contents
-
-1. [App Overview](#app-overview)
-2. [Navigation Structure](#navigation-structure)
-3. [Screens](#screens)
-4. [Components](#components)
-5. [Features](#features)
-6. [Design System](#design-system)
-7. [Database Integration](#database-integration)
-8. [Configuration](#configuration)
-9. [Recent Updates](#recent-updates)
+Full documentation of all features, screens, components, and updates across the **consumer app** (React Native) and **business portal** (React web).
 
 ---
 
-## App Overview
+## Table of Contents
 
-**Platform**: React Native (Expo)
-**Framework**: React Native 0.81.5 with Expo ~54.0.30
-**Navigation**: React Navigation v7 (Bottom Tabs)
-**Database**: Supabase
-**Language**: TypeScript
-
-### Key Technologies
-- `@react-navigation/native` v7.1.26
-- `@react-navigation/bottom-tabs` v7.9.0
-- `@supabase/supabase-js` v2.89.0
-- `react-native-safe-area-context` v5.6.0
-- `react-native-screens` v4.16.0
+1. [Tech Stack](#tech-stack)
+2. [Consumer App — Navigation](#consumer-app--navigation)
+3. [Consumer App — Screens](#consumer-app--screens)
+4. [Consumer App — Components](#consumer-app--components)
+5. [Consumer App — Features](#consumer-app--features)
+6. [Business Portal](#business-portal)
+7. [Admin Portal](#admin-portal)
+8. [Database Schema](#database-schema)
+9. [Design System](#design-system)
+10. [Configuration & Commands](#configuration--commands)
+11. [Recent Updates](#recent-updates)
+12. [Known Issues](#known-issues)
+13. [File Structure](#file-structure)
 
 ---
 
-## Navigation Structure
+## Tech Stack
 
-### Custom Tab Bar
-- **Implementation**: Custom tab bar component replacing default React Navigation tab bar
-- **Visible Tabs**: 5 tabs (Home, Explore, Events, Social, Profile)
-- **Hidden Screens**: News and ExploreArea (accessible via navigation but not visible in tab bar)
-- **Styling**:
-  - Black background (#000)
-  - Golden yellow active color (#EAB308)
-  - Gray inactive color (#9ca3af)
-  - iOS-specific padding for notch/home indicator
-  - Platform-specific heights (iOS: 85px, Android: 70px)
+### Consumer App
+| Concern | Technology |
+|---|---|
+| Platform | React Native (Expo SDK 54) |
+| Navigation | React Navigation v7 (Bottom Tabs) |
+| Backend | Supabase (PostgreSQL, Auth, Storage) |
+| Language | TypeScript |
+| State | React Context (ThemeContext) |
+| Video | expo-video ~3.0 |
+| Icons | @expo/vector-icons (Ionicons) |
+| Font | Orbitron via @expo-google-fonts |
+| Build | Expo Dev Client (native build required for expo-video) |
+
+### Business Portal
+| Concern | Technology |
+|---|---|
+| Framework | React + Vite |
+| Styling | Tailwind CSS + shadcn/ui |
+| Data | @tanstack/react-query + Supabase |
+| Icons | lucide-react |
+| Language | TypeScript |
+| Router | React Router v6 |
+
+---
+
+## Consumer App — Navigation
+
+### Tab Bar
+- **Implementation**: Custom React Navigation bottom tab bar
+- **Visible Tabs**: 5 (Home, Explore, Events, Social, Profile)
+- **Hidden Screens**: News, ExploreArea, Discover (navigated to programmatically)
+- **Icons**: Ionicons from `@expo/vector-icons` — replaces all previous emoji icons
+- **Safe area**: `useSafeAreaInsets` for bottom padding (no hardcoded Platform.OS checks)
 
 ### Tab Configuration
-1. **Home** 🏠 - Main feed with news, traffic, vibe check, trending venues
-2. **Explore** 🔍 - Browse venues by category and area
-3. **Events** 📅 - Upcoming events and activities
-4. **Social** 💬 - Community features and social interactions
-5. **Profile** 👤 - User profile and settings
-6. **News** 📰 - Full news page (hidden tab, accessed via category grid)
-7. **ExploreArea** 🗺️ - Area-specific exploration (hidden tab, accessed via featured card)
+| Tab | Icon | Screen |
+|---|---|---|
+| Home | `home` | HomeScreen |
+| Explore | `search` | ExploreScreen |
+| Events | `calendar` | EventsScreen |
+| Social | `chatbubble` | SocialScreen |
+| Profile | `person` | ProfileScreen |
 
 ---
 
-## Screens
+## Consumer App — Screens
 
 ### 1. HomeScreen.tsx
 **File**: `apps/consumer-app/screens/HomeScreen.tsx`
-**Lines**: 646 lines
 
-#### Features:
-- **Header**:
-  - "GIDI" branding with green live dot indicator
-  - Notification bell icon (right side)
-  - No logo image (text-based design)
-
-- **Time-Based Greeting**:
-  - Dynamic greeting: "MONDAY MORNING", "TUESDAY EVENING", etc.
-  - "Gidi Connect." title with golden dot accent
-
-- **Search Section**:
-  - Search bar with magnifying glass icon
-  - Placeholder: "Search your destination here..."
-  - Navigates to Explore screen on tap
-
-- **Explore the Area Card**:
-  - Featured card with 🗺️ emoji
-  - Golden border (#EAB308)
-  - "Explore the Area" title
-  - "Discover venues by neighborhood" subtitle
-  - Navigates to ExploreArea screen
-
-- **Categories Grid**:
-  - 8 categories in 2-column grid
-  - Categories: Bars & Lounges 🍸, Restaurants 🍽️, GIDI News 📰, Nightlife 🎵, DayLife ☀️, Events 📅, Social 💬, See More ➕
-  - Card size: Dynamic width based on screen size
-  - Height: 96px per card
-
-- **Stories Section**:
-  - Horizontal scrolling stories
-  - Component: `<StorySection />`
-
-- **Live News Section**:
-  - Title: "🔴 LIVE - GIDI News"
-  - Displays latest 3 news articles
-  - Horizontal scroll
-  - Card dimensions: 260px wide × 100px image height
-  - Features:
-    - Real images from Supabase
-    - Category badges
-    - Time ago display (e.g., "2h ago")
-    - Title and summary
-    - "Read More →" link
-    - External URL opening
-  - Refresh functionality via pull-to-refresh
-  - Database: Fetches from `news` table, ordered by publish_date
-
-- **Traffic Update Section**:
-  - Title: "🚦 Live Traffic Update"
-  - Component: `<TrafficAlert />`
-  - Real-time traffic information
-
-- **Vibe Check Section**:
-  - Title: "🎯 Vibe Check"
-  - Component: `<VibeCheck />`
-  - Venue atmosphere metrics
-
-- **Trending Venues Section**:
-  - Title: "🔥 Trending Venues"
-  - "See All" link to Explore
-  - Component: `<TrendingVenues />`
-  - Card dimensions: 150px wide × 80px image height
-  - Refresh trigger on pull-to-refresh
-
-#### Styling:
-- Background: Pure black (#000)
-- Primary color: Golden yellow (#EAB308)
-- Card background: Dark gray (#18181b)
-- Border color: Darker gray (#27272a)
-- Text colors: White (#fff), Light gray (#9ca3af), Dark gray (#6b7280)
+#### Features
+- **Header**: "GIDI" brand text + green live dot + Ionicons notification bell
+- **Time-Based Greeting**: Dynamic "MONDAY MORNING" / "TUESDAY EVENING" etc.
+- **Search Bar**: Navigates to Explore screen on tap
+- **Explore the Area Card**: Featured banner → ExploreArea screen
+- **Categories Grid**: 8 categories in 2-column grid using Ionicons — Bars, Restaurants, GIDI News, Nightlife, DayLife, Events, Social, See More
+- **Stories Section**: `<StorySection />` — horizontal scrolling My Vibe stories
+- **Live News Section**: Latest 3 articles from DB, horizontal scroll, real images + time-ago. Only rendered when `liveNews.length > 0`
+- **Traffic Update**: `<TrafficAlert />` — real-time Lagos traffic severity cards
+- **Vibe Check**: `<VibeCheck />` — area atmosphere metrics (crowd, music, price, wait)
+- **Trending Venues**: `<TrendingVenues />` — hot score ranked venues with promoted slots
 
 ---
 
 ### 2. NewsScreen.tsx
 **File**: `apps/consumer-app/screens/NewsScreen.tsx`
-**Lines**: 381 lines
 
-#### Features:
-- **Header**:
-  - Back button (← in golden yellow)
-  - "GIDI NEWS" title (centered, uppercase, golden yellow)
-  - Right icon placeholder
+#### Features
+- Back button + Ionicons newspaper icon + "GIDI NEWS" title
+- "LIVE" badge + "Latest news in Lagos" subtitle
+- Vertical scrolling news feed (up to 20 articles)
+- Real images, category badges, time-ago, "Read More" links
+- Pull-to-refresh
+- Ionicons empty-state icon
 
-- **Title Section**:
-  - "🔴 LIVE" badge
-  - "Latest news in Lagos" subtitle
-
-- **News Feed**:
-  - Vertical scrolling list
-  - Displays up to 20 latest articles
-  - Ordered by publish date (newest first)
-  - Each article card shows:
-    - Featured image (if available) or 📰 placeholder
-    - Category badge (top-left on image)
-    - Time ago display
-    - Full title
-    - Summary/description
-    - "Read More →" link
-  - Card dimensions:
-    - Image: 160px height
-    - Padding: 12px
-    - Border radius: 12px
-
-- **Pull-to-Refresh**:
-  - Tint color: Golden yellow
-  - Refreshes news from database
-
-- **Database Integration**:
-  - Fetches from `news` table
-  - Fields: title, summary, category, publish_date, featured_image_url, external_url
-  - Limit: 20 articles
+#### Database
+- Table: `news`, ordered by `publish_date` desc, limit 20
 
 ---
 
 ### 3. ExploreScreen.tsx
 **File**: `apps/consumer-app/screens/ExploreScreen.tsx`
-**Lines**: 403 lines
 
-#### Features:
-- **Header**:
-  - "EXPLORE" title (uppercase, golden yellow, no logo)
-  - Filter button (right side)
-
-- **Search Bar**:
-  - Full-width search input
-  - Placeholder: "Search venues, areas..."
-  - Clear button when text present
-
-- **Filter Pills**:
-  - Horizontal scrolling category filters
-  - Active state: Golden yellow background
-  - Inactive state: Dark gray background
-
-- **Venues Grid**:
-  - Vertical scrolling list
-  - Each venue card displays:
-    - Venue image or placeholder
-    - Name, location, rating
-    - Category badge
-    - Open/Closed status
-  - Empty state when no results
+#### Features
+- Search bar with Ionicons search icon and clear button
+- Horizontal scrolling category filter pills with Ionicons (bar-chart, restaurant, moon, sunny, calendar, chatbubble, ellipsis)
+- Neighbourhood filter pills (Victoria Island, Lekki, Ikoyi, etc.) with Ionicons location icon
+- Venues grid: name, location, star rating (Ionicons `star`), category badge, open/closed status
+- Venue detail modal: address, phone, website, Instagram — all using Ionicons action icons
+- Empty state with Ionicons `search` icon
 
 ---
 
 ### 4. ExploreAreaScreen.tsx
 **File**: `apps/consumer-app/screens/ExploreAreaScreen.tsx`
-**Lines**: 474 lines
 
-#### Features:
-- **Header**:
-  - "AREAS" title (uppercase, golden yellow)
-  - No logo image
-
-- **Area Cards**:
-  - Grid layout of Lagos areas
-  - Each card shows:
-    - Area name
-    - Number of venues
-    - Emoji icon
-  - Areas: Victoria Island, Lekki, Ikeja, Yaba, Maryland, Ikoyi, Ajah, Surulere
+#### Features
+- Grid of Lagos areas: Victoria Island, Lekki, Ikeja, Yaba, Maryland, Ikoyi, Ajah, Surulere
+- Each card: area name, venue count, Ionicons icon
+- Star ratings rendered with Ionicons `star` (replaces ★ character)
 
 ---
 
 ### 5. EventsScreen.tsx
 **File**: `apps/consumer-app/screens/EventsScreen.tsx`
-**Lines**: 253 lines
 
-#### Features:
-- **Header**:
-  - "EVENTS" title (uppercase, golden yellow)
-  - Calendar icon (right side)
-
-- **Date Selector**:
-  - Horizontal scrolling date picker
-  - Shows next 7 days
-  - Active date highlighted
-
-- **Events List**:
-  - Vertical scrolling events
-  - Each event shows:
-    - Event image
-    - Title, venue, date/time
-    - Price/entry info
-    - RSVP button
+#### Features
+- Horizontal date selector (next 7 days)
+- Events list: image, title, venue, Ionicons meta icons (calendar, time, location)
+- "Featured" badge (replaces "⭐ Featured")
+- Pull-to-refresh, RSVP button
+- Empty state with Ionicons `calendar` icon
+- Fallback category icons using Ionicons
 
 ---
 
 ### 6. SocialScreen.tsx
 **File**: `apps/consumer-app/screens/SocialScreen.tsx`
-**Lines**: 410 lines
 
-#### Features:
-- **Header**:
-  - "SOCIAL" title (uppercase, golden yellow)
-  - Add post button (+ icon)
+#### Tabs
+- **Feed** — social posts
+- **Communities** — browse/join/leave Lagos communities
+- **People** — discover/follow other users
 
-- **Tabs**:
-  - Feed, Communities, People
-  - Active tab highlighted
+#### Feed Tab
+- Vertical scrolling posts: avatar, name, content, images
+- Ionicons action icons: `thumbs-up`, `chatbubble`, `share`
+- Ionicons camera icon for "Add Story" button
+- Post creation modal: text (500 char), location, community, image picker
+- Image upload → Supabase `social-media` bucket
+- Posts stored in `posts` table
 
-- **Communities Section**:
-  - List of Lagos communities:
-    - Nightlife Lagos 🌙 (12,453 members)
-    - Restaurant Reviews 🍽️ (8,932 members)
-    - Events & Concerts 🎵 (15,672 members)
-    - Island Vibes 🏝️ (6,234 members)
-    - Mainland Connect 🏙️ (5,891 members)
-  - Join/Joined status
+#### Communities Tab
+- 8 seeded core communities + user-created communities
+- Emoji icons use `COMMUNITY_ICON_MAP` (Unicode escape sequences — bypasses DB encoding)
+- Join/Leave: optimistic UI with revert-on-failure
+- `member_count` updated by DB trigger
+- Community creation: name, description, emoji picker (6 categories), color picker (10 colors)
+- Modal labels use Ionicons (`create`, `location`, `people`, `image`)
 
-- **Social Feed**:
-  - User posts with images
-  - Like, comment, share buttons
-  - User avatars and names
+#### People Tab
+- All users: avatar, name, bio
+- Follow/Unfollow state from `follows` table
 
 ---
 
 ### 7. ProfileScreen.tsx
 **File**: `apps/consumer-app/screens/ProfileScreen.tsx`
-**Lines**: 291 lines
 
-#### Features:
-- **Header**:
-  - "PROFILE" title (uppercase, golden yellow)
-  - Settings icon (right side)
+#### Auth Modes
+- Sign In, Sign Up, Forgot Password, Guest Mode
+- All auth mode icons use Ionicons (mail, lock-closed, person, etc.)
 
-- **Profile Info**:
-  - User avatar
-  - Username
-  - Location
-  - Stats: Posts, Followers, Following
-
-- **Action Buttons**:
-  - Edit Profile
-  - Share Profile
-
-- **Menu Items**:
-  - My Favorites
-  - Saved Places
-  - Settings
-  - Help & Support
-  - Log Out
+#### Profile (authenticated)
+- Avatar from `avatars` bucket
+- Full name, username, bio from `profiles` table
+- Stats: posts, followers, following
+- Edit Profile, Share Profile
+- Settings menu uses Ionicons throughout: notifications, person, camera, key, log-out, trophy, trash
 
 ---
 
-## Components
+### 8. DiscoverScreen.tsx
+**File**: `apps/consumer-app/screens/DiscoverScreen.tsx`
+
+#### Features
+- Activity feed with Ionicons activity icons (getActivityIcon returns Ionicons names)
+- Back button uses Ionicons `arrow-back`
+- Grid/collection views
+
+---
+
+## Consumer App — Components
 
 ### 1. StorySection.tsx
 **File**: `apps/consumer-app/components/StorySection.tsx`
-**Lines**: 120 lines
 
-#### Features:
-- Horizontal scrolling stories
-- Circular story avatars
-- Active/viewed states
-- Story types: venue highlights, user stories, event previews
-- Gradient borders for active stories
+- Horizontal scrolling story circles
+- "My Vibe" camera button to add story
+- Story viewing via `<StoryViewer />`
+- Upload to `social-media` Supabase bucket
+- Opens `<StoryEditor />` for creation
 
 ---
 
-### 2. TrafficAlert.tsx
+### 2. StoryViewer.tsx
+**File**: `apps/consumer-app/components/StoryViewer.tsx`
+
+#### Features
+- Full-screen modal story display (`StatusBar hidden`)
+- Animated progress bar per story (5s for images, video-length for video)
+- Left/right tap zones to navigate prev/next
+- `expo-video` player for video stories (`VideoView` component)
+- `playToEnd` listener → auto-advance on video finish
+- Filter colour-wash overlay from `FILTER_OVERLAY_MAP`
+- Text and sticker overlays positioned from relative x/y coordinates
+- Sticker text uses `fontFamily: ''` to ensure emoji renders correctly
+- Close button: Ionicons `close` icon
+
+#### Video handling
+- Detects video by `media_type === 'video'` or URL extension (mp4, mov, avi, etc.)
+- Falls back gracefully if expo-video native module not ready
+
+---
+
+### 3. StoryEditor.tsx
+**File**: `apps/consumer-app/components/StoryEditor.tsx`
+
+#### Features
+- Image/video media picker
+- Filter selection with colour preview
+- Text overlay tool: color picker, size, bold, background bubble
+- Sticker picker: emoji grid with `fontFamily: ''` for correct rendering
+- Drag-to-position overlays (relative x/y stored 0–1)
+- Navigation buttons use Ionicons `close`: "Back", "Next", "Post Story"
+- Uploads media + overlay metadata to Supabase
+
+---
+
+### 4. TrafficAlert.tsx
 **File**: `apps/consumer-app/components/TrafficAlert.tsx`
-**Lines**: 224 lines
 
-#### Features:
-- **Layout**: Horizontal card design matching traffic card pattern
-  - Emoji indicator on left
-  - Content in middle
-  - All in single row (`flexDirection: 'row'`)
-
-- **Information Displayed**:
-  - Traffic status emoji (🚗, 🚦, etc.)
-  - Alert title
-  - Location details
-  - Timestamp
-
-- **Styling**:
-  - Card: Background #18181b, padding 16px, border radius 12px
-  - Border: 1px solid #27272a
-  - Gap between elements: 12px
-
-- **Data Source**:
-  - Real-time traffic data
-  - Updates automatically
+- Horizontal scrollable severity cards: Low / Medium / High / Severe
+- `getSeverityIcon` returns Ionicons names (replaces `getSeverityEmoji`)
+- "Live Traffic Updates" title (no emoji prefix)
+- ThemeContext colors throughout
 
 ---
 
-### 3. VibeCheck.tsx
+### 5. VibeCheck.tsx
 **File**: `apps/consumer-app/components/VibeCheck.tsx`
-**Lines**: 303 lines
 
-#### Features:
-- **Metrics Displayed**:
-  - Crowd level indicator
-  - Music/atmosphere rating
-  - Price level
-  - Wait time estimates
-
-- **Visual Elements**:
-  - Emoji indicators
-  - Progress bars
-  - Color-coded status
-  - Real-time updates
-
-- **Card Layout**:
-  - Compact design
-  - Multiple metrics in single view
-  - Quick-glance information
+- Area-level vibe metrics: crowd, music, price, wait time
+- `getVibeFilters` returns Ionicons names (replaces emoji filter icons)
+- Filter chips use Ionicons icons
+- Empty state uses Ionicons `search`
+- Vibe status strings: "Electric", "Buzzing", "Chill" (no trailing emoji)
+- Single `filteredAreas` computed variable (was being called 3× per render)
 
 ---
 
-### 4. TrendingVenues.tsx
+### 6. TrendingVenues.tsx
 **File**: `apps/consumer-app/components/TrendingVenues.tsx`
-**Lines**: 336 lines
 
-#### Features:
-- **Card Design**:
-  - Width: 280px (large cards)
-  - Height: 320px
-  - Background image with gradient overlay
-  - Border radius: 16px
+#### Features
+- Large cards (280×320px) with background image + gradient overlay
+- Vibe status badge: Electric (≥4.5), Buzzing (≥4.0), Vibing (≥3.5), Chill (<3.5)
+- **Sponsored badge**: amber/primary color badge for promoted venues — shows `promotion_label` (e.g. "Sponsored", "Featured")
+- Real visitor count: "42 here today" from `checkins_24h` (replaces random numbers)
+- "Be the first!" shown when no check-ins in last 24h
+- Ionicons: `bookmark-outline`, `location-outline`
+- Deduplicates by name before rendering
 
-- **Information Displayed**:
-  - Venue name (bold, 24px)
-  - Location with 📍 icon
-  - "Vibe Status" badge (Electric ⚡️, Buzzing 🔥, Vibing ✨, Chill 🎵)
-  - Visitor count (e.g., "234 here")
-  - Avatar stack showing active users
-  - Bookmark button
-
-- **Vibe Status Logic**:
-  - Electric ⚡️: Rating ≥ 4.5
-  - Buzzing 🔥: Rating ≥ 4.0
-  - Vibing ✨: Rating ≥ 3.5
-  - Chill 🎵: Rating < 3.5
-
-- **Data Source**:
-  - Database: `venues` table
-  - Fields: id, name, location, rating, professional_media_urls
-  - Ordered by rating (descending)
-  - Limit: 6 venues
-
-- **Fallback Data**:
-  - 6 sample venues when database is empty:
-    - Quilox (Victoria Island) - 4.8
-    - The Shank (Lekki Phase 1) - 4.7
-    - Brass & Copper (Ikoyi) - 4.6
-    - Hard Rock Cafe (Oniru) - 4.5
-    - Nok by Alara (Victoria Island) - 4.7
-    - Terra Kulture (Victoria Island) - 4.6
-  - Uses Unsplash stock images for fallback
-
-- **Loading State**:
-  - ActivityIndicator with golden yellow color
-  - Centered on screen
-
-- **Empty State**:
-  - "No trending venues at the moment" message
-  - Centered text
-
-- **Refresh Trigger**:
-  - Supports external refresh trigger via props
-  - Used by HomeScreen pull-to-refresh
+#### Data Source
+- Queries `trending_venues` Postgres view (not `venues` table directly)
+- View returns venues ranked by **time-decayed hot score** (see Database section)
+- Promoted venues always rank first (score = 999999)
+- Fallback: 6 hardcoded sample Lagos venues if DB query fails
 
 ---
 
-## Features
+### 7. ErrorBoundary.tsx
+**File**: `apps/consumer-app/components/ErrorBoundary.tsx`
 
-### 1. News System
-**Status**: ✅ FULLY OPERATIONAL
+- Wraps entire app
+- Ionicons `warning` icon (64px, amber) — replaces ⚠️ emoji
+- "Try Again" and "Reload App" recovery buttons
 
-#### Real News Scraping:
-- **Sources** (9 total):
-  - Premium Times (general)
-  - Punch (general)
-  - BellaNaija (events)
-  - Pulse Nigeria (general)
-  - Legit.ng (general)
-  - NotJustOk (nightlife)
-  - Information Nigeria (events)
-  - Vanguard (general)
-  - The Cable (general)
+---
 
-- **Content Extraction**:
-  - Real article images (Open Graph tags)
-  - Real publish dates (metadata extraction)
-  - Real summaries (article descriptions)
-  - Real URLs (direct article links)
+## Consumer App — Features
 
-- **Quality Control**:
-  - Date validation: Only articles from last 60 days
-  - Rejects future dates
-  - Rejects articles older than 1 year
-  - Duplicate prevention (URL tracking)
+### Authentication
+- Email/password sign in and sign up
+- Forgot password via `resetPasswordForEmail`
+- Guest mode
+- Profile auto-created by `handle_new_user` DB trigger
+- Session via `supabase.auth.getSession()` (local, fast)
+- Auth state refreshed on screen focus via `useFocusEffect`
 
-- **Categories**:
-  - General news
-  - Events
-  - Nightlife
-  - Entertainment gossip
+### News System
+**Auto-updates every 3 hours** via macOS launchd.
 
-#### Auto-Update System:
-- **Frequency**: Every 3 hours (24/7)
-- **Technology**: macOS launchd
-- **Configuration**: `~/Library/LaunchAgents/com.gidiconnect.newsagent.plist`
-- **Logging**:
-  - Success: `logs/news-agent.log`
-  - Errors: `logs/news-agent-error.log`
+Sources (14 total): Linda Ikeji Blog, Instablog9ja, 36ng, Information Nigeria (×2), Premium Times, Punch, BellaNaija (×2), Pulse Nigeria (×2), NotJustOk, Legit.ng (×2)
 
-#### Management Commands:
-```bash
-npm run news-agent              # Run manually
-npm run news-auto:status        # Check status
-npm run news-auto:logs          # View live logs
-npm run news-auto:install       # Install auto-update
-npm run news-auto:uninstall     # Uninstall auto-update
+Quality controls:
+- Articles must have a publish date
+- Only last 60 days accepted; future dates rejected
+- Duplicate prevention: URL tracked in-run + DB check
+
+Logs: `logs/news-agent.log`, `logs/news-agent-error.log`
+
+### Trending Venues (Hot Score Algorithm)
+Venues are ranked by a **time-decayed composite score**:
+
+```
+score = (checkins_24h × 10) + (checkins_7d × 3) + (live_rating × 20)
+        ÷ (hours_since_last_activity + 2)^1.5
+```
+
+- Promoted venues are pinned to the top (score = 999,999) while `promoted_until` is in the future
+- Computed live via the `trending_venues` Postgres view
+- No cron job needed; view recalculates on every query
+
+### Stories (My Vibe)
+- Users post short-lived media moments (images or video)
+- Stored in `stories` table with `expires_at` timestamp
+- Media in `social-media` Supabase bucket
+- `filter_effect`, `overlays` (JSON) columns for editor-applied effects
+- `story_views` table tracks who has seen each story
+
+### Communities
+8 seeded core Lagos communities:
+
+| Community | Icon | Color |
+|---|---|---|
+| Nightlife Lagos | 🌙 | #4338CA |
+| Restaurant Reviews | 🍽️ | #EA580C |
+| Events & Concerts | 🎵 | #7C3AED |
+| Island Vibes | 🏝️ | #0891B2 |
+| Mainland Connect | 🏙️ | #059669 |
+| Foodies United | 🍕 | #D97706 |
+| Party People | 🎉 | #DB2777 |
+| Culture & Arts | 🎨 | #DC2626 |
+
+- Join/leave with optimistic UI + revert-on-failure
+- Member count via DB trigger
+- User-created communities supported
+
+### People / Follow System
+- Browse all users from `profiles`
+- Follow/unfollow → `follows` table
+- Follower/following counts on profile
+
+### Activity Tracking
+Three tables power gamification stats:
+
+| Table | Tracks | Unique constraint |
+|---|---|---|
+| `venue_check_ins` | Venue foot traffic | One per user per venue |
+| `event_rsvps` | Event attendance | One per user per event |
+| `venue_reviews` | Venue ratings | One per user per venue |
+
+---
+
+## Business Portal
+
+**URL**: React web app (Vite + Tailwind)
+**Access**: Business Owner, Admin, Super Admin roles
+
+### Pages
+
+| Page | Route | Purpose |
+|---|---|---|
+| Dashboard | `/dashboard` | Business stats overview — venues, views, events, offers |
+| Venues | `/venues` | List of owned venues |
+| New Venue | `/venues/new` | Create venue (calls Edge Function `create-venue`) |
+| Venue Details | `/venues/:id` | Photos, info, contact, amenities, tags, **admin promotion panel** |
+| Edit Venue | `/venues/:id/edit` | Edit venue form |
+| Analytics | `/analytics` | View counts, traffic (Premium) |
+| Events | `/events` | List of owned events |
+| New Event | `/events/new` | Create event |
+| Event Details | `/events/:id` | Event info + image management |
+| Offers | `/offers` | Promotions/offers (Premium) |
+| Subscription | `/subscription` | Free / Premium / Enterprise plans |
+| Settings | `/settings` | Account settings |
+
+### Venue Creation
+- Calls Supabase Edge Function `create-venue`
+- Fields: name, description, location, category (text — flexible), contact phone/email/website/instagram, opening_hours, price_range, amenities (array), tags (array)
+- Admin-created venues bypass subscription limits
+
+### Subscription Tiers
+| Feature | Free | Premium | Enterprise |
+|---|---|---|---|
+| Venues | 1 | 3 | Unlimited |
+| Photos/venue | 10 | 50 | Unlimited |
+| Events/month | 5 | 20 | Unlimited |
+| Analytics | No | Yes | Yes |
+| Offers | No | Yes | Yes |
+| Menu mgmt | No | Yes | Yes |
+| Priority listing | No | Yes | Yes |
+
+### Admin Promotion Panel (on Venue Details)
+Visible only to Admin/Super Admin users. Allows setting:
+- **Badge label**: e.g. "Sponsored", "Featured", "VIP"
+- **Duration**: 1–365 days
+- Writes `is_promoted = true`, `promoted_until`, `promotion_label` to `venues` table
+- Venue immediately appears at the top of Trending in the consumer app
+
+---
+
+## Admin Portal
+
+**Access**: Admin and Super Admin roles only. Section appears in business portal sidebar automatically when role matches.
+
+### Pages
+
+| Page | Route | Purpose |
+|---|---|---|
+| Admin Overview | `/admin` | Platform-wide stats: total users, venues, active promotions, new signups (7d) |
+| Venue Manager | `/admin/venues` | All venues across platform — search, per-row promote/remove, days input |
+| Promotions Manager | `/admin/promotions` | Active vs expired promotion tracking, expiry countdown, cleanup |
+| User Management | `/admin/users` | Search users, filter by role, inline role assignment |
+
+### Admin Overview Stats
+- Total users (from `profiles`)
+- Total venues
+- Active promotions (is_promoted = true AND promoted_until > now)
+- New users in last 7 days
+
+### Venue Manager
+- Lists every venue (not just owned)
+- Search by name or location
+- Per-row: days input + Promote button → sets is_promoted + promoted_until
+- Active promotions show "Sponsored · Xd left" badge
+- One-click Remove button to deactivate promotion
+
+### Promotions Manager
+- Summary: active count, expired count, next expiry
+- Active promotions list with name, label, expiry date, days remaining
+- Expired promotions list (still `is_promoted = true`, needs cleanup) with Remove button
+
+### User Management
+- Lists up to 200 users ordered by join date
+- Search by full name or username
+- Filter by role (Consumer, Business Owner, Content Creator, Admin, Super Admin)
+- Inline role change via dropdown
+- Super Admin rows are read-only (cannot be demoted)
+- Shield icon displayed for Admin/Super Admin users
+
+### Making a User Admin
+Run in Supabase SQL Editor:
+```sql
+UPDATE profiles SET role = 'Admin' WHERE user_id = '<user-uuid>';
 ```
 
 ---
 
-### 2. Pull-to-Refresh
-**Screens**: HomeScreen, NewsScreen
-**Implementation**: React Native RefreshControl
+## Database Schema
 
-#### Features:
-- Golden yellow tint color (#EAB308)
-- Refreshes news from database
-- Triggers venue refresh
-- Smooth animation
-- Platform-specific styling
+### Core Tables
 
----
+| Table | Key Columns | Purpose |
+|---|---|---|
+| `profiles` | user_id, full_name, username, bio, avatar_url, role | User accounts |
+| `venues` | name, location, category (TEXT), rating, is_promoted, promoted_until, promotion_label, amenities[], tags[], instagram_handle | Venue listings |
+| `events` | title, venue_name, date, organizer_id, is_published, source | Events |
+| `news` | title, content, image_url, publish_date, source_url | News articles |
+| `posts` | content, user_id, community_id, image_url | Social posts |
+| `communities` | name, description, icon, color, member_count | Community groups |
+| `community_members` | community_id, user_id | Join records |
+| `follows` | follower_id, following_id | Follow relationships |
+| `stories` | user_id, image_url, media_type, filter_effect, overlays, expires_at | My Vibe stories |
+| `story_views` | story_id, viewer_id | Story view tracking |
+| `venue_check_ins` | user_id, venue_id, checked_in_at | Foot traffic |
+| `event_rsvps` | user_id, event_id, status | Event attendance |
+| `venue_reviews` | user_id, venue_id, rating, comment | Venue ratings |
+| `business_subscriptions` | user_id, tier, max_venues, max_photos_per_venue, etc. | Business plans |
+| `verification_requests` | user_id, business_name, status | Business verification |
 
-### 3. Navigation
-**Type**: Bottom Tab Navigation
-**Implementation**: Custom tab bar component
+### Views
 
-#### Features:
-- 5 visible tabs (Home, Explore, Events, Social, Profile)
-- 2 hidden screens (News, ExploreArea)
-- Emoji icons for tabs
-- Active state: Golden yellow (#EAB308)
-- Inactive state: Gray (#9ca3af)
-- Platform-specific padding (iOS notch support)
-- Custom press handlers
-- Accessibility support
+| View | Purpose |
+|---|---|
+| `trending_venues` | Hot-score ranked venues. Promoted venues score 999999. Joins venue_check_ins + venue_reviews to compute live signal. |
 
----
+### Storage Buckets
+| Bucket | Contents |
+|---|---|
+| `avatars` | Profile pictures |
+| `social-media` | Post images, story media |
+| `event-images` | Event banner images |
 
-### 4. Real-Time Data
-**Database**: Supabase
-**Tables Used**:
-- `news`: News articles
-- `venues`: Venue information
+### Key DB Triggers
+- `handle_new_user` — auto-creates profile row on auth signup
+- `trigger_update_community_member_count` — maintains `member_count` on community_members insert/delete
 
-#### Features:
-- Real-time data fetching
-- Optimistic UI updates
-- Error handling
-- Loading states
-- Empty states
-- Fallback data
-
----
-
-### 5. Image Handling
-**Features**:
-- Real images from news sources
-- Venue images from database
-- Fallback placeholders
-- Lazy loading (React Native Image)
-- Error handling
-- Loading states
-- Cover/contain resizing
-
----
-
-### 6. Time Display
-**Implementation**: Dynamic time-ago formatting
-
-#### Logic:
-- < 1 hour: "Xm ago"
-- < 24 hours: "Xh ago"
-- ≥ 24 hours: "Xd ago"
-
-#### Used In:
-- News cards
-- Traffic alerts
-- Social posts
-
----
-
-### 7. Search & Filter
-**Screens**: ExploreScreen
-
-#### Features:
-- Real-time search
-- Category filters
-- Location filters
-- Clear button
-- No results state
+### Key RPCs / Edge Functions
+- `create-venue` — Edge Function for business portal venue creation (bypasses anon RLS)
+- `check_event_creation_limit(user_id)` — returns boolean; enforces monthly event quota per tier
 
 ---
 
 ## Design System
 
-### Color Palette
+### ThemeContext
+All components use:
+```tsx
+const { colors, activeTheme } = useTheme();
+```
+Never hardcode color values.
+
+### Color Tokens
 ```typescript
-// Primary Colors
-primary: '#EAB308'        // Golden yellow
-background: '#000'        // Pure black
-surface: '#18181b'        // Dark gray
-
-// Text Colors
-textPrimary: '#fff'       // White
-textSecondary: '#9ca3af'  // Light gray
-textTertiary: '#6b7280'   // Medium gray
-
-// Border Colors
-border: '#27272a'         // Darker gray
-
-// Status Colors
-success: '#10B981'        // Green (live dot)
-error: '#EF4444'          // Red
-warning: '#F59E0B'        // Amber
+colors.background      // Screen background
+colors.cardBackground  // Card/surface background
+colors.border          // Borders and dividers
+colors.text            // Primary text
+colors.textSecondary   // Muted/secondary text
+colors.primary         // Golden yellow (#EAB308)
 ```
 
 ### Typography
-```typescript
-// Headers
-appName: 24px, bold, #EAB308, letter-spacing: 2
-sectionTitle: 18px, bold, #fff
-newsTitle: 14px, semi-bold, #fff
+- Brand font: **Orbitron** (via `@expo-google-fonts/orbitron`) — headers only
+- System font: all body text
+- Emoji: rendered by system font with NO `fontFamily` override (except sticker overlay in StoryViewer/StoryEditor which uses `fontFamily: ''` intentionally)
 
-// Body Text
-body: 14px, normal, #fff
-secondary: 12px, normal, #9ca3af
-caption: 11px, normal, #6b7280
-```
+### Icons
+- **All UI icons**: Ionicons from `@expo/vector-icons`
+- **Community icons**: Unicode emoji via `COMMUNITY_ICON_MAP` (not DB-stored emoji strings)
+- No bare emoji characters in any UI element except community icon map and sticker picker
 
 ### Spacing
-```typescript
-// Padding
-container: 16px
-card: 10-16px
-section: 32px margin-bottom
-
-// Card Sizes
-newsCard: 260px × 100px
-venueCard: 150px × 80px
-trendingCard: 280px × 320px
-categoryCard: (dynamic) × 96px
 ```
-
-### Border Radius
-```typescript
-small: 8px
-medium: 12px
-large: 16px
+Container padding:   16px
+Card padding:        10–16px
+Section gap:         32px
 ```
 
 ---
 
-## Database Integration
+## Configuration & Commands
 
-### Supabase Configuration
-**File**: `apps/consumer-app/config/supabase.ts`
-
-```typescript
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
-```
-
-### Database Tables Used
-
-#### 1. news
-**Columns**:
-- `id` (uuid, primary key)
-- `title` (text)
-- `summary` (text)
-- `category` (text): general, events, nightlife
-- `publish_date` (timestamp)
-- `featured_image_url` (text)
-- `external_url` (text)
-- `is_active` (boolean)
-- `source` (text): "AI Agent"
-- `created_at` (timestamp)
-
-**Queries**:
-- HomeScreen: Latest 3 articles, ordered by publish_date desc
-- NewsScreen: Latest 20 articles, ordered by publish_date desc
-
-#### 2. venues
-**Columns**:
-- `id` (uuid, primary key)
-- `name` (text)
-- `location` (text)
-- `rating` (numeric)
-- `professional_media_urls` (text array)
-
-**Queries**:
-- TrendingVenues: Top 6 venues, ordered by rating desc
-
----
-
-## Configuration
-
-### Environment Variables
-**File**: `.env`
-
+### Consumer App
 ```bash
-VITE_SUPABASE_PROJECT_ID="xvtjcpwkrsoyrhhptdmc"
-VITE_SUPABASE_PUBLISHABLE_KEY="eyJhbG..."
-VITE_SUPABASE_URL="https://xvtjcpwkrsoyrhhptdmc.supabase.co"
+# Start (requires native build for expo-video)
+cd apps/consumer-app
+npx expo run:ios          # iOS simulator
+npx expo run:android      # Android emulator
 
-GEMINI_API_KEY="AIzaSy..."
-SUPABASE_SERVICE_ROLE_KEY="eyJhbG..."
+# Dev server only (no QR for Expo Go — expo-video requires dev client)
+npx expo start
 ```
 
-### Package Configuration
-**File**: `apps/consumer-app/package.json`
-
-```json
-{
-  "name": "consumer-app",
-  "version": "1.0.0",
-  "main": "index.ts",
-  "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
-  },
-  "dependencies": {
-    "@react-navigation/bottom-tabs": "^7.9.0",
-    "@react-navigation/native": "^7.1.26",
-    "@supabase/supabase-js": "^2.89.0",
-    "expo": "~54.0.30",
-    "expo-status-bar": "~3.0.9",
-    "react": "19.1.0",
-    "react-native": "0.81.5",
-    "react-native-safe-area-context": "~5.6.0",
-    "react-native-screens": "~4.16.0"
-  },
-  "devDependencies": {
-    "@types/react": "~19.1.0",
-    "typescript": "~5.9.2"
-  }
-}
+### Business Portal
+```bash
+cd apps/business-portal
+npm run dev               # Start dev server
+npm run build             # Production build
 ```
 
-### App Configuration
-**File**: `apps/consumer-app/app.json`
+### Database
+```bash
+# Apply all pending migrations
+npx supabase db push
 
-```json
-{
-  "expo": {
-    "name": "Gidi Connect",
-    "slug": "gidi-connect",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#000000"
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.gidiconnect.app"
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000000"
-      },
-      "package": "com.gidiconnect.app"
-    }
-  }
-}
+# Generate TypeScript types
+supabase gen types typescript --local > types/supabase.ts
+```
+
+### News Agent
+```bash
+# Run manually
+node scripts/lagos-news-agent.js
+
+# Auto-runs every 3 hours via macOS launchd
+# Config: ~/Library/LaunchAgents/com.gidiconnect.newsagent.plist
+# Logs:   logs/news-agent.log
 ```
 
 ---
 
 ## Recent Updates
 
-### UI/UX Updates (January 2026)
+### March 25, 2026 — Admin Venue RLS Fix
 
-#### 1. Logo Removal & Header Redesign
-**Date**: January 8, 2026
-**Changes**:
-- ✅ Removed image-based logos from all screens
-- ✅ Replaced with text-based headers (uppercase, golden yellow)
-- ✅ Added consistent styling across all screens:
-  - appName: 24px, bold, #EAB308, letter-spacing: 2
-- ✅ HomeScreen: "GIDI" with green live dot
-- ✅ ExploreScreen: "EXPLORE"
-- ✅ ExploreAreaScreen: "AREAS"
-- ✅ NewsScreen: "GIDI NEWS"
-- ✅ EventsScreen: "EVENTS"
-- ✅ ProfileScreen: "PROFILE"
-- ✅ SocialScreen: "SOCIAL"
+#### Problem
+Admin users clicking "Manage Venue" on the Admin Venues page were stuck in an infinite loading loop. Root cause: Supabase RLS policies only allowed `SELECT` and `UPDATE` on venues where `owner_id = auth.uid()`, silently filtering out all rows for admin users. The `useVenue` hook also had a hardcoded `.eq('owner_id', user?.id)` filter that blocked admins from loading any venue they didn't own.
 
-#### 2. Custom Tab Bar Implementation
-**Date**: January 8, 2026
-**Changes**:
-- ✅ Created custom tab bar component
-- ✅ Filters visible routes (excluding News and ExploreArea)
-- ✅ Each tab uses flex: 1 for equal 20% width
-- ✅ Fixed spacing issue after Profile tab
-- ✅ Platform-specific heights:
-  - iOS: 85px (notch support)
-  - Android: 70px
-- ✅ Active state: Golden yellow (#EAB308)
-- ✅ Inactive state: Gray (#9ca3af)
+#### Fix
+- **Migration**: `20260314000001_admin_venue_rls.sql`
+  - Dropped old restrictive `"Business owners can update/view own venues"` policies
+  - Added `"Owners and admins can view venues"` — owners see own; admins see all
+  - Added `"Owners and admins can update venues"` — owners update own; admins update any
+- **`useVenues.ts` (`useVenue` hook)**: Now reads `profile` from `useBusinessAuth()`; skips `.eq('owner_id')` filter when `isAdmin = true`
 
-#### 3. Card Size Optimization
-**Date**: January 8, 2026
-**Changes**:
-- ✅ Reduced news card dimensions:
-  - Width: 280px → 260px
-  - Image height: 140px → 100px
-  - Padding: 12px → 10px
-- ✅ Reduced venue card dimensions:
-  - Width: 160px → 150px
-  - Image height: 100px → 80px
-  - Padding: 12px → 10px
+---
 
-### News System Updates (December 2025 - January 2026)
+### March 14, 2026 — Trending Venues Algorithm + Admin Portal
 
-#### 1. Real News Implementation
-**Date**: December 24-25, 2025
-**Changes**:
-- ✅ Deleted all fake/simulated news from database
-- ✅ Implemented real web scraping from 9 Nigerian news sources
-- ✅ Extract real images via Open Graph tags
-- ✅ Extract real publish dates from article metadata
-- ✅ Extract real summaries from article descriptions
-- ✅ Store real URLs for external article links
+#### Trending Venues Overhaul
+- **Migration**: `20260314000000_trending_venues.sql`
+  - Added `is_promoted BOOLEAN`, `promoted_until TIMESTAMPTZ`, `promotion_label TEXT` to `venues`
+  - Created `trending_venues` Postgres view with time-decayed hot score formula
+- **TrendingVenues.tsx**: Now queries view; real check-in counts; Sponsored badge for promoted venues
+- **VenueDetails.tsx (business portal)**: Admin-only promotion panel (set badge label + days)
 
-#### 2. Date Validation System
-**Date**: December 25, 2025
-**Changes**:
-- ✅ Accept only articles from last 60 days
-- ✅ Reject articles with future dates
-- ✅ Reject articles older than 1 year
-- ✅ Validate dates against current time
+#### Admin Portal (new)
+- 4 new pages: AdminOverview, AdminVenues, AdminPromotions, AdminUsers
+- Sidebar admin section auto-shown for Admin/Super Admin roles
+- DashboardLayout updated to allow Admin/Super Admin access (was Business Owner only)
+- Role change from Admin UI writes directly to `profiles.role`
 
-#### 3. Duplicate Prevention
-**Date**: December 25, 2025
-**Changes**:
-- ✅ Track URLs using JavaScript Set
-- ✅ Skip duplicate articles during scraping
-- ✅ Prevent same article appearing multiple times
+---
 
-#### 4. Entertainment Sources
-**Date**: December 25, 2025
-**Changes**:
-- ✅ Added NotJustOk (nightlife/music)
-- ✅ Added Information Nigeria (entertainment)
-- ✅ Flexible filtering: entertainment sources don't require "lagos" in title
+### March 13, 2026 — Business Portal Schema Fixes
 
-#### 5. Auto-Update System
-**Date**: January 8, 2026
-**Changes**:
-- ✅ Installed macOS launchd job
-- ✅ Runs every 3 hours (10800 seconds)
-- ✅ Runs on boot (RunAtLoad: true)
-- ✅ Logging to `logs/news-agent.log` and `logs/news-agent-error.log`
-- ✅ Management scripts: status, logs, install, uninstall
+- **Migration**: `20260313000000_add_amenities_and_tags_to_venues.sql`
+  - Added `amenities TEXT[]`, `tags TEXT[]`, `instagram_handle TEXT` to venues
+  - Fixed "Could not find 'amenities' column" Edge Function error
+- **Migration**: `20260313000001_change_venue_category_to_text.sql`
+  - Changed `category` from `venue_category` enum → `TEXT`
+  - Fixed mismatch between portal form values and DB enum
+
+---
+
+### March 10–12, 2026 — iOS 26 Emoji Rendering Fix
+
+**Root cause**: React Native 0.81.5 + `newArchEnabled: true` + iOS 26 beta caused all emoji to render as `[?]` boxes.
+
+**Fix**:
+- `app.json`: Set `newArchEnabled: false`; removed `runtimeVersion` and `updates` (was generating `exp+` QR codes incompatible with Expo Go)
+- Replaced every emoji icon in the app with Ionicons (`@expo/vector-icons`)
+
+**Files changed** (15+ files):
+
+| File | Change |
+|---|---|
+| `App.tsx` | All 5 tab icons → Ionicons |
+| `HomeScreen.tsx` | Notification bell, search, map, arrow, section titles, news icon → Ionicons |
+| `ExploreScreen.tsx` | Category/neighbourhood arrays, search, location, star, action buttons → Ionicons |
+| `EventsScreen.tsx` | Meta icons, fallback icons, empty state → Ionicons; stripped "⭐" from "Featured" |
+| `SocialScreen.tsx` | Bell, camera, action icons, modal labels, empty states → Ionicons |
+| `ProfileScreen.tsx` | All settings/menu icons → Ionicons |
+| `NewsScreen.tsx` | Header, empty state → Ionicons |
+| `ExploreAreaScreen.tsx` | Star rating → Ionicons; fixed duplicate import crash |
+| `DiscoverScreen.tsx` | Activity icons, back button → Ionicons |
+| `TrafficAlert.tsx` | Severity icons → Ionicons; stripped 🚦 from title |
+| `VibeCheck.tsx` | Filter icons, empty state → Ionicons; stripped emoji from vibe status strings |
+| `TrendingVenues.tsx` | Bookmark, location → Ionicons; stripped emoji from vibe status strings |
+| `ErrorBoundary.tsx` | ⚠️ → Ionicons `warning` |
+| `StoryEditor.tsx` | ✕ buttons → Ionicons; stripped emoji from "Next →", "Post Story 🚀", "← Back" |
+| `StoryViewer.tsx` | ✕ close → Ionicons; sticker overlay text gets `fontFamily: ''` |
+
+**Sticker/emoji exception**: Sticker overlays in StoryViewer and the sticker picker grid in StoryEditor retain `fontFamily: ''` — these are intentional user-placed emoji, not UI icons.
+
+---
+
+### March 9, 2026 — Communities Overhaul + Business Portal
+
+#### Communities Bug Fixes
+- Fixed `fetchCommunities()` — now queries `community_members` to set correct `is_joined` per user (was always `false`)
+- Rewrote `handleJoinCommunity` with optimistic update + revert-on-failure
+- Removed dead `fetchFollowing` function
+- Added `COMMUNITY_ICON_MAP` with Unicode escape sequences — icons no longer depend on DB encoding
+- **Migration**: `20260309000000_seed_core_communities.sql` — seeds 8 core Lagos communities
+
+#### Business Portal Launch
+- Venue creation via Edge Function `create-venue`
+- Event management (create, publish, edit, delete)
+- Photo upload/delete per venue
+- Subscription tiers (Free, Premium, Enterprise)
+- Analytics page (Premium)
+- Business verification flow
+
+---
+
+### February 2026 — Stories, People Tab, Auth
+
+- My Vibe (Stories) feature: create, view, expire, filter effects, text/sticker overlays
+- People tab added to SocialScreen with follow/unfollow
+- Profile data: `profiles` table → auth metadata → email prefix (layered fallback)
+- Tab bar padding via `useSafeAreaInsets`
+- `StoryEditor.tsx` created
+- **Migrations**: stories table, story_views, story editor columns, activity tables, traffic cache
+
+---
+
+### January 2026 — News System, UI Polish
+
+- Real news scraping from 14 Nigerian sources
+- Date validation: mandatory, max 60 days, no future dates
+- Duplicate prevention: URL-based in-run + DB check
+- Auto-update every 3 hours via macOS launchd
+- Custom tab bar (replaced default React Navigation tab bar)
+- `ErrorBoundary` wrapping full app
+- Story progress bar duplicate fixed
+
+---
+
+## Known Issues
+
+- [ ] SMTP not configured — password reset emails won't send (see `SUPABASE-EMAIL-SETUP.md`)
+- [ ] `get-traffic` Supabase Edge Function not deployed — `TOMTOM_API_KEY` not set; TrafficAlert uses mock data
+- [ ] `expo-video` requires native build — cannot use Expo Go QR scanning; must use `npx expo run:ios`
+- [ ] `@expo/ngrok` not installed — tunnel mode unavailable for cross-network testing
 
 ---
 
 ## File Structure
 
 ```
-apps/consumer-app/
-├── App.tsx                     # Main navigation component (custom tab bar)
-├── app.json                    # Expo configuration
-├── package.json                # Dependencies
-├── tsconfig.json               # TypeScript config
-├── index.ts                    # App entry point
-├── assets/                     # Images and icons
-│   ├── icon.png
-│   ├── splash-icon.png
-│   ├── adaptive-icon.png
-│   ├── gidi-connect-logo.png
-│   └── favicon.png
-├── config/
-│   └── supabase.ts            # Supabase client configuration
-├── screens/
-│   ├── HomeScreen.tsx         # Main feed (646 lines)
-│   ├── NewsScreen.tsx         # Full news page (381 lines)
-│   ├── ExploreScreen.tsx      # Venue browsing (403 lines)
-│   ├── ExploreAreaScreen.tsx  # Area-based exploration (474 lines)
-│   ├── EventsScreen.tsx       # Events listing (253 lines)
-│   ├── SocialScreen.tsx       # Social features (410 lines)
-│   └── ProfileScreen.tsx      # User profile (291 lines)
-└── components/
-    ├── StorySection.tsx       # Stories carousel (120 lines)
-    ├── TrafficAlert.tsx       # Traffic updates (224 lines)
-    ├── VibeCheck.tsx          # Venue atmosphere (303 lines)
-    └── TrendingVenues.tsx     # Popular venues (336 lines)
+gidi-vibe-connect/
+├── apps/
+│   ├── consumer-app/
+│   │   ├── App.tsx                        # Root navigation + custom tab bar
+│   │   ├── app.json                       # Expo config (newArchEnabled: false, expo-video plugin)
+│   │   ├── index.ts
+│   │   ├── config/
+│   │   │   └── supabase.ts
+│   │   ├── contexts/
+│   │   │   └── ThemeContext.tsx
+│   │   ├── screens/
+│   │   │   ├── HomeScreen.tsx
+│   │   │   ├── NewsScreen.tsx
+│   │   │   ├── ExploreScreen.tsx
+│   │   │   ├── ExploreAreaScreen.tsx
+│   │   │   ├── EventsScreen.tsx
+│   │   │   ├── SocialScreen.tsx
+│   │   │   ├── ProfileScreen.tsx
+│   │   │   └── DiscoverScreen.tsx
+│   │   └── components/
+│   │       ├── StorySection.tsx
+│   │       ├── StoryViewer.tsx
+│   │       ├── StoryEditor.tsx
+│   │       ├── TrafficAlert.tsx
+│   │       ├── VibeCheck.tsx
+│   │       ├── TrendingVenues.tsx         # Queries trending_venues view
+│   │       └── ErrorBoundary.tsx
+│   │
+│   └── business-portal/
+│       └── src/
+│           ├── App.tsx                    # Routes (incl. /admin/*)
+│           ├── contexts/
+│           │   └── BusinessAuthContext.tsx
+│           ├── hooks/
+│           │   ├── useVenues.ts           # Venue CRUD + Venue type (incl. is_promoted)
+│           │   └── useEvents.ts
+│           ├── components/
+│           │   └── layout/
+│           │       ├── DashboardLayout.tsx  # Allows Business Owner, Admin, Super Admin
+│           │       ├── Sidebar.tsx          # Admin nav section for admin roles
+│           │       └── Header.tsx
+│           └── pages/
+│               ├── Dashboard.tsx
+│               ├── Venues.tsx
+│               ├── VenueForm.tsx
+│               ├── VenueDetails.tsx       # + Admin promotion panel
+│               ├── Analytics.tsx
+│               ├── Events.tsx
+│               ├── EventForm.tsx
+│               ├── EventDetails.tsx
+│               ├── Offers.tsx
+│               ├── Subscription.tsx
+│               ├── Settings.tsx
+│               └── admin/
+│                   ├── AdminOverview.tsx  # Platform stats
+│                   ├── AdminVenues.tsx   # All venues + promote/remove
+│                   ├── AdminPromotions.tsx # Active/expired promotion tracking
+│                   └── AdminUsers.tsx    # User search + role management
+│
+└── supabase/
+    ├── functions/
+    │   ├── create-venue/                  # Edge Function: venue creation
+    │   └── get-traffic/                   # Edge Function: Lagos traffic (not deployed)
+    └── migrations/
+        ├── 20260222000004_create_traffic_cache.sql
+        ├── 20260222000005_create_activity_tables.sql
+        ├── 20260309000000_seed_core_communities.sql
+        ├── 20260310000000_business_portal_rpcs_and_policies.sql
+        ├── 20260313000000_add_amenities_and_tags_to_venues.sql
+        ├── 20260313000001_change_venue_category_to_text.sql
+        ├── 20260314000000_trending_venues.sql    # Hot score view + promotion columns
+        └── 20260314000001_admin_venue_rls.sql    # Admin bypass RLS for venues
 ```
 
 ---
 
-## Development Commands
-
-### Run App
-```bash
-cd apps/consumer-app
-npm start                # Start Expo dev server
-npm run ios              # Run on iOS simulator
-npm run android          # Run on Android emulator
-npm run web              # Run in web browser
-```
-
-### News System
-```bash
-npm run news-agent             # Run news scraper manually
-npm run news-auto:status       # Check auto-update status
-npm run news-auto:logs         # View live logs
-npm run news-auto:install      # Install auto-update
-npm run news-auto:uninstall    # Uninstall auto-update
-```
-
-### Dependencies
-```bash
-npm install              # Install dependencies
-npm update               # Update dependencies
-```
-
----
-
-## Summary Statistics
-
-- **Total Screens**: 7
-- **Total Components**: 4
-- **Total Lines of Code**: ~3,500+ lines
-- **Database Tables**: 2 (news, venues)
-- **News Sources**: 9
-- **Navigation Tabs**: 5 visible + 2 hidden
-- **Color Palette**: 10 colors
-- **Typography Styles**: 10 styles
-- **Features**: 7 major features
-
----
-
-## Next Steps
-
-### Planned Features
-- [ ] User authentication
-- [ ] Push notifications
-- [ ] Favorites/bookmarks
-- [ ] Social sharing
-- [ ] Event RSVPs
-- [ ] Venue check-ins
-- [ ] User reviews
-- [ ] Photo uploads
-- [ ] Chat/messaging
-- [ ] Payment integration
-
-### Technical Improvements
-- [ ] Error tracking (Sentry)
-- [ ] Analytics (PostHog)
-- [ ] Performance monitoring
-- [ ] Crash reporting
-- [ ] A/B testing
-- [ ] CI/CD pipeline
-- [ ] Automated testing
-- [ ] Code documentation
-- [ ] API optimization
-- [ ] Caching strategy
-
----
-
-**Last Updated**: January 9, 2026
-**Version**: 1.0.0
-**Maintained By**: Gidi Connect Team
+**Last Updated**: March 25, 2026
+**Version**: 1.5.0
+**Status**: Active development — beta-ready

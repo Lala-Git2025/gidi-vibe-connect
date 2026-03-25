@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import { useTheme } from '../contexts/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Venue {
   id: string;
   name: string;
   location: string;
   rating: number;
+  live_rating?: number;
   professional_media_urls?: string[];
+  is_promoted?: boolean;
+  promotion_label?: string;
+  checkins_24h?: number;
 }
 
 interface TrendingVenuesProps {
@@ -16,18 +22,36 @@ interface TrendingVenuesProps {
 }
 
 const getVibeStatus = (rating: number) => {
-  if (rating >= 4.5) return 'Electric ⚡️';
-  if (rating >= 4.0) return 'Buzzing 🔥';
-  if (rating >= 3.5) return 'Vibing ✨';
-  return 'Chill 🎵';
+  if (rating >= 4.5) return 'Electric';
+  if (rating >= 4.0) return 'Buzzing';
+  if (rating >= 3.5) return 'Vibing';
+  return 'Chill';
 };
 
-const getVisitorCount = () => {
-  return Math.floor(Math.random() * 1000) + 100;
+const isActivePromotion = (venue: Venue) => !!venue.is_promoted;
+
+const dedupeVenues = (list: Venue[]): Venue[] => {
+  const seen = new Set<string>();
+  return list.filter(v => {
+    const key = v.name.trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
+
+const FALLBACK_VENUES: Venue[] = [
+  { id: '1', name: 'Quilox',                  location: 'Victoria Island, Lagos', rating: 4.8, professional_media_urls: ['https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&q=80'] },
+  { id: '2', name: 'The Shank',               location: 'Lekki Phase 1, Lagos',   rating: 4.7, professional_media_urls: ['https://images.unsplash.com/photo-1514565131-fce0801e5785?w=800&q=80'] },
+  { id: '3', name: 'Brass & Copper',          location: 'Ikoyi, Lagos',           rating: 4.6, professional_media_urls: ['https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80'] },
+  { id: '4', name: 'Hard Rock Cafe',          location: 'Oniru, Lagos',           rating: 4.5, professional_media_urls: ['https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80'] },
+  { id: '5', name: 'Sky Restaurant & Lounge', location: 'Ikeja GRA, Lagos',       rating: 4.6, professional_media_urls: ['https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=800&q=80'] },
+  { id: '6', name: 'Bungalow Beach Bar',      location: 'Surulere, Lagos',        rating: 4.4, professional_media_urls: ['https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80'] },
+];
 
 export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
   const { colors } = useTheme();
+  const navigation = useNavigation();
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const styles = getStyles(colors);
@@ -38,109 +62,17 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
 
   const fetchTrendingVenues = async () => {
     try {
-      console.log('🔄 Fetching trending venues from database...');
       const { data, error } = await supabase
-        .from('venues')
-        .select('id, name, location, rating, professional_media_urls')
-        .order('rating', { ascending: false })
-        .limit(6);
+        .from('trending_venues')
+        .select('id, name, location, rating, live_rating, professional_media_urls, is_promoted, promotion_label, checkins_24h')
+        .limit(20);
 
-      if (error) {
-        console.error('❌ Supabase error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log(`✅ Fetched ${data?.length || 0} venues from database`);
-
-      // If database has venues, use them; otherwise use fallback
-      if (data && data.length > 0) {
-        // Log first venue to verify image URLs
-        console.log('📍 First venue:', data[0].name, 'Images:', data[0].professional_media_urls?.length);
-        if (data[0].professional_media_urls?.[0]) {
-          console.log('🖼️  First image URL:', data[0].professional_media_urls[0]);
-        }
-        setVenues(data as Venue[]);
-      } else {
-        console.log('⚠️  No venues in database, using fallback');
-        // Fallback to sample venues with real Lagos images
-        setVenues([
-          {
-            id: '1',
-            name: 'Quilox',
-            location: 'Victoria Island, Lagos',
-            rating: 4.8,
-            professional_media_urls: ['https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&q=80']
-          },
-          {
-            id: '2',
-            name: 'The Shank',
-            location: 'Lekki Phase 1, Lagos',
-            rating: 4.7,
-            professional_media_urls: ['https://images.unsplash.com/photo-1514565131-fce0801e5785?w=800&q=80']
-          },
-          {
-            id: '3',
-            name: 'Brass & Copper',
-            location: 'Ikoyi, Lagos',
-            rating: 4.6,
-            professional_media_urls: ['https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80']
-          },
-          {
-            id: '4',
-            name: 'Hard Rock Cafe',
-            location: 'Oniru, Lagos',
-            rating: 4.5,
-            professional_media_urls: ['https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80']
-          },
-          {
-            id: '5',
-            name: 'Nok by Alara',
-            location: 'Victoria Island, Lagos',
-            rating: 4.7,
-            professional_media_urls: ['https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80']
-          },
-          {
-            id: '6',
-            name: 'Terra Kulture',
-            location: 'Tiamiyu Savage, Victoria Island',
-            rating: 4.6,
-            professional_media_urls: ['https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80']
-          },
-        ]);
-      }
-    } catch (error) {
-      console.error('❌ Error fetching venues:', error);
-      // Fallback to sample venues on error
-      setVenues([
-        {
-          id: '1',
-          name: 'Quilox',
-          location: 'Victoria Island, Lagos',
-          rating: 4.8,
-          professional_media_urls: ['https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&q=80']
-        },
-        {
-          id: '2',
-          name: 'The Shank',
-          location: 'Lekki Phase 1, Lagos',
-          rating: 4.7,
-          professional_media_urls: ['https://images.unsplash.com/photo-1514565131-fce0801e5785?w=800&q=80']
-        },
-        {
-          id: '3',
-          name: 'Brass & Copper',
-          location: 'Ikoyi, Lagos',
-          rating: 4.6,
-          professional_media_urls: ['https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80']
-        },
-        {
-          id: '4',
-          name: 'Hard Rock Cafe',
-          location: 'Oniru, Lagos',
-          rating: 4.5,
-          professional_media_urls: ['https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80']
-        },
-      ]);
+      const unique = data ? dedupeVenues(data as Venue[]).slice(0, 6) : [];
+      setVenues(unique.length > 0 ? unique : FALLBACK_VENUES);
+    } catch {
+      setVenues(FALLBACK_VENUES);
     } finally {
       setLoading(false);
     }
@@ -170,17 +102,17 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
       contentContainerStyle={styles.scrollContent}
     >
       {venues.map((venue) => (
-        <TouchableOpacity key={venue.id} style={styles.venueCard}>
+        <TouchableOpacity
+          key={venue.id}
+          style={styles.venueCard}
+          onPress={() => navigation.navigate('Explore' as never)}
+          activeOpacity={0.85}
+        >
           {/* Background Image */}
           <Image
-            source={{
-              uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?q=80&w=1000'
-            }}
+            source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?q=80&w=1000' }}
             style={styles.venueImage}
             resizeMode="cover"
-            onLoadStart={() => console.log(`🔄 Loading image for ${venue.name}`)}
-            onLoad={() => console.log(`✅ Loaded image for ${venue.name}`)}
-            onError={(error) => console.error(`❌ Failed to load image for ${venue.name}:`, error.nativeEvent.error)}
           />
 
           {/* Gradient Overlay */}
@@ -190,19 +122,23 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
           <View style={styles.content}>
             {/* Top Row */}
             <View style={styles.topRow}>
-              <View style={styles.vibeBadge}>
-                <Text style={styles.vibeText}>{getVibeStatus(venue.rating)}</Text>
+              <View style={[styles.vibeBadge, isActivePromotion(venue) && styles.sponsoredBadge]}>
+                {isActivePromotion(venue) ? (
+                  <Text style={styles.sponsoredText}>{venue.promotion_label || 'Sponsored'}</Text>
+                ) : (
+                  <Text style={styles.vibeText}>{getVibeStatus(venue.live_rating ?? venue.rating)}</Text>
+                )}
               </View>
-              <TouchableOpacity style={styles.bookmarkButton}>
-                <Text style={styles.bookmarkIcon}>🔖</Text>
-              </TouchableOpacity>
+              <View style={styles.bookmarkButton}>
+                <Ionicons name="bookmark-outline" size={18} color="#fff" />
+              </View>
             </View>
 
             {/* Bottom Content */}
             <View style={styles.bottomContent}>
               <Text style={styles.venueName} numberOfLines={1}>{venue.name}</Text>
               <View style={styles.locationRow}>
-                <Text style={styles.locationIcon}>📍</Text>
+                <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
                 <Text style={styles.locationText} numberOfLines={1}>{venue.location}</Text>
               </View>
               <View style={styles.visitorsRow}>
@@ -211,7 +147,9 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
                     <View key={i} style={[styles.avatar, { marginLeft: i > 1 ? -8 : 0 }]} />
                   ))}
                 </View>
-                <Text style={styles.visitorsText}>{getVisitorCount()} here</Text>
+                <Text style={styles.visitorsText}>
+                  {(venue.checkins_24h ?? 0) > 0 ? `${venue.checkins_24h} here today` : 'Be the first!'}
+                </Text>
               </View>
             </View>
           </View>
@@ -278,10 +216,20 @@ const getStyles = (colors: any) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
+  sponsoredBadge: {
+    backgroundColor: colors.primary,
+  },
   vibeText: {
     fontSize: 12,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  sponsoredText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#fff',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   bookmarkButton: {
     width: 36,
@@ -293,6 +241,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   bookmarkIcon: {
     fontSize: 18,
+    fontFamily: '',
   },
   bottomContent: {
     gap: 8,
@@ -309,6 +258,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   locationIcon: {
     fontSize: 14,
+    fontFamily: '',
   },
   locationText: {
     fontSize: 14,

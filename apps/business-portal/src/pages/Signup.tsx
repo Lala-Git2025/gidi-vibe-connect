@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
 import { Button } from '../components/ui/button';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 export default function Signup() {
   const navigate = useNavigate();
-  const { signUp } = useBusinessAuth();
+  const { signUp, user } = useBusinessAuth();
   const [formData, setFormData] = useState({
     fullName: '',
     businessName: '',
@@ -18,6 +18,13 @@ export default function Signup() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Navigate once user is set in context
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({
@@ -54,10 +61,8 @@ export default function Signup() {
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
-      // Show success message and redirect
-      navigate('/dashboard');
     }
+    // navigation handled by useEffect above
   };
 
   return (

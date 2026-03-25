@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Animated } from 'react-native';
 import { supabase } from '../config/supabase';
 import { useTheme } from '../contexts/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface AreaVibe {
   name: string;
@@ -27,19 +28,19 @@ const LAGOS_AREAS = [
 
 type VibeFilter = 'All' | 'Electric' | 'Buzzing' | 'Vibing' | 'Chill';
 
-const getVibeFilters = (colors: any): { label: string; value: VibeFilter; icon: string; color: string }[] => [
-  { label: 'All', value: 'All', icon: '🌍', color: colors.textSecondary },
-  { label: 'Electric', value: 'Electric', icon: '⚡️', color: colors.primary },
-  { label: 'Buzzing', value: 'Buzzing', icon: '🔥', color: colors.warning },
-  { label: 'Vibing', value: 'Vibing', icon: '✨', color: colors.error },
-  { label: 'Chill', value: 'Chill', icon: '🎵', color: colors.info },
+const getVibeFilters = (colors: any): { label: string; value: VibeFilter; icon: keyof typeof Ionicons.glyphMap; color: string }[] => [
+  { label: 'All', value: 'All', icon: 'globe-outline', color: colors.textSecondary },
+  { label: 'Electric', value: 'Electric', icon: 'flash', color: colors.primary },
+  { label: 'Buzzing', value: 'Buzzing', icon: 'flame', color: colors.warning },
+  { label: 'Vibing', value: 'Vibing', icon: 'sparkles', color: colors.error },
+  { label: 'Chill', value: 'Chill', icon: 'musical-notes', color: colors.info },
 ];
 
 const getVibeStatus = (count: number, colors: any) => {
-  if (count >= 15) return { status: 'Electric ⚡️', vibeType: 'Electric' as const, color: colors.primary };
-  if (count >= 8) return { status: 'Buzzing 🔥', vibeType: 'Buzzing' as const, color: colors.warning };
-  if (count >= 3) return { status: 'Vibing ✨', vibeType: 'Vibing' as const, color: colors.error };
-  return { status: 'Chill 🎵', vibeType: 'Chill' as const, color: colors.info };
+  if (count >= 15) return { status: 'Electric', vibeType: 'Electric' as const, color: colors.primary };
+  if (count >= 8) return { status: 'Buzzing', vibeType: 'Buzzing' as const, color: colors.warning };
+  if (count >= 3) return { status: 'Vibing', vibeType: 'Vibing' as const, color: colors.error };
+  return { status: 'Chill', vibeType: 'Chill' as const, color: colors.info };
 };
 
 export const VibeCheck = () => {
@@ -81,23 +82,21 @@ export const VibeCheck = () => {
 
   // Auto-rotate through areas every 5 seconds
   useEffect(() => {
-    const filteredAreas = getFilteredAreas();
-    if (filteredAreas.length <= 4) return; // Don't rotate if 4 or fewer areas
+    const filtered = selectedVibe === 'All'
+      ? areaVibes
+      : areaVibes.filter(a => a.vibeType === selectedVibe);
+    if (filtered.length <= 4) return;
 
     const interval = setInterval(() => {
-      // Fade out
       Animated.timing(fadeAnim, {
         toValue: 0,
         duration: 300,
         useNativeDriver: true,
       }).start(() => {
-        // Update offset
         setDisplayOffset((prev) => {
-          const maxOffset = filteredAreas.length - 4;
+          const maxOffset = filtered.length - 4;
           return prev >= maxOffset ? 0 : prev + 1;
         });
-
-        // Fade in
         Animated.timing(fadeAnim, {
           toValue: 1,
           duration: 300,
@@ -136,7 +135,7 @@ export const VibeCheck = () => {
         });
       });
 
-      // Build area vibes with actual counts
+      // Build area vibes with actual counts — include all 10 areas, even with 0 venues
       const vibes: AreaVibe[] = LAGOS_AREAS.map(area => {
         const count = areaCounts[area.name] || 0;
         const { status, vibeType, color } = getVibeStatus(count, colors);
@@ -148,18 +147,23 @@ export const VibeCheck = () => {
           vibeType,
           color,
         };
-      }).filter(area => area.venueCount > 0) // Only show areas with venues
-        .sort((a, b) => b.venueCount - a.venueCount); // Sort by activity
+      }).sort((a, b) => b.venueCount - a.venueCount); // Sort by activity
 
       setAreaVibes(vibes);
     } catch (error) {
       console.error('Error fetching area vibes:', error);
-      // Fallback data
+      // Fallback data — all 10 areas with realistic Lagos venue counts
       const fallback: AreaVibe[] = [
-        { name: 'Victoria Island', venueCount: 24, vibe: 'Electric ⚡️', vibeType: 'Electric', color: colors.primary },
-        { name: 'Lekki', venueCount: 18, vibe: 'Buzzing 🔥', vibeType: 'Buzzing', color: colors.warning },
-        { name: 'Ikeja', venueCount: 12, vibe: 'Buzzing 🔥', vibeType: 'Buzzing', color: colors.warning },
-        { name: 'Ikoyi', venueCount: 8, vibe: 'Vibing ✨', vibeType: 'Vibing', color: colors.error },
+        { name: 'Victoria Island', venueCount: 24, vibe: 'Electric', vibeType: 'Electric', color: colors.primary },
+        { name: 'Lekki',           venueCount: 18, vibe: 'Buzzing',  vibeType: 'Buzzing',  color: colors.warning },
+        { name: 'Ikeja',           venueCount: 12, vibe: 'Buzzing',  vibeType: 'Buzzing',  color: colors.warning },
+        { name: 'Ikoyi',           venueCount: 9,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
+        { name: 'Surulere',        venueCount: 7,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
+        { name: 'Ajah',            venueCount: 5,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
+        { name: 'Lagos Island',    venueCount: 4,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
+        { name: 'Yaba',            venueCount: 3,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
+        { name: 'Maryland',        venueCount: 2,  vibe: 'Chill',    vibeType: 'Chill',    color: colors.info },
+        { name: 'Festac',          venueCount: 1,  vibe: 'Chill',    vibeType: 'Chill',    color: colors.info },
       ];
       setAreaVibes(fallback);
     } finally {
@@ -167,19 +171,16 @@ export const VibeCheck = () => {
     }
   };
 
-  const getFilteredAreas = () => {
-    if (selectedVibe === 'All') return areaVibes;
-    return areaVibes.filter(area => area.vibeType === selectedVibe);
-  };
+  const filteredAreas = selectedVibe === 'All'
+    ? areaVibes
+    : areaVibes.filter(area => area.vibeType === selectedVibe);
 
   const getDisplayedAreas = () => {
-    const filtered = getFilteredAreas();
-    if (filtered.length <= 4) return filtered;
-
+    if (filteredAreas.length <= 4) return filteredAreas;
     const displayed = [];
     for (let i = 0; i < 4; i++) {
-      const index = (displayOffset + i) % filtered.length;
-      displayed.push(filtered[index]);
+      const index = (displayOffset + i) % filteredAreas.length;
+      displayed.push(filteredAreas[index]);
     }
     return displayed;
   };
@@ -196,7 +197,7 @@ export const VibeCheck = () => {
   }
 
   const displayedAreas = getDisplayedAreas();
-  const filteredCount = getFilteredAreas().length;
+  const filteredCount = filteredAreas.length;
 
   return (
     <View style={styles.container}>
@@ -229,7 +230,7 @@ export const VibeCheck = () => {
               setDisplayOffset(0); // Reset offset when changing filter
             }}
           >
-            <Text style={styles.filterIcon}>{filter.icon}</Text>
+            <Ionicons name={filter.icon} size={14} color={selectedVibe === filter.value ? filter.color : colors.textSecondary} />
             <Text
               style={[
                 styles.filterText,
@@ -245,7 +246,7 @@ export const VibeCheck = () => {
       {/* Areas List */}
       {displayedAreas.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>🔍</Text>
+          <Ionicons name="search-outline" size={48} color={colors.textSecondary} style={{ opacity: 0.5, marginBottom: 12 }} />
           <Text style={styles.emptyText}>
             No areas match this vibe right now
           </Text>
@@ -445,6 +446,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   filterIcon: {
     fontSize: 14,
+    fontFamily: '',
   },
   filterText: {
     fontSize: 13,
@@ -481,7 +483,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 12,
-    backgroundColor: '#3f3f46',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -529,6 +531,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 48,
     opacity: 0.5,
     marginBottom: 12,
+    fontFamily: '',
   },
   emptyText: {
     fontSize: 14,

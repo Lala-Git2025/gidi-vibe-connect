@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Plus, MapPin, Clock, Pencil, Trash2, Eye, ExternalLink } from 'lucide-react';
+import { Calendar, Plus, MapPin, Clock, Pencil, Trash2, Eye } from 'lucide-react';
 import { useEvents, useDeleteEvent, useEventStats } from '../hooks/useEvents';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
 import { Button } from '../components/ui/button';

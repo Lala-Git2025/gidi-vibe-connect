@@ -19,6 +19,9 @@ export interface Venue {
   professional_media_urls?: string[];
   owner_id: string;
   is_verified: boolean;
+  is_promoted: boolean;
+  promoted_until?: string | null;
+  promotion_label?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,19 +73,25 @@ export function useVenues() {
  * Hook to fetch a single venue by ID
  */
 export function useVenue(venueId: string | undefined) {
-  const { user } = useBusinessAuth();
+  const { user, profile } = useBusinessAuth();
+  const isAdmin = profile?.role === 'Admin' || profile?.role === 'Super Admin';
 
   return useQuery({
     queryKey: ['venue', venueId],
     queryFn: async () => {
       if (!venueId) throw new Error('Venue ID is required');
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('venues')
         .select('*')
-        .eq('id', venueId)
-        .eq('owner_id', user?.id)
-        .single();
+        .eq('id', venueId);
+
+      // Non-admins are scoped to their own venues; admins can view any venue
+      if (!isAdmin) {
+        query = query.eq('owner_id', user?.id);
+      }
+
+      const { data, error } = await query.single();
 
       if (error) throw error;
       return data as Venue;
@@ -96,35 +105,34 @@ export function useVenue(venueId: string | undefined) {
  */
 export function useCreateVenue() {
   const queryClient = useQueryClient();
-  const { user, subscription } = useBusinessAuth();
+  const { user } = useBusinessAuth();
 
   return useMutation({
     mutationFn: async (venueData: CreateVenueData) => {
       if (!user) throw new Error('User not authenticated');
 
-      // Check if user can create more venues
-      const { data: canCreate, error: limitError } = await supabase
-        .rpc('check_venue_creation_limit', { p_user_id: user.id });
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) throw new Error('No active session — please sign in again');
 
-      if (limitError) throw limitError;
-      if (!canCreate) {
-        throw new Error(
-          `Venue limit reached. You can create up to ${subscription?.max_venues || 1} venue(s) on your ${subscription?.tier || 'Free'} plan. Upgrade to add more venues.`
-        );
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-venue`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify(venueData),
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(err.error || `Failed to create venue (${response.status})`);
       }
 
-      // Create the venue
-      const { data, error } = await supabase
-        .from('venues')
-        .insert({
-          ...venueData,
-          owner_id: user.id,
-          is_verified: true, // Auto-verify for business owners
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await response.json();
       return data as Venue;
     },
     onSuccess: () => {
@@ -300,7 +308,7 @@ export function useDeleteVenuePhoto() {
 
       // Remove the photo URL from the array
       const updatedUrls = (venue.professional_media_urls || []).filter(
-        (url) => url !== photoUrl
+        (url: string) => url !== photoUrl
       );
 
       // Extract file path from URL for storage deletion
@@ -361,10 +369,7 @@ export function useVenueStats() {
         .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
         .in(
           'venue_id',
-          supabase
-            .from('venues')
-            .select('id')
-            .eq('owner_id', user.id)
+          (await supabase.from('venues').select('id').eq('owner_id', user.id)).data?.map((v: { id: string }) => v.id) ?? []
         );
 
       if (analyticsError) throw analyticsError;

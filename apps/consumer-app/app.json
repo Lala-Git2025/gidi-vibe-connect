@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "platforms": [
       "ios",
       "android"
@@ -40,11 +40,8 @@
         "projectId": "8d22530a-608b-49d1-8fee-d4accf57a2b1"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/8d22530a-608b-49d1-8fee-d4accf57a2b1"
-    }
+"plugins": [
+      "expo-video"
+    ]
   }
 }
