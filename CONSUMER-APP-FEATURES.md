@@ -371,8 +371,8 @@ Three tables power gamification stats:
 
 ## Business Portal
 
-**URL**: React web app (Vite + Tailwind)
-**Access**: Business Owner, Admin, Super Admin roles
+**URL**: React web app (Vite + Tailwind), port 3001
+**Access**: Business Owner role only
 
 ### Pages
 
@@ -407,27 +407,27 @@ Three tables power gamification stats:
 | Menu mgmt | No | Yes | Yes |
 | Priority listing | No | Yes | Yes |
 
-### Admin Promotion Panel (on Venue Details)
-Visible only to Admin/Super Admin users. Allows setting:
-- **Badge label**: e.g. "Sponsored", "Featured", "VIP"
-- **Duration**: 1–365 days
-- Writes `is_promoted = true`, `promoted_until`, `promotion_label` to `venues` table
+### Venue Promotion
+Managed via the Admin Portal Venue Manager (`/venues` in the admin portal):
+- Search any venue, enter duration in days, click Promote
+- Sets `is_promoted = true`, `promoted_until`, `promotion_label = 'Sponsored'` on the venue
 - Venue immediately appears at the top of Trending in the consumer app
 
 ---
 
 ## Admin Portal
 
-**Access**: Admin and Super Admin roles only. Section appears in business portal sidebar automatically when role matches.
+**URL**: Separate Vite app running on port 3002 (dev) / admin.gidiconnect.com (prod)
+**Access**: Admin and Super Admin roles only. Completely separate from the business portal.
 
 ### Pages
 
 | Page | Route | Purpose |
 |---|---|---|
-| Admin Overview | `/admin` | Platform-wide stats: total users, venues, active promotions, new signups (7d) |
-| Venue Manager | `/admin/venues` | All venues across platform — search, per-row promote/remove, days input |
-| Promotions Manager | `/admin/promotions` | Active vs expired promotion tracking, expiry countdown, cleanup |
-| User Management | `/admin/users` | Search users, filter by role, inline role assignment |
+| Overview | `/` | Platform-wide stats: total users, venues, active promotions, new signups (7d) |
+| Venue Manager | `/venues` | All venues across platform — search, per-row promote/remove, days input |
+| Promotions Manager | `/promotions` | Active vs expired promotion tracking, expiry countdown, cleanup |
+| User Manager | `/users` | Search users, filter by role, inline role assignment |
 
 ### Admin Overview Stats
 - Total users (from `profiles`)
@@ -589,6 +589,21 @@ node scripts/lagos-news-agent.js
 
 ## Recent Updates
 
+### March 25, 2026 — Admin Portal Separation + Venue RLS Fix
+
+#### Admin Portal Separated into Standalone App
+- `apps/admin-portal/` created as a completely independent Vite app on **port 3002**
+- Auth context: `AdminAuthContext` — no signup, no subscription, no verification
+- Role gate: `AdminLayout` — only Admin/Super Admin; all others see Access Denied with link to business portal
+- Pages: Overview, Venue Manager, Promotions Manager, User Manager (flat routes, no `/admin/` prefix)
+- Business portal cleanup:
+  - Removed `/admin/*` routes from App.tsx
+  - Removed admin sidebar section from Sidebar.tsx
+  - Removed admin promotion panel from VenueDetails.tsx
+  - `DashboardLayout` now allows Business Owner role only (not Admin/Super Admin)
+
+---
+
 ### March 25, 2026 — Admin Venue RLS Fix
 
 #### Problem
@@ -745,36 +760,48 @@ gidi-vibe-connect/
 │   │       ├── TrendingVenues.tsx         # Queries trending_venues view
 │   │       └── ErrorBoundary.tsx
 │   │
-│   └── business-portal/
+│   ├── business-portal/               # Venue owners only (port 3001)
+│   │   └── src/
+│   │       ├── App.tsx
+│   │       ├── contexts/
+│   │       │   └── BusinessAuthContext.tsx
+│   │       ├── hooks/
+│   │       │   ├── useVenues.ts
+│   │       │   └── useEvents.ts
+│   │       ├── components/
+│   │       │   └── layout/
+│   │       │       ├── DashboardLayout.tsx  # Business Owner only
+│   │       │       ├── Sidebar.tsx
+│   │       │       └── Header.tsx
+│   │       └── pages/
+│   │           ├── Dashboard.tsx
+│   │           ├── Venues.tsx
+│   │           ├── VenueForm.tsx
+│   │           ├── VenueDetails.tsx
+│   │           ├── Analytics.tsx
+│   │           ├── Events.tsx
+│   │           ├── EventForm.tsx
+│   │           ├── EventDetails.tsx
+│   │           ├── Offers.tsx
+│   │           ├── Subscription.tsx
+│   │           └── Settings.tsx
+│   │
+│   └── admin-portal/                  # Platform admins only (port 3002)
 │       └── src/
-│           ├── App.tsx                    # Routes (incl. /admin/*)
+│           ├── App.tsx
 │           ├── contexts/
-│           │   └── BusinessAuthContext.tsx
-│           ├── hooks/
-│           │   ├── useVenues.ts           # Venue CRUD + Venue type (incl. is_promoted)
-│           │   └── useEvents.ts
+│           │   └── AdminAuthContext.tsx   # Admin-only auth (no signup)
 │           ├── components/
 │           │   └── layout/
-│           │       ├── DashboardLayout.tsx  # Allows Business Owner, Admin, Super Admin
-│           │       ├── Sidebar.tsx          # Admin nav section for admin roles
-│           │       └── Header.tsx
+│           │       ├── AdminLayout.tsx    # Admin/Super Admin gate
+│           │       ├── AdminSidebar.tsx   # Role badge in footer
+│           │       └── AdminHeader.tsx
 │           └── pages/
-│               ├── Dashboard.tsx
-│               ├── Venues.tsx
-│               ├── VenueForm.tsx
-│               ├── VenueDetails.tsx       # + Admin promotion panel
-│               ├── Analytics.tsx
-│               ├── Events.tsx
-│               ├── EventForm.tsx
-│               ├── EventDetails.tsx
-│               ├── Offers.tsx
-│               ├── Subscription.tsx
-│               ├── Settings.tsx
-│               └── admin/
-│                   ├── AdminOverview.tsx  # Platform stats
-│                   ├── AdminVenues.tsx   # All venues + promote/remove
-│                   ├── AdminPromotions.tsx # Active/expired promotion tracking
-│                   └── AdminUsers.tsx    # User search + role management
+│               ├── Login.tsx
+│               ├── Overview.tsx           # Platform stats
+│               ├── VenueManager.tsx       # All venues + promote/remove
+│               ├── PromotionsManager.tsx  # Active/expired tracking
+│               └── UserManager.tsx        # User search + role management
 │
 └── supabase/
     ├── functions/
@@ -794,5 +821,5 @@ gidi-vibe-connect/
 ---
 
 **Last Updated**: March 25, 2026
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Active development — beta-ready

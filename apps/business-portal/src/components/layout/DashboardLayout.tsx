@@ -30,17 +30,25 @@ export function DashboardLayout() {
   }
 
   // Check if user has an allowed role
-  const allowedRoles = ['Business Owner', 'Admin', 'Super Admin'];
-  if (!allowedRoles.includes(profile.role)) {
+  if (profile.role !== 'Business Owner') {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
-          <p className="text-muted-foreground mb-4">
+          <p className="text-muted-foreground mb-2">
             This portal is only accessible to business owners.
           </p>
-          <p className="text-sm text-muted-foreground mb-6">Current role: {profile?.role}</p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <p className="text-sm text-muted-foreground mb-2">Current role: {profile.role}</p>
+          {(profile.role === 'Admin' || profile.role === 'Super Admin') && (
+            <p className="text-sm text-muted-foreground mb-4">
+              Administrators should use the{' '}
+              <a href="http://localhost:3002" className="text-primary hover:underline font-medium">
+                Admin Portal
+              </a>{' '}
+              instead.
+            </p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mt-4">
             <button
               onClick={() => signOut()}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"

@@ -56,7 +56,7 @@ gidi-vibe-connect/
 **Platform**: Web (React + Vite, port 3001)
 **Technology**: React 18 + TypeScript + Tailwind CSS + shadcn/ui + React Query
 
-**Roles**: Business Owner, Admin, Super Admin
+**Roles**: Business Owner only
 
 **Features**:
 - Venue management: create, edit, photos, amenities, tags
@@ -65,11 +65,21 @@ gidi-vibe-connect/
 - Offers & promotions page (Premium)
 - Subscription management (Free / Premium / Enterprise)
 - Account settings + business verification flow
-- **Admin section** (Admin/Super Admin only):
-  - Platform overview stats (users, venues, active promotions, new signups)
-  - Venue manager: promote any venue, set badge label + duration
-  - Promotions tracker: active vs expired, expiry countdown
-  - User manager: search, filter by role, inline role changes
+
+---
+
+### 3. Admin Portal
+**Location**: `apps/admin-portal/`
+**Platform**: Web (React + Vite, port 3002)
+**Technology**: React 18 + TypeScript + Tailwind CSS + React Query
+
+**Roles**: Admin and Super Admin only
+
+**Features**:
+- Platform overview stats (users, venues, active promotions, new signups 7d)
+- Venue manager: promote any venue, set badge label + duration
+- Promotions tracker: active vs expired, expiry countdown
+- User manager: search, filter by role, inline role changes
 
 ---
 
@@ -152,6 +162,14 @@ cp .env.example .env   # Fill in Supabase credentials
 npm run dev            # http://localhost:3001
 ```
 
+### Admin Portal
+```bash
+cd apps/admin-portal
+npm install
+cp .env.example .env   # Same Supabase credentials as business portal
+npm run dev            # http://localhost:3002
+```
+
 ### Database
 ```bash
 npx supabase db push   # Apply all pending migrations
@@ -211,7 +229,7 @@ UPDATE profiles SET role = 'Super Admin' WHERE user_id = '<user-uuid>';
 ### Completed
 - [x] Consumer mobile app — all screens and features
 - [x] Business portal — venue, event, analytics, subscription management
-- [x] Admin portal — platform stats, venue promotion manager, user management
+- [x] Admin portal — standalone app (port 3002): platform stats, venue promotion manager, user management
 - [x] Supabase auth (email/password, guest mode)
 - [x] My Vibe (Stories) with editor, filters, overlays
 - [x] People tab with follow/unfollow
@@ -244,4 +262,4 @@ npm run build
 
 **Built for Lagos | Powered by React Native, React, and Supabase**
 
-**Last Updated**: March 25, 2026 | **Version**: 1.5.0
+**Last Updated**: March 25, 2026 | **Version**: 1.6.0

@@ -14,11 +14,6 @@ import EventDetails from './pages/EventDetails';
 import Offers from './pages/Offers';
 import Subscription from './pages/Subscription';
 import Settings from './pages/Settings';
-import AdminOverview from './pages/admin/AdminOverview';
-import AdminVenues from './pages/admin/AdminVenues';
-import AdminPromotions from './pages/admin/AdminPromotions';
-import AdminUsers from './pages/admin/AdminUsers';
-
 function App() {
   return (
     <BrowserRouter>
@@ -43,10 +38,6 @@ function App() {
             <Route path="/offers" element={<Offers />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/admin" element={<AdminOverview />} />
-            <Route path="/admin/venues" element={<AdminVenues />} />
-            <Route path="/admin/promotions" element={<AdminPromotions />} />
-            <Route path="/admin/users" element={<AdminUsers />} />
           </Route>
 
           {/* Default redirect */}

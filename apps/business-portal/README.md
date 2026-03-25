@@ -5,6 +5,8 @@ Web dashboard for venue owners and platform admins to manage venues, events, pro
 **URL**: http://localhost:3001 (dev)
 **Target**: business.gidiconnect.com (production)
 
+> Platform administrators should use the **Admin Portal** at http://localhost:3002 instead.
+
 ---
 
 ## Setup
@@ -37,13 +39,13 @@ Web dashboard for venue owners and platform admins to manage venues, events, pro
 
 ## Access Roles
 
-| Role | Portal Access | Admin Section |
+| Role | Business Portal | Admin Portal |
 |---|---|---|
-| Consumer | No (redirected) | No |
-| Content Creator | No (redirected) | No |
+| Consumer | No | No |
+| Content Creator | No | No |
 | Business Owner | Yes | No |
-| Admin | Yes | Yes |
-| Super Admin | Yes | Yes |
+| Admin | No → use Admin Portal | Yes (port 3002) |
+| Super Admin | No → use Admin Portal | Yes (port 3002) |
 
 To elevate a user to Admin, run in Supabase SQL Editor:
 ```sql

@@ -8,7 +8,8 @@ This file contains persistent context, decisions, and conventions for the Gidi V
 
 ### Tech Stack
 - **Consumer App:** React Native with Expo (SDK 54), `newArchEnabled: false`
-- **Business Portal:** React + Vite + Tailwind CSS + shadcn/ui (runs on port 3001)
+- **Business Portal:** React + Vite + Tailwind CSS + shadcn/ui (runs on port 3001) — Business Owner role only
+- **Admin Portal:** React + Vite + Tailwind CSS (runs on port 3002) — Admin/Super Admin role only (separate app)
 - **Backend:** Supabase (PostgreSQL, Auth, Storage, Edge Functions)
 - **State Management:** React Context (ThemeContext for consumer app, BusinessAuthContext for portal)
 - **Navigation:** React Navigation v7 (Bottom Tabs) — custom tab bar
@@ -27,7 +28,8 @@ gidi-vibe-connect/
 │   │   ├── contexts/          # ThemeContext
 │   │   ├── config/            # Supabase client config
 │   │   └── App.tsx            # Root component with custom tab bar
-│   └── business-portal/       # Web portal for venue owners + admins
+│   ├── business-portal/       # Web portal for venue owners (port 3001)
+│   └── admin-portal/          # Separate web portal for platform admins (port 3002)
 │       └── src/
 │           ├── pages/         # Dashboard, Venues, Events, Analytics, admin/*
 │           ├── hooks/         # useVenues.ts, useEvents.ts
@@ -53,22 +55,27 @@ gidi-vibe-connect/
 | ExploreArea | `ExploreAreaScreen.tsx` | Lagos area grid |
 | Discover | `DiscoverScreen.tsx` | Activity feed |
 
-## Business Portal Pages
+## Business Portal Pages (port 3001 — Business Owner only)
 
-| Route | Page | Roles |
-|-------|------|-------|
-| `/dashboard` | Dashboard | Business Owner, Admin, Super Admin |
-| `/venues` | Venue list | Business Owner+ |
-| `/venues/:id` | Venue details + admin promotion panel | Business Owner+ |
-| `/analytics` | Analytics | Premium+ |
-| `/events` | Events | Business Owner+ |
-| `/offers` | Offers | Premium+ |
-| `/subscription` | Subscription plans | All |
-| `/settings` | Account settings | All |
-| `/admin` | Admin Overview | Admin, Super Admin only |
-| `/admin/venues` | All venues + promote/remove | Admin, Super Admin only |
-| `/admin/promotions` | Active/expired promotion tracking | Admin, Super Admin only |
-| `/admin/users` | User search + role management | Admin, Super Admin only |
+| Route | Page | Purpose |
+|-------|------|---------|
+| `/dashboard` | Dashboard | Business stats overview |
+| `/venues` | Venue list | Owned venues |
+| `/venues/:id` | Venue details | Photos, info, contact, amenities, tags |
+| `/analytics` | Analytics | Premium tier |
+| `/events` | Events | Owned events |
+| `/offers` | Offers | Premium tier |
+| `/subscription` | Subscription plans | Free/Premium/Enterprise |
+| `/settings` | Account settings | — |
+
+## Admin Portal Pages (port 3002 — Admin/Super Admin only)
+
+| Route | Page | Purpose |
+|-------|------|---------|
+| `/` | Overview | Platform stats: users, venues, promotions, new signups |
+| `/venues` | Venue Manager | All venues — search, promote/remove |
+| `/promotions` | Promotions Manager | Active/expired tracking, expiry countdown |
+| `/users` | User Manager | Search, filter by role, inline role change |
 
 ## Database Schema (Supabase)
 
@@ -137,8 +144,8 @@ Always use `colors.xxx` from theme context, never hardcode colors.
 - Sync auth metadata to profiles on first load if empty
 
 ### Admin Access
-- Role check: `profile?.role === 'Admin' || profile?.role === 'Super Admin'`
-- `DashboardLayout` allows: `['Business Owner', 'Admin', 'Super Admin']`
+- Admin portal (`AdminLayout`) only allows `Admin` or `Super Admin` roles
+- Business portal (`DashboardLayout`) only allows `Business Owner` role
 - RLS policies: owners see/edit own venues; admins can SELECT/UPDATE all venues
 - To make a user admin: `UPDATE profiles SET role = 'Admin' WHERE user_id = '<uuid>';`
 
@@ -147,8 +154,9 @@ Always use `colors.xxx` from theme context, never hardcode colors.
 ### March 2026
 - **Ionic icons**: All emoji icons replaced with Ionicons — `newArchEnabled: false` in app.json
 - **Trending algorithm**: `trending_venues` Postgres view with time-decayed hot score; promoted venues pin to top
-- **Paid promotions**: Businesses pay to be `is_promoted`; admin sets badge + days via VenueDetails panel
-- **Admin portal**: `/admin/*` routes inside business portal (not separate app) — reuses all components
+- **Paid promotions**: Businesses pay to be `is_promoted`; admins set badge + days via Admin Portal Venue Manager
+- **Admin portal separation**: `apps/admin-portal/` is now a completely separate Vite app on port 3002
+- **Business portal**: Business Owner only — admin routes and sidebar section removed
 - **Admin RLS fix**: Migration `20260314000001_admin_venue_rls.sql` — admins bypass owner_id filter on venues
 - **useVenue hook**: Skips `.eq('owner_id')` filter for Admin/Super Admin roles
 
@@ -165,9 +173,13 @@ cd apps/consumer-app
 npx expo run:ios          # iOS simulator (native build — expo-video requires this)
 npx expo run:android      # Android emulator
 
-# Business Portal
+# Business Portal (venue owners)
 cd apps/business-portal
 npm run dev               # http://localhost:3001
+
+# Admin Portal (platform admins)
+cd apps/admin-portal
+npm run dev               # http://localhost:3002
 
 # Database
 npx supabase db push      # Apply pending migrations

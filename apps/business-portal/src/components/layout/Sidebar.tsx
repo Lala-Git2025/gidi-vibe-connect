@@ -8,9 +8,6 @@ import {
   Settings,
   CreditCard,
   Menu,
-  Shield,
-  TrendingUp,
-  Users
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useBusinessAuth } from '../../contexts/BusinessAuthContext';
@@ -32,17 +29,9 @@ const navigation: NavItem[] = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
-const adminNavigation: NavItem[] = [
-  { name: 'Admin Overview', href: '/admin', icon: Shield },
-  { name: 'All Venues', href: '/admin/venues', icon: Building2 },
-  { name: 'Promotions', href: '/admin/promotions', icon: TrendingUp },
-  { name: 'Users', href: '/admin/users', icon: Users },
-];
-
 export function Sidebar() {
   const location = useLocation();
-  const { subscription, profile } = useBusinessAuth();
-  const isAdmin = profile?.role === 'Admin' || profile?.role === 'Super Admin';
+  const { subscription } = useBusinessAuth();
 
   const canAccess = (item: NavItem) => {
     if (!item.premium) return true;
@@ -93,34 +82,6 @@ export function Sidebar() {
             })}
           </nav>
 
-          {isAdmin && (
-            <div className="mt-6 px-2">
-              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Admin
-              </p>
-              <nav className="space-y-1">
-                {adminNavigation.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + '/');
-                  return (
-                    <Link
-                      key={item.name}
-                      to={item.href}
-                      className={cn(
-                        'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
-                        isActive
-                          ? 'bg-amber-500 text-white'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                      )}
-                    >
-                      <Icon className="mr-3 h-5 w-5 flex-shrink-0" aria-hidden="true" />
-                      {item.name}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-          )}
         </div>
 
         {/* Subscription Badge */}

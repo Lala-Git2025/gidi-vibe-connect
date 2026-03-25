@@ -12,10 +12,7 @@ import {
   X,
   Loader2,
   ExternalLink,
-  TrendingUp,
-  Star,
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import { useVenue, useUploadVenuePhoto, useDeleteVenuePhoto } from '../hooks/useVenues';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
 import { Button } from '../components/ui/button';
@@ -24,7 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 export default function VenueDetails() {
   const navigate = useNavigate();
   const { venueId } = useParams();
-  const { subscription, profile } = useBusinessAuth();
+  const { subscription } = useBusinessAuth();
   const { data: venue, isLoading, error } = useVenue(venueId);
   const uploadPhoto = useUploadVenuePhoto();
   const deletePhoto = useDeleteVenuePhoto();
@@ -32,36 +29,6 @@ export default function VenueDetails() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [deletingPhotoUrl, setDeletingPhotoUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Promotion state (admin only)
-  const isAdmin = profile?.role === 'Admin' || profile?.role === 'Super Admin';
-  const [promotionDays, setPromotionDays] = useState('30');
-  const [promotionLabel, setPromotionLabel] = useState('Sponsored');
-  const [savingPromotion, setSavingPromotion] = useState(false);
-  const [promotionMsg, setPromotionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const handleSetPromotion = async (active: boolean) => {
-    if (!venueId) return;
-    setSavingPromotion(true);
-    setPromotionMsg(null);
-    try {
-      const update = active
-        ? {
-            is_promoted: true,
-            promoted_until: new Date(Date.now() + parseInt(promotionDays, 10) * 86400000).toISOString(),
-            promotion_label: promotionLabel || 'Sponsored',
-          }
-        : { is_promoted: false, promoted_until: null };
-
-      const { error } = await supabase.from('venues').update(update).eq('id', venueId);
-      if (error) throw error;
-      setPromotionMsg({ type: 'success', text: active ? `Venue promoted for ${promotionDays} days.` : 'Promotion removed.' });
-    } catch (err) {
-      setPromotionMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update promotion.' });
-    } finally {
-      setSavingPromotion(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -388,82 +355,6 @@ export default function VenueDetails() {
         </CardContent>
       </Card>
 
-      {/* ── Admin: Trending Promotion ── */}
-      {isAdmin && (
-        <Card className="border-amber-200 bg-amber-50/30 dark:border-amber-800 dark:bg-amber-950/20">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-amber-500" />
-              <CardTitle className="text-amber-700 dark:text-amber-400">Trending Promotion (Admin)</CardTitle>
-              {venue.is_promoted && (
-                <span className="ml-auto text-xs font-semibold bg-amber-500 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Star className="h-3 w-3" />
-                  Active
-                </span>
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Pin this venue to the top of the Trending section in the consumer app.
-              {venue.promoted_until && (
-                <span className="ml-1">
-                  Expires: <strong>{new Date(venue.promoted_until).toLocaleDateString()}</strong>
-                </span>
-              )}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-1 block">Badge label</label>
-                <input
-                  type="text"
-                  value={promotionLabel}
-                  onChange={(e) => setPromotionLabel(e.target.value)}
-                  placeholder="Sponsored"
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Duration (days)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="365"
-                  value={promotionDays}
-                  onChange={(e) => setPromotionDays(e.target.value)}
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                />
-              </div>
-            </div>
-
-            {promotionMsg && (
-              <p className={`text-sm ${promotionMsg.type === 'success' ? 'text-green-600' : 'text-destructive'}`}>
-                {promotionMsg.text}
-              </p>
-            )}
-
-            <div className="flex gap-3">
-              <Button
-                onClick={() => handleSetPromotion(true)}
-                disabled={savingPromotion}
-                className="bg-amber-500 hover:bg-amber-600 text-white"
-              >
-                {savingPromotion ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <TrendingUp className="h-4 w-4 mr-2" />}
-                {venue.is_promoted ? 'Extend Promotion' : 'Promote to Trending'}
-              </Button>
-              {venue.is_promoted && (
-                <Button
-                  variant="outline"
-                  onClick={() => handleSetPromotion(false)}
-                  disabled={savingPromotion}
-                >
-                  Remove Promotion
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
