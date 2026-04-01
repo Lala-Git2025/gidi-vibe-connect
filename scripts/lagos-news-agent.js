@@ -569,7 +569,7 @@ async function runLagosNewsAgent() {
     console.log(`   💡 Method: Direct web scraping from news sites`);
     console.log(`   🖼️  All articles have REAL images scraped from source`);
     console.log(`   📰 Sources: Punch, The Cable, Premium Times, Vanguard`);
-    console.log(`   🕐 Next run: Set up a cron job to run this every 3 hours`);
+    console.log(`   🕐 Next run: Every hour via GitHub Actions, every 3h via macOS launchd`);
 
   } catch (error) {
     console.error('\n❌ AGENT FAILED:', error.message);

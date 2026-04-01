@@ -16,7 +16,8 @@ Gidi Connect is a multi-platform application (mobile + web) that helps users dis
 gidi-vibe-connect/
 ├── apps/
 │   ├── consumer-app/          # React Native mobile app (iOS/Android)
-│   └── business-portal/       # Web portal for venue owners + platform admins
+│   ├── business-portal/       # Web portal for venue owners (port 3001)
+│   └── admin-portal/          # Web portal for platform admins (port 3002)
 ├── supabase/
 │   ├── migrations/            # Timestamped Postgres migrations
 │   └── functions/             # Supabase Edge Functions
@@ -114,7 +115,7 @@ gidi-vibe-connect/
 | Auth | Supabase Auth (email/password) |
 | Storage | Supabase Storage (avatars, social-media, venue-photos, event-images) |
 | Edge Functions | create-venue, get-traffic |
-| News automation | macOS launchd (every 3 hours) |
+| News automation | GitHub Actions (every hour) + macOS launchd (every 3h) |
 
 ---
 
@@ -129,7 +130,7 @@ score = (checkins_24h × 10 + checkins_7d × 3 + live_rating × 20)
 Paid/promoted venues are pinned to the top (score = 999,999). Computed via the `trending_venues` Postgres view — no cron needed.
 
 ### News System
-Auto-updates every 3 hours via macOS launchd. Sources: 14 Nigerian outlets including Premium Times, Punch, BellaNaija, Pulse Nigeria, Linda Ikeji, Instablog9ja, and more.
+Auto-updates every hour via GitHub Actions (every 3h via macOS launchd). Sources: 14 Nigerian outlets including Premium Times, Punch, BellaNaija, Pulse Nigeria, Linda Ikeji, Instablog9ja, and more.
 
 ### Stories (My Vibe)
 Short-lived user moments: image or video, filter effects, text overlays, sticker picker. Stored with `expires_at`; viewed via full-screen animated viewer with progress bar.
@@ -235,7 +236,7 @@ UPDATE profiles SET role = 'Super Admin' WHERE user_id = '<user-uuid>';
 - [x] People tab with follow/unfollow
 - [x] Communities (join/leave, 8 seeded + user-created)
 - [x] Trending venues with paid promotion support
-- [x] Real-time news from 14 Nigerian sources (auto-updated every 3h)
+- [x] Real-time news from 14 Nigerian sources (auto-updated every hour)
 - [x] Traffic severity cards
 - [x] Ionicons migration (replaced all emoji icons — iOS 26 fix)
 - [x] Admin RLS policies (admins can view/manage all venues)
@@ -262,4 +263,4 @@ npm run build
 
 **Built for Lagos | Powered by React Native, React, and Supabase**
 
-**Last Updated**: March 25, 2026 | **Version**: 1.6.0
+**Last Updated**: April 1, 2026 | **Version**: 1.6.1

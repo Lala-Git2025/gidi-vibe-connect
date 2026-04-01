@@ -31,7 +31,7 @@ gidi-vibe-connect/
 │   ├── business-portal/       # Web portal for venue owners (port 3001)
 │   └── admin-portal/          # Separate web portal for platform admins (port 3002)
 │       └── src/
-│           ├── pages/         # Dashboard, Venues, Events, Analytics, admin/*
+│           ├── pages/         # Overview, VenueManager, PromotionsManager, UserManager, Login
 │           ├── hooks/         # useVenues.ts, useEvents.ts
 │           ├── contexts/      # BusinessAuthContext
 │           └── components/    # DashboardLayout, Sidebar, Header
@@ -39,7 +39,7 @@ gidi-vibe-connect/
 │   ├── migrations/            # All DB migrations (timestamped)
 │   └── functions/             # Edge functions (create-venue, get-traffic)
 └── scripts/
-    └── lagos-news-agent.js    # Auto news scraper (macOS launchd, every 3h)
+    └── lagos-news-agent.js    # Auto news scraper (GitHub Actions every 1h, macOS launchd every 3h)
 ```
 
 ## Key Screens (Consumer App)
