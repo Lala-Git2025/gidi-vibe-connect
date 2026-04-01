@@ -33,3 +33,4 @@ android/
 .env
 .env.*
 !.env.example
+supabase/.temp/
