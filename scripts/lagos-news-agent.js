@@ -131,6 +131,59 @@ async function fetchPageHtml(url, attempts = 3) {
   throw lastErr;
 }
 
+// --- ARTICLE CATEGORIZATION ---
+
+/**
+ * Categorize an article based on its title and summary content.
+ * Returns one of: general, politics, crime, business, entertainment, events,
+ * nightlife, sports, food, traffic, lifestyle, technology, health, education
+ */
+function categorizeArticle(title, summary = '', sourceFallback = 'general') {
+  const text = `${title} ${summary}`.toLowerCase();
+
+  // Politics & Government — highest priority (was most mislabeled)
+  if (/\b(politic|govt|government|governor|senator|president|minister|election|campaign|vote|ballot|tribunal|inec|apc\b|pdp\b|lp\b|adc\b|nnpp|senate|house\s?of\s?rep|lawmaker|legislation|bill\b|impeach|democracy|coup|diplomacy|embassy|sanction|tariff|trump|biden|tinubu|obi\b|atiku|shettima|wike|sanwo[\s-]?olu|fashola|ambode|buhari|osinbajo|national\s?assembly|supreme\s?court|judiciary|court\s?of\s?appeal|federal|state\s?house|aso\s?rock|presidency|opposition|incumbent|political\s?party|primaries|caucus|constituency|geopolitic|diplomat|foreign\s?affairs|un\b|nato\b|eu\b|ecowas|african\s?union)\b/.test(text)) return 'politics';
+
+  // Crime & Security
+  if (/\b(killed|murder|robbery|kidnap|arrest|police|shoot|gun|attack|bomb|explo|terror|bandits?|herdsmen|ritual|fraud|scam|efcc|ndlea|prison|jail|sentence|suspect|crime|criminal|armed|theft|rape|assault|victim|cult|gang|drug\s?bust|trafficking)\b/.test(text)) return 'crime';
+
+  // Business & Economy
+  if (/\b(economy|inflation|naira|dollar|exchange\s?rate|stock|market|invest|revenue|gdp|budget|tax|cbn\b|bank\b|interest\s?rate|oil\s?price|crude|opec|business|startup|funding|ipo|profit|loss|debt|loan|fintech|crypto|bitcoin|trade\s?war|import|export|customs|nbs\b|sec\b)\b/.test(text)) return 'business';
+
+  // Nightlife
+  if (/\b(clubs?|nightclubs?|nightlife|night\s?life|lounges?|dj\s?set|rave|after[\s-]?party|bottle\s?service|vip\s?section|night\s?out)\b/.test(text)) return 'nightlife';
+
+  // Events
+  if (/\b(concert|festival|exhibition|launch\s?event|premiere|ceremony|gala|carnival|fiesta|conference|summit|award\s?show|red\s?carpet|lineup|headlin|fashion\s?week)\b/.test(text)) return 'events';
+
+  // Sports
+  if (/\b(football|soccer|nba|basketball|athlete|stadium|premier\s?league|champions\s?league|afcon|super\s?eagles|coach|goalkeeper|striker|fixture|referee|la\s?liga|serie\s?a|transfer|olympic|wrestling|boxing|marathon|epl\b|laliga|ucl\b|world\s?cup|fifa|caf\b|npfl)\b/.test(text)) return 'sports';
+
+  // Food & Dining
+  if (/\b(restaurant|food|chef|dining|recipe|cuisine|cook|kitchen|menu|meal|suya|jollof|amala|pepper\s?soup|eatery|bakery|cafe|brunch|buffet)\b/.test(text)) return 'food';
+
+  // Traffic & Transport
+  if (/\b(traffic|road\s?clos|gridlock|accident|highway|expressway|brt\b|danfo|commut|transport|toll|third\s?mainland|lekki.exp|eko\s?bridge|congestion)\b/.test(text)) return 'traffic';
+
+  // Lifestyle
+  if (/\b(fashion|style|wedding|beauty|makeup|wellness|fitness|museum|gallery|theatre|theater|design|interior|real\s?estate|property|luxury|relationship|dating|self[\s-]?care)\b/.test(text)) return 'lifestyle';
+
+  // Entertainment — music, movies, celebrities, Nollywood
+  if (/\b(nollywood|movie|film|actor|actress|music|album|single\b|song|rapper|singer|wizkid|davido|burna\s?boy|tiwa\s?savage|asake|rema\b|tems\b|olamide|bbnaija|big\s?brother|reality\s?tv|netflix|spotify|grammy|headies|hip[\s-]?hop|afrobeat|amapiano|comedy|comedian|skit|viral|influencer|youtube|tiktok|gossip|scandal|celebrity|celeb)\b/.test(text)) return 'entertainment';
+
+  // Technology
+  if (/\b(tech|ai\b|artificial\s?intelligence|app\b|software|hardware|gadget|phone|iphone|samsung|google|apple|microsoft|meta\b|spacex|elon\s?musk|robot|drone|5g\b|internet|cyber|hack|data\s?breach|blockchain)\b/.test(text)) return 'technology';
+
+  // Health
+  if (/\b(health|hospital|doctor|disease|virus|covid|malaria|cholera|lassa|ebola|vaccine|medicine|surgery|patient|who\b|ncdc|medical|clinic|pharma|mental\s?health|diagnosis|epidemic|pandemic)\b/.test(text)) return 'health';
+
+  // Education
+  if (/\b(university|school|student|education|asuu|exam|waec|jamb|neco|lecturer|professor|scholarship|academic|admission|matriculation|convocation|varsity)\b/.test(text)) return 'education';
+
+  // Fall back to source-level hint, or general
+  return sourceFallback;
+}
+
 // --- FUNCTIONS ---
 
 /**
@@ -319,72 +372,72 @@ async function scrapeRealLagosNews() {
     {
       name: 'Linda Ikeji Blog',
       url: 'https://www.lindaikejisblog.com/',
-      category: 'general'
+      fallbackCategory: 'general'
     },
     {
       name: 'Instablog9ja',
       url: 'https://instablog9ja.com/',
-      category: 'nightlife'
+      fallbackCategory: 'general'
     },
     {
       name: '36ng Entertainment',
       url: 'https://36ng.ng/category/entertainment/',
-      category: 'nightlife'
+      fallbackCategory: 'entertainment'
     },
     {
       name: 'Information Nigeria Entertainment',
       url: 'https://www.informationng.com/category/entertainment',
-      category: 'events'
+      fallbackCategory: 'entertainment'
     },
     {
       name: 'Information Nigeria News',
       url: 'https://www.informationng.com/category/news',
-      category: 'general'
+      fallbackCategory: 'general'
     },
     {
       name: 'Premium Times',
       url: 'https://www.premiumtimesng.com/tag/lagos',
-      category: 'general'
+      fallbackCategory: 'general'
     },
     {
       name: 'Punch',
       url: 'https://punchng.com/lagos/',
-      category: 'general'
+      fallbackCategory: 'general'
     },
     {
       name: 'BellaNaija Events',
       url: 'https://www.bellanaija.com/category/events/',
-      category: 'events'
+      fallbackCategory: 'events'
     },
     {
       name: 'BellaNaija Entertainment',
       url: 'https://www.bellanaija.com/category/entertainment/',
-      category: 'nightlife'
+      fallbackCategory: 'entertainment'
     },
     {
       name: 'Pulse Nigeria Lagos',
       url: 'https://www.pulse.ng/news/local/lagos',
-      category: 'general'
+      fallbackCategory: 'general'
     },
     {
       name: 'Pulse Entertainment',
       url: 'https://www.pulse.ng/entertainment',
-      category: 'nightlife'
+      fallbackCategory: 'entertainment'
     },
     {
       name: 'NotJustOk',
       url: 'https://notjustok.com/news/',
-      category: 'nightlife'
+      fallbackCategory: 'entertainment'
     },
     {
       name: 'Legit.ng Nigeria',
       url: 'https://www.legit.ng/nigeria/',
-      category: 'general'
+      fallbackCategory: 'general'
     },
     {
       name: 'Legit.ng Entertainment',
       url: 'https://www.legit.ng/entertainment/',
-      category: 'nightlife'
+      fallbackCategory: 'entertainment'
     }
   ];
 
@@ -403,9 +456,9 @@ async function scrapeRealLagosNews() {
         const href = $(elem).attr('href');
         const text = $(elem).text().trim();
 
-        // For entertainment/nightlife sources, accept all articles
+        // For entertainment/events sources, accept all articles
         // For general news sources, require "lagos" in title
-        const isRelevant = (source.category === 'events' || source.category === 'nightlife')
+        const isRelevant = (source.fallbackCategory !== 'general')
           ? text.length > 20
           : text.length > 20 && text.toLowerCase().includes('lagos');
 
@@ -471,10 +524,17 @@ async function scrapeRealLagosNews() {
         seenUrls.add(article.url);
         existingUrls.add(article.url);
 
+        // Categorize based on actual article content, not just source
+        const articleCategory = categorizeArticle(
+          article.title,
+          details.summary || '',
+          source.fallbackCategory
+        );
+
         newsItems.push({
           title: article.title.substring(0, 100),
           summary: details.summary || `Latest update from ${source.name} on Lagos news.`,
-          category: source.category,
+          category: articleCategory,
           source: source.name,              // ← store actual source name
           external_url: article.url,
           featured_image_url: details.imageUrl || null,  // null when not found
@@ -483,7 +543,7 @@ async function scrapeRealLagosNews() {
           priority: newsItems.length + 1
         });
 
-        console.log(`   ✅ Added article from ${source.name}${details.imageUrl ? ' (with image)' : ' (no image)'}\n`);
+        console.log(`   ✅ Added article from ${source.name} [${articleCategory}]${details.imageUrl ? ' (with image)' : ' (no image)'}\n`);
 
         // Limit to 25 total articles (raised from 15 to get more sources represented)
         if (newsItems.length >= 25) break;
