@@ -36,6 +36,7 @@ export default function ProfileScreen() {
   // Auth state
   const [isGuest, setIsGuest] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [loading, setLoading] = useState(false);
@@ -50,6 +51,21 @@ export default function ProfileScreen() {
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
+
+  // Keyboard state for auth modal
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   // Edit profile state
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
@@ -91,17 +107,30 @@ export default function ProfileScreen() {
     requirement_value: number;
   }>>([]);
 
-  // Check authentication status
+  // Check authentication status — single source of truth
   useEffect(() => {
-    checkAuth();
+    // Get initial session first, then listen for changes
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setIsGuest(!currentUser);
+      setAuthReady(true);
 
-    // Listen for auth changes
+      if (currentUser) {
+        fetchAvatar(currentUser.id);
+        fetchUserStats(currentUser.id);
+        fetchUserBadges(currentUser.id);
+      }
+      fetchAllBadges();
+    });
+
+    // Listen for subsequent auth changes (sign in, sign out)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       setIsGuest(!currentUser);
+      setAuthReady(true);
 
-      // Refetch user data when signing in
       if (currentUser) {
         fetchAvatar(currentUser.id);
         fetchUserStats(currentUser.id);
@@ -135,23 +164,6 @@ export default function ProfileScreen() {
       });
     }, [])
   );
-
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user ?? null;
-    setUser(user);
-    setIsGuest(!user);
-
-    // Fetch user data if logged in
-    if (user) {
-      fetchAvatar(user.id);
-      fetchUserStats(user.id);
-      fetchUserBadges(user.id);
-    }
-
-    // Fetch all badges for display
-    fetchAllBadges();
-  };
 
   const fetchUserStats = async (userId: string) => {
     try {
@@ -654,7 +666,7 @@ export default function ProfileScreen() {
     Linking.openURL('https://gidivibeconnect.com/terms');
   };
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !authReady) {
     return null;
   }
 
@@ -836,14 +848,18 @@ export default function ProfileScreen() {
         visible={authModalVisible}
         animationType="slide"
         transparent={true}
+        statusBarTranslucent
         onRequestClose={() => setAuthModalVisible(false)}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.modalOverlay}
-          >
-            <View style={styles.modalContent}>
+        <View style={styles.modalOverlay}>
+          {/* Backdrop — tap to dismiss modal */}
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => { Keyboard.dismiss(); setAuthModalVisible(false); }}
+          />
+
+          <View style={[styles.modalContent, keyboardHeight > 0 && { marginBottom: keyboardHeight }]}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
@@ -866,111 +882,118 @@ export default function ProfileScreen() {
             </Text>
 
             {/* Form */}
-            <View style={styles.form}>
-              {authMode === 'signup' && (
-                <>
-                  <View style={styles.inputContainer}>
-                    <Text style={styles.inputLabel}>Full Name</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="John Doe"
-                      placeholderTextColor={colors.textSecondary}
-                      value={fullName}
-                      onChangeText={setFullName}
-                      autoCapitalize="words"
-                    />
-                  </View>
-                  <View style={styles.inputContainer}>
-                    <Text style={styles.inputLabel}>Username</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="johndoe"
-                      placeholderTextColor={colors.textSecondary}
-                      value={username}
-                      onChangeText={setUsername}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                    <Text style={styles.inputHint}>Letters, numbers, and underscores only</Text>
-                  </View>
-                </>
-              )}
+            <ScrollView
+              bounces={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 40 }}
+            >
+              <View style={styles.form}>
+                {authMode === 'signup' && (
+                  <>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>Full Name</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="John Doe"
+                        placeholderTextColor={colors.textSecondary}
+                        value={fullName}
+                        onChangeText={setFullName}
+                        autoCapitalize="words"
+                      />
+                    </View>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>Username</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="johndoe"
+                        placeholderTextColor={colors.textSecondary}
+                        value={username}
+                        onChangeText={setUsername}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      <Text style={styles.inputHint}>Letters, numbers, and underscores only</Text>
+                    </View>
+                  </>
+                )}
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="you@example.com"
-                  placeholderTextColor={colors.textSecondary}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-              </View>
-
-              {authMode !== 'forgot' && (
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Password</Text>
+                  <Text style={styles.inputLabel}>Email</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="••••••••"
+                    placeholder="you@example.com"
                     placeholderTextColor={colors.textSecondary}
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
+                    value={email}
+                    onChangeText={setEmail}
                     autoCapitalize="none"
+                    keyboardType="email-address"
                   />
                 </View>
-              )}
 
-              {authMode === 'signin' && (
-                <TouchableOpacity onPress={() => setAuthMode('forgot')}>
-                  <Text style={styles.forgotPasswordLink}>Forgot Password?</Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-                onPress={authMode === 'signin' ? handleSignIn : authMode === 'signup' ? handleSignUp : handleForgotPassword}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={colors.background} />
-                ) : (
-                  <Text style={styles.submitButtonText}>
-                    {authMode === 'signin' ? 'Sign In' : authMode === 'signup' ? 'Create Account' : 'Send Reset Link'}
-                  </Text>
+                {authMode !== 'forgot' && (
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>Password</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="••••••••"
+                      placeholderTextColor={colors.textSecondary}
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry
+                      autoCapitalize="none"
+                    />
+                  </View>
                 )}
-              </TouchableOpacity>
 
-              <View style={styles.switchModeContainer}>
-                {authMode === 'forgot' ? (
-                  <>
-                    <Text style={styles.switchModeText}>Remember your password? </Text>
-                    <TouchableOpacity onPress={() => setAuthMode('signin')}>
-                      <Text style={styles.switchModeLink}>Sign In</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.switchModeText}>
-                      {authMode === 'signin' ? "Don't have an account? " : "Already have an account? "}
+                {authMode === 'signin' && (
+                  <TouchableOpacity onPress={() => setAuthMode('forgot')}>
+                    <Text style={styles.forgotPasswordLink}>Forgot Password?</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+                  onPress={authMode === 'signin' ? handleSignIn : authMode === 'signup' ? handleSignUp : handleForgotPassword}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={colors.background} />
+                  ) : (
+                    <Text style={styles.submitButtonText}>
+                      {authMode === 'signin' ? 'Sign In' : authMode === 'signup' ? 'Create Account' : 'Send Reset Link'}
                     </Text>
-                    <TouchableOpacity
-                      onPress={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
-                    >
-                      <Text style={styles.switchModeLink}>
-                        {authMode === 'signin' ? 'Sign Up' : 'Sign In'}
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.switchModeContainer}>
+                  {authMode === 'forgot' ? (
+                    <>
+                      <Text style={styles.switchModeText}>Remember your password? </Text>
+                      <TouchableOpacity onPress={() => setAuthMode('signin')}>
+                        <Text style={styles.switchModeLink}>Sign In</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.switchModeText}>
+                        {authMode === 'signin' ? "Don't have an account? " : "Already have an account? "}
                       </Text>
-                    </TouchableOpacity>
-                  </>
-                )}
+                      <TouchableOpacity
+                        onPress={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
+                      >
+                        <Text style={styles.switchModeLink}>
+                          {authMode === 'signin' ? 'Sign Up' : 'Sign In'}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
               </View>
-            </View>
+            </ScrollView>
           </View>
-        </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
+        </View>
       </Modal>
 
       {/* Settings Modal */}

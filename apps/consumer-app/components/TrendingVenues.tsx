@@ -31,11 +31,14 @@ const getVibeStatus = (rating: number) => {
 const isActivePromotion = (venue: Venue) => !!venue.is_promoted;
 
 const dedupeVenues = (list: Venue[]): Venue[] => {
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
   return list.filter(v => {
-    const key = v.name.trim().toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
+    if (seenIds.has(v.id)) return false;
+    const nameKey = v.name.trim().toLowerCase();
+    if (seenNames.has(nameKey)) return false;
+    seenIds.add(v.id);
+    seenNames.add(nameKey);
     return true;
   });
 };
@@ -65,7 +68,9 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
       const { data, error } = await supabase
         .from('trending_venues')
         .select('id, name, location, rating, live_rating, professional_media_urls, is_promoted, promotion_label, checkins_24h')
-        .limit(20);
+        .eq('is_promoted', true)
+        .order('trending_score', { ascending: false })
+        .limit(10);
 
       if (error) throw error;
 
@@ -105,7 +110,7 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
         <TouchableOpacity
           key={venue.id}
           style={styles.venueCard}
-          onPress={() => navigation.navigate('Explore' as never)}
+          onPress={() => (navigation as any).navigate('Explore', { venueId: venue.id })}
           activeOpacity={0.85}
         >
           {/* Background Image */}
@@ -138,7 +143,7 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
             <View style={styles.bottomContent}>
               <Text style={styles.venueName} numberOfLines={1}>{venue.name}</Text>
               <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                <Ionicons name="location-outline" size={14} color="rgba(255, 255, 255, 0.8)" />
                 <Text style={styles.locationText} numberOfLines={1}>{venue.location}</Text>
               </View>
               <View style={styles.visitorsRow}>
@@ -222,7 +227,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   vibeText: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: colors.text,
+    color: '#fff',
   },
   sponsoredText: {
     fontSize: 11,
@@ -249,7 +254,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   venueName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: colors.text,
+    color: '#fff',
   },
   locationRow: {
     flexDirection: 'row',
@@ -262,7 +267,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   locationText: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.8)',
     flex: 1,
   },
   visitorsRow: {
@@ -277,13 +282,13 @@ const getStyles = (colors: any) => StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.textSecondary,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     borderWidth: 2,
-    borderColor: colors.background,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   visitorsText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.primary,
+    color: '#fff',
   },
 });

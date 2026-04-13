@@ -123,6 +123,55 @@ function isValidUrl(url: string | undefined): boolean {
     !lower.includes('placeholder');
 }
 
+/**
+ * Categorize an article based on its actual title + summary content.
+ * Overrides the (often wrong) DB category that was assigned per-source.
+ */
+function categorizeArticle(title: string, summary: string = ''): string {
+  const text = `${title} ${summary}`.toLowerCase();
+
+  // Politics & Government — check first since political news was mislabeled most
+  if (/\b(politic|govt|government|governor|senator|president|minister|election|campaign|vote|ballot|tribunal|inec|apc\b|pdp\b|lp\b|adc\b|nnpp|senate|house\s?of\s?rep|lawmaker|legislation|bill\b|impeach|democracy|coup|diplomacy|embassy|sanction|tariff|trump|biden|tinubu|obi\b|atiku|shettima|wike|sanwo[\s-]?olu|fashola|ambode|buhari|osinbajo|national\s?assembly|supreme\s?court|judiciary|court\s?of\s?appeal|federal|state\s?house|aso\s?rock|presidency|opposition|incumbent|political\s?party|primaries|caucus|constituency|geopolitic|diplomat|foreign\s?affairs|un\b|nato\b|eu\b|ecowas|african\s?union)\b/.test(text)) return 'politics';
+
+  // Crime & Security
+  if (/\b(killed|murder|robbery|kidnap|arrest|police|shoot|gun|attack|bomb|explo|terror|bandits?|herdsmen|ritual|fraud|scam|efcc|ndlea|prison|jail|sentence|suspect|crime|criminal|armed|theft|rape|assault|victim|cult|gang|drug\s?bust|trafficking)\b/.test(text)) return 'crime';
+
+  // Business & Economy
+  if (/\b(economy|inflation|naira|dollar|exchange\s?rate|stock|market|invest|revenue|gdp|budget|tax|cbn\b|bank\b|interest\s?rate|oil\s?price|crude|opec|business|startup|funding|ipo|profit|loss|debt|loan|fintech|crypto|bitcoin|trade\s?war|import|export|customs|nbs\b|sec\b)\b/.test(text)) return 'business';
+
+  // Nightlife
+  if (/\b(clubs?|nightclubs?|nightlife|night\s?life|lounges?|dj\s?set|rave|after[\s-]?party|bottle\s?service|vip\s?section|night\s?out)\b/.test(text)) return 'nightlife';
+
+  // Events
+  if (/\b(concert|festival|exhibition|launch\s?event|premiere|ceremony|gala|carnival|fiesta|conference|summit|award\s?show|red\s?carpet|lineup|headlin|fashion\s?week)\b/.test(text)) return 'events';
+
+  // Sports
+  if (/\b(football|soccer|nba|basketball|athlete|stadium|premier\s?league|champions\s?league|afcon|super\s?eagles|coach|goalkeeper|striker|fixture|referee|la\s?liga|serie\s?a|transfer|olympic|wrestling|boxing|marathon|epl\b|laliga|ucl\b|world\s?cup|fifa|caf\b|npfl)\b/.test(text)) return 'sports';
+
+  // Food & Dining
+  if (/\b(restaurant|food|chef|dining|recipe|cuisine|cook|kitchen|menu|meal|suya|jollof|amala|pepper\s?soup|eatery|bakery|cafe|brunch|buffet)\b/.test(text)) return 'food';
+
+  // Traffic & Transport
+  if (/\b(traffic|road\s?clos|gridlock|accident|highway|expressway|brt\b|danfo|commut|transport|toll|third\s?mainland|lekki.exp|eko\s?bridge|congestion)\b/.test(text)) return 'traffic';
+
+  // Lifestyle
+  if (/\b(fashion|style|wedding|beauty|makeup|wellness|fitness|museum|gallery|theatre|theater|design|interior|real\s?estate|property|luxury|relationship|dating|self[\s-]?care)\b/.test(text)) return 'lifestyle';
+
+  // Entertainment — music, movies, celebrities, Nollywood
+  if (/\b(nollywood|movie|film|actor|actress|music|album|single\b|song|rapper|singer|wizkid|davido|burna\s?boy|tiwa\s?savage|asake|rema\b|tems\b|olamide|bbnaija|big\s?brother|reality\s?tv|netflix|spotify|grammy|headies|hip[\s-]?hop|afrobeat|amapiano|comedy|comedian|skit|viral|influencer|youtube|tiktok|gossip|scandal|celebrity|celeb)\b/.test(text)) return 'entertainment';
+
+  // Technology
+  if (/\b(tech|ai\b|artificial\s?intelligence|app\b|software|hardware|gadget|phone|iphone|samsung|google|apple|microsoft|meta\b|spacex|elon\s?musk|robot|drone|5g\b|internet|cyber|hack|data\s?breach|blockchain)\b/.test(text)) return 'technology';
+
+  // Health
+  if (/\b(health|hospital|doctor|disease|virus|covid|malaria|cholera|lassa|ebola|vaccine|medicine|surgery|patient|who\b|ncdc|medical|clinic|pharma|mental\s?health|diagnosis|epidemic|pandemic)\b/.test(text)) return 'health';
+
+  // Education
+  if (/\b(university|school|student|education|asuu|exam|waec|jamb|neco|lecturer|professor|scholarship|academic|admission|matriculation|convocation|varsity)\b/.test(text)) return 'education';
+
+  return 'general';
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function NewsScreen() {
@@ -136,7 +185,7 @@ export default function NewsScreen() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
 
-  const categories = ['All', 'general', 'nightlife', 'events', 'traffic', 'food'];
+  const categories = ['All', 'general', 'politics', 'crime', 'business', 'entertainment', 'sports', 'events', 'lifestyle', 'health', 'technology', 'education', 'nightlife', 'food', 'traffic'];
 
   // ── Fetch ────────────────────────────────────────────────────────────────────
 
@@ -161,7 +210,12 @@ export default function NewsScreen() {
       }
 
       const valid = (data || []).filter(item => isValidUrl(item.external_url));
-      const deduped = deduplicateNews(valid).slice(0, 30);
+      // Re-categorize every article based on actual content (fixes wrong DB categories)
+      const recategorized = valid.map(item => ({
+        ...item,
+        category: categorizeArticle(item.title, item.summary),
+      }));
+      const deduped = deduplicateNews(recategorized).slice(0, 30);
       setNews(deduped);
       setLastUpdated(new Date());
     } catch (err) {

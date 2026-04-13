@@ -93,6 +93,29 @@ function areTitlesSimilar(title1: string, title2: string): boolean {
   return similarity >= 0.7;
 }
 
+/**
+ * Categorize a news article based on its title + summary content.
+ */
+function categorizeArticle(title: string, summary: string = ''): string {
+  const text = `${title} ${summary}`.toLowerCase();
+
+  if (/\b(politic|govt|government|governor|senator|president|minister|election|campaign|vote|tribunal|inec|apc\b|pdp\b|lp\b|adc\b|senate|lawmaker|legislation|impeach|democracy|diplomacy|tariff|trump|biden|tinubu|obi\b|atiku|shettima|wike|sanwo[\s-]?olu|buhari|national\s?assembly|supreme\s?court|judiciary|aso\s?rock|presidency|opposition|political\s?party|geopolitic|ecowas|african\s?union)\b/.test(text)) return 'politics';
+  if (/\b(killed|murder|robbery|kidnap|arrest|police|shoot|gun|attack|bomb|terror|bandits?|ritual|fraud|scam|efcc|ndlea|prison|jail|suspect|crime|criminal|armed|theft|assault|victim|cult|gang|trafficking)\b/.test(text)) return 'crime';
+  if (/\b(economy|inflation|naira|dollar|exchange\s?rate|stock|market|invest|revenue|budget|tax|cbn\b|bank\b|oil\s?price|crude|opec|business|startup|funding|profit|debt|fintech|crypto|trade\s?war)\b/.test(text)) return 'business';
+  if (/\b(clubs?|nightclubs?|nightlife|night\s?life|lounges?|dj\s?set|rave|after[\s-]?party|bottle\s?service|night\s?out)\b/.test(text)) return 'nightlife';
+  if (/\b(concert|festival|exhibition|premiere|ceremony|gala|carnival|conference|summit|award\s?show|red\s?carpet|lineup|headlin|fashion\s?week)\b/.test(text)) return 'events';
+  if (/\b(football|soccer|nba|basketball|athlete|stadium|premier\s?league|champions\s?league|afcon|super\s?eagles|coach|goalkeeper|striker|fixture|olympic|wrestling|boxing|marathon|world\s?cup|fifa)\b/.test(text)) return 'sports';
+  if (/\b(restaurant|food|chef|dining|recipe|cuisine|cook|kitchen|menu|suya|jollof|amala|pepper\s?soup|eatery|bakery|cafe|brunch)\b/.test(text)) return 'food';
+  if (/\b(traffic|road\s?clos|gridlock|accident|highway|expressway|brt\b|danfo|commut|transport|third\s?mainland|congestion)\b/.test(text)) return 'traffic';
+  if (/\b(fashion|wedding|beauty|makeup|wellness|fitness|museum|gallery|theatre|design|real\s?estate|luxury|relationship|dating)\b/.test(text)) return 'lifestyle';
+  if (/\b(nollywood|movie|film|actor|actress|music|album|song|rapper|singer|wizkid|davido|burna\s?boy|asake|rema\b|tems\b|bbnaija|big\s?brother|reality\s?tv|netflix|grammy|headies|afrobeat|amapiano|comedy|comedian|viral|influencer|gossip|scandal|celebrity|celeb)\b/.test(text)) return 'entertainment';
+  if (/\b(tech|ai\b|artificial\s?intelligence|software|gadget|phone|iphone|google|apple|microsoft|spacex|elon\s?musk|robot|drone|cyber|hack|blockchain)\b/.test(text)) return 'technology';
+  if (/\b(health|hospital|doctor|disease|virus|vaccine|medicine|surgery|who\b|ncdc|medical|mental\s?health|epidemic|pandemic)\b/.test(text)) return 'health';
+  if (/\b(university|school|student|education|asuu|exam|waec|jamb|neco|scholarship|academic|admission)\b/.test(text)) return 'education';
+
+  return 'general';
+}
+
 const categories: { icon: string; label: string; screen: string }[] = [
   { icon: 'wine', label: "Bars & Lounges", screen: "Explore" },
   { icon: 'restaurant', label: "Restaurants", screen: "Explore" },
@@ -159,14 +182,17 @@ export default function HomeScreen() {
         // Remove duplicates based on title similarity
         const deduplicatedNews = deduplicateNews(validNews);
 
-        const formattedNews = deduplicatedNews.slice(0, 3).map(item => ({
-          title: item.title,
-          summary: item.summary,
-          time: formatTimeAgo(item.publish_date),
-          category: item.category.charAt(0).toUpperCase() + item.category.slice(1),
-          featured_image_url: item.featured_image_url,
-          external_url: item.external_url
-        }));
+        const formattedNews = deduplicatedNews.slice(0, 3).map(item => {
+          const correctCategory = categorizeArticle(item.title, item.summary);
+          return {
+            title: item.title,
+            summary: item.summary,
+            time: formatTimeAgo(item.publish_date),
+            category: correctCategory.charAt(0).toUpperCase() + correctCategory.slice(1),
+            featured_image_url: item.featured_image_url,
+            external_url: item.external_url
+          };
+        });
         setLiveNews(formattedNews);
       } else {
         setLiveNews([]);
@@ -368,10 +394,7 @@ export default function HomeScreen() {
         {/* Traffic Update - Dynamic (header is inside TrafficAlert component) */}
         <TrafficAlert />
 
-        {/* Vibe Check Section - Dynamic */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Vibe Check</Text>
-        </View>
+        {/* Vibe Check Section - Dynamic (title is inside VibeCheck component) */}
         <VibeCheck />
 
         {/* Trending Venues - Dynamic */}

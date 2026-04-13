@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Animated, Modal } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,13 +44,32 @@ const getVibeStatus = (count: number, colors: any) => {
   return { status: 'Chill', vibeType: 'Chill' as const, color: colors.info };
 };
 
+interface AreaVenueItem {
+  id: string;
+  name: string;
+  rating: number;
+  category: string;
+}
+
+const VIBE_DESCRIPTIONS = [
+  { level: 'Electric', icon: 'flash' as const, color: '#EAB308', threshold: '15+ venues', description: 'The hottest area in Lagos right now! Packed with action and buzzing energy everywhere.' },
+  { level: 'Buzzing', icon: 'flame' as const, color: '#F59E0B', threshold: '8–14 venues', description: 'Lots of activity and great energy. A solid choice for a night out.' },
+  { level: 'Vibing', icon: 'sparkles' as const, color: '#EF4444', threshold: '3–7 venues', description: 'A nice, steady vibe with a good selection of spots to check out.' },
+  { level: 'Chill', icon: 'musical-notes' as const, color: '#06B6D4', threshold: '0–2 venues', description: 'Quiet and laid-back. Perfect for a relaxed, low-key evening.' },
+];
+
 export const VibeCheck = () => {
   const { colors } = useTheme();
+  const navigation = useNavigation();
   const [areaVibes, setAreaVibes] = useState<AreaVibe[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedVibe, setSelectedVibe] = useState<VibeFilter>('All');
   const [displayOffset, setDisplayOffset] = useState(0);
   const [fadeAnim] = useState(new Animated.Value(1));
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [expandedArea, setExpandedArea] = useState<string | null>(null);
+  const [areaVenues, setAreaVenues] = useState<AreaVenueItem[]>([]);
+  const [loadingVenues, setLoadingVenues] = useState(false);
   const [pulseAnims] = useState([
     new Animated.Value(1),
     new Animated.Value(1),
@@ -171,6 +191,39 @@ export const VibeCheck = () => {
     }
   };
 
+  const handleAreaTap = async (area: AreaVibe) => {
+    if (expandedArea === area.name) {
+      setExpandedArea(null);
+      setAreaVenues([]);
+      return;
+    }
+    setExpandedArea(area.name);
+    setLoadingVenues(true);
+    try {
+      const areaConfig = LAGOS_AREAS.find(a => a.name === area.name);
+      const aliases = areaConfig?.aliases || [area.name];
+      // Build an OR filter for all aliases
+      const filters = aliases.map(a => `location.ilike.%${a}%`).join(',');
+      const { data } = await supabase
+        .from('venues')
+        .select('id, name, rating, category')
+        .or(filters)
+        .order('rating', { ascending: false })
+        .limit(10);
+      setAreaVenues((data as AreaVenueItem[]) || []);
+    } catch {
+      setAreaVenues([]);
+    } finally {
+      setLoadingVenues(false);
+    }
+  };
+
+  const handleVenueTap = (venueId: string) => {
+    setExpandedArea(null);
+    setAreaVenues([]);
+    (navigation as any).navigate('Explore', { venueId });
+  };
+
   const filteredAreas = selectedVibe === 'All'
     ? areaVibes
     : areaVibes.filter(area => area.vibeType === selectedVibe);
@@ -204,9 +257,14 @@ export const VibeCheck = () => {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Lagos Vibe Check</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>Lagos Vibe Check</Text>
+            <TouchableOpacity onPress={() => setShowInfoModal(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="information-circle-outline" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.subtitle}>
-            {filteredCount} area{filteredCount !== 1 ? 's' : ''} • Live now
+            {filteredCount} area{filteredCount !== 1 ? 's' : ''} • Tap an area to see venues
           </Text>
         </View>
         <View style={styles.liveBadge}>
@@ -260,80 +318,131 @@ export const VibeCheck = () => {
               outputRange: [0.6, 1],
             });
 
+            const isExpanded = expandedArea === area.name;
+
             return (
               <View key={`${area.name}-${index}`} style={styles.areaItemContainer}>
                 {/* Outer Glow Container */}
-                <Animated.View
-                  style={[
-                    styles.outerGlow,
-                    {
-                      opacity: glowOpacity,
-                      borderColor: area.color,
-                      borderWidth: pulseAnim.interpolate({
-                        inputRange: [1, 1.3],
-                        outputRange: [3, 5],
-                      }),
-                    },
-                  ]}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleAreaTap(area)}
                 >
-                  {/* Inner Glow */}
                   <Animated.View
                     style={[
-                      styles.innerGlow,
+                      styles.outerGlow,
                       {
-                        backgroundColor: area.color,
-                        opacity: pulseAnim.interpolate({
+                        opacity: glowOpacity,
+                        borderColor: area.color,
+                        borderWidth: pulseAnim.interpolate({
                           inputRange: [1, 1.3],
-                          outputRange: [0.2, 0.4],
+                          outputRange: [3, 5],
                         }),
                       },
                     ]}
-                  />
+                  >
+                    {/* Inner Glow */}
+                    <Animated.View
+                      style={[
+                        styles.innerGlow,
+                        {
+                          backgroundColor: area.color,
+                          opacity: pulseAnim.interpolate({
+                            inputRange: [1, 1.3],
+                            outputRange: [0.2, 0.4],
+                          }),
+                        },
+                      ]}
+                    />
 
-                  {/* Area Card */}
-                  <View style={styles.areaItem}>
-                    <View style={styles.areaLeft}>
-                      <Animated.View
-                        style={[
-                          styles.areaIndicator,
-                          {
-                            backgroundColor: area.color,
-                            opacity: pulseAnim.interpolate({
-                              inputRange: [1, 1.3],
-                              outputRange: [0.8, 1],
-                            }),
-                            transform: [{
-                              scale: pulseAnim.interpolate({
+                    {/* Area Card */}
+                    <View style={styles.areaItem}>
+                      <View style={styles.areaLeft}>
+                        <Animated.View
+                          style={[
+                            styles.areaIndicator,
+                            {
+                              backgroundColor: area.color,
+                              opacity: pulseAnim.interpolate({
                                 inputRange: [1, 1.3],
-                                outputRange: [1, 1.05],
+                                outputRange: [0.8, 1],
                               }),
-                            }],
-                          },
-                        ]}
-                      />
-                      <View style={styles.areaInfo}>
-                        <Text style={styles.areaName}>{area.name}</Text>
-                        <Text style={styles.areaVenue}>{area.venueCount} venues active</Text>
+                              transform: [{
+                                scale: pulseAnim.interpolate({
+                                  inputRange: [1, 1.3],
+                                  outputRange: [1, 1.05],
+                                }),
+                              }],
+                            },
+                          ]}
+                        />
+                        <View style={styles.areaInfo}>
+                          <Text style={styles.areaName}>{area.name}</Text>
+                          <Text style={styles.areaVenue}>{area.venueCount} venues active</Text>
+                        </View>
+                      </View>
+                      <View style={styles.areaRight}>
+                        <Animated.Text
+                          style={[
+                            styles.areaVibe,
+                            {
+                              color: area.color,
+                              opacity: pulseAnim.interpolate({
+                                inputRange: [1, 1.3],
+                                outputRange: [0.7, 1],
+                              }),
+                            },
+                          ]}
+                        >
+                          {area.vibe}
+                        </Animated.Text>
+                        <Ionicons
+                          name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={14}
+                          color={colors.textSecondary}
+                          style={{ marginTop: 2 }}
+                        />
                       </View>
                     </View>
-                    <View style={styles.areaRight}>
-                      <Animated.Text
-                        style={[
-                          styles.areaVibe,
-                          {
-                            color: area.color,
-                            opacity: pulseAnim.interpolate({
-                              inputRange: [1, 1.3],
-                              outputRange: [0.7, 1],
-                            }),
-                          },
-                        ]}
-                      >
-                        {area.vibe}
-                      </Animated.Text>
-                    </View>
+                  </Animated.View>
+                </TouchableOpacity>
+
+                {/* Expanded Venue List */}
+                {isExpanded && (
+                  <View style={styles.venueList}>
+                    {loadingVenues ? (
+                      <ActivityIndicator size="small" color={area.color} style={{ paddingVertical: 12 }} />
+                    ) : areaVenues.length === 0 ? (
+                      <Text style={styles.noVenuesText}>No venues found in {area.name}</Text>
+                    ) : (
+                      areaVenues.map((venue) => {
+                        const venueVibe = getVibeStatus(
+                          Math.round(venue.rating * 3),
+                          colors
+                        );
+                        return (
+                          <TouchableOpacity
+                            key={venue.id}
+                            style={styles.venueRow}
+                            activeOpacity={0.7}
+                            onPress={() => handleVenueTap(venue.id)}
+                          >
+                            <View style={[styles.venueVibeIndicator, { backgroundColor: venueVibe.color }]} />
+                            <View style={styles.venueInfo}>
+                              <Text style={styles.venueName} numberOfLines={1}>{venue.name}</Text>
+                              <Text style={styles.venueCategory}>{venue.category}</Text>
+                            </View>
+                            <View style={styles.venueRightCol}>
+                              <Text style={[styles.venueVibeLabel, { color: venueVibe.color }]}>{venueVibe.status}</Text>
+                              <Text style={styles.venueRating}>
+                                <Ionicons name="star" size={11} color={colors.primary} /> {venue.rating.toFixed(1)}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
                   </View>
-                </Animated.View>
+                )}
               </View>
             );
           })}
@@ -359,6 +468,46 @@ export const VibeCheck = () => {
           </View>
         </View>
       )}
+
+      {/* Vibe Info Modal */}
+      <Modal
+        visible={showInfoModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.infoModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowInfoModal(false)}
+        >
+          <View style={styles.infoModalContent}>
+            <View style={styles.infoModalHeader}>
+              <Text style={styles.infoModalTitle}>Vibe Levels</Text>
+              <TouchableOpacity onPress={() => setShowInfoModal(false)}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.infoModalSubtitle}>
+              Areas are ranked by the number of active venues
+            </Text>
+            {VIBE_DESCRIPTIONS.map((vibe) => (
+              <View key={vibe.level} style={styles.infoRow}>
+                <View style={[styles.infoIconCircle, { backgroundColor: vibe.color + '22' }]}>
+                  <Ionicons name={vibe.icon} size={18} color={vibe.color} />
+                </View>
+                <View style={styles.infoTextCol}>
+                  <View style={styles.infoLabelRow}>
+                    <Text style={[styles.infoLevel, { color: vibe.color }]}>{vibe.level}</Text>
+                    <Text style={styles.infoThreshold}>{vibe.threshold}</Text>
+                  </View>
+                  <Text style={styles.infoDescription}>{vibe.description}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -388,11 +537,16 @@ const getStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   title: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 4,
   },
   subtitle: {
     fontSize: 13,
@@ -561,5 +715,129 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   dotActive: {
     backgroundColor: colors.primary,
+  },
+
+  // Expanded venue list
+  venueList: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    marginTop: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  venueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  venueVibeIndicator: {
+    width: 3,
+    height: 28,
+    borderRadius: 2,
+    marginRight: 10,
+  },
+  venueInfo: {
+    flex: 1,
+  },
+  venueName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  venueCategory: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  venueRightCol: {
+    alignItems: 'flex-end',
+  },
+  venueVibeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  venueRating: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  noVenuesText: {
+    textAlign: 'center',
+    color: colors.textSecondary,
+    fontSize: 13,
+    paddingVertical: 16,
+  },
+
+  // Info modal
+  infoModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  infoModalContent: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  infoModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  infoModalSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 20,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    gap: 12,
+  },
+  infoIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoTextCol: {
+    flex: 1,
+  },
+  infoLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  infoLevel: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  infoThreshold: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  infoDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
 });

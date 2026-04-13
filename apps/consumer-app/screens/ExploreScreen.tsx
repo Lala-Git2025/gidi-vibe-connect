@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { useTheme } from '../contexts/ThemeContext';
@@ -476,6 +476,7 @@ function VenueDetailModal({
 
 export default function ExploreScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const { colors, activeTheme } = useTheme();
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeNeighbourhood, setActiveNeighbourhood] = useState('');
@@ -495,6 +496,19 @@ export default function ExploreScreen() {
       if (session?.user) setUserId(session.user.id);
     });
   }, []);
+
+  // Auto-open venue detail modal when navigated with a venueId param
+  useEffect(() => {
+    const params = route.params as { venueId?: string } | undefined;
+    if (params?.venueId && venues.length > 0) {
+      const venue = venues.find(v => v.id === params.venueId);
+      if (venue) {
+        setSelectedVenue(venue);
+      }
+      // Clear the param so it doesn't re-trigger on re-render
+      navigation.setParams({ venueId: undefined } as any);
+    }
+  }, [route.params, venues]);
 
   const fetchVenues = async () => {
     try {
