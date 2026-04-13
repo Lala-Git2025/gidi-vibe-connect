@@ -5,6 +5,7 @@ import {
   TrendingUp,
   Users,
   Shield,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
@@ -17,6 +18,7 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Overview',           href: '/',           icon: LayoutDashboard },
+  { name: 'Analytics',          href: '/analytics',  icon: BarChart3 },
   { name: 'Venue Manager',      href: '/venues',     icon: Building2 },
   { name: 'Promotions Manager', href: '/promotions', icon: TrendingUp },
   { name: 'User Manager',       href: '/users',      icon: Users },

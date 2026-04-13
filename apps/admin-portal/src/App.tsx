@@ -6,6 +6,7 @@ import Overview from './pages/Overview';
 import VenueManager from './pages/VenueManager';
 import PromotionsManager from './pages/PromotionsManager';
 import UserManager from './pages/UserManager';
+import Analytics from './pages/Analytics';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/venues" element={<VenueManager />} />
             <Route path="/promotions" element={<PromotionsManager />} />
             <Route path="/users" element={<UserManager />} />
+            <Route path="/analytics" element={<Analytics />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

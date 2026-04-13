@@ -32,25 +32,49 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Refresh session on mount to ensure JWT is not stale
-    supabase.auth.refreshSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        fetchProfile(session.user.id);
-      } else {
-        supabase.auth.getSession().then(({ data: { session: existing } }) => {
+    let mounted = true;
+
+    async function init() {
+      try {
+        // Try refresh first, fall back to existing session
+        const { data: { session } } = await supabase.auth.refreshSession();
+        if (!mounted) return;
+
+        if (session?.user) {
+          setUser(session.user);
+          await fetchProfile(session.user.id);
+        } else {
+          const { data: { session: existing } } = await supabase.auth.getSession();
+          if (!mounted) return;
           setUser(existing?.user ?? null);
           if (existing?.user) {
-            fetchProfile(existing.user.id);
+            await fetchProfile(existing.user.id);
           } else {
             setLoading(false);
           }
-        });
+        }
+      } catch {
+        // Session expired or network error — just show login
+        if (mounted) {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+        }
       }
-    });
+    }
+
+    init();
+
+    // Safety timeout — never stay loading forever
+    const timeout = setTimeout(() => {
+      if (mounted && loading) {
+        setLoading(false);
+      }
+    }, 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!mounted) return;
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user.id);
@@ -62,6 +86,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => {
+      mounted = false;
+      clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, []);
