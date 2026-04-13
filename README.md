@@ -45,7 +45,7 @@ gidi-vibe-connect/
 - My Vibe (Stories): image/video stories with filters, text overlays, stickers
 - Real-time Lagos traffic severity cards
 - Area vibe metrics (crowd, music, price, wait)
-- Trending venues with hot-score algorithm + paid promotion slots
+- Trending venues showing admin-promoted venues only (curated by platform admins)
 - User auth: sign in, sign up, guest mode, forgot password
 
 📖 **[Complete Feature Documentation](CONSUMER-APP-FEATURES.md)**
@@ -78,9 +78,10 @@ gidi-vibe-connect/
 
 **Features**:
 - Platform overview stats (users, venues, active promotions, new signups 7d)
-- Venue manager: promote any venue, set badge label + duration
-- Promotions tracker: active vs expired, expiry countdown
-- User manager: search, filter by role, inline role changes
+- **Analytics dashboard**: 8 stat cards (incl. MAU), user growth chart (30d area), users by role (donut), venues by area (horizontal bar), venues by category (pie), top 10 trending venues, top events by RSVPs (bar), business subscription tiers (donut), recent activity feed
+- **Venue manager**: promote any venue, set badge label + duration, location filter pills (6 Lagos areas with counts), server-side search, server-side pagination (25/page)
+- **Promotions tracker**: active vs expired, expiry countdown
+- **User manager**: search, filter by role, inline role changes, server-side pagination (25/page)
 
 ---
 
@@ -198,9 +199,22 @@ VITE_CONSUMER_APP_URL=http://localhost:8080
 
 See [CONSUMER-APP-FEATURES.md](CONSUMER-APP-FEATURES.md#database-schema) for the full schema.
 
-Key tables: `profiles`, `venues`, `events`, `posts`, `communities`, `follows`, `stories`, `story_views`, `venue_check_ins`, `event_rsvps`, `venue_reviews`, `business_subscriptions`, `news`
+Key tables: `profiles`, `venues`, `events`, `posts`, `communities`, `follows`, `stories`, `story_views`, `venue_check_ins`, `event_rsvps`, `venue_reviews`, `business_subscriptions`, `business_profiles`, `admin_profiles`, `news`
 
-Key views: `trending_venues` (hot-score ranked + promoted venues)
+Key views: `trending_venues` (materialized view — hot-score ranked + promoted venues)
+
+---
+
+## Image Upload Guidelines (Venue Photos)
+
+| Property | Value |
+|---|---|
+| **Minimum resolution** | 1200 × 800 px (3:2 aspect ratio) |
+| **Recommended** | 1600 × 1067 px |
+| **Max file size** | 5 MB |
+| **Formats** | JPEG, PNG, WebP |
+
+Consumer app venue cards display at 280×320 px. The 3:2 aspect ratio ensures good cropping for both horizontal and vertical layouts. Images should be at least 1200 px wide for sharp high-DPI rendering.
 
 ---
 
@@ -211,6 +225,55 @@ Run in Supabase SQL Editor:
 UPDATE profiles SET role = 'Admin' WHERE user_id = '<user-uuid>';
 -- or
 UPDATE profiles SET role = 'Super Admin' WHERE user_id = '<user-uuid>';
+```
+
+---
+
+## Scalability & Performance
+
+The database is designed to handle millions of users, businesses, and hundreds of admins efficiently.
+
+### Architecture Decisions
+- **Materialized view** for `trending_venues` — precomputed scores refreshed every 10 min, not calculated per request
+- **`auth_role()` / `is_admin()` / `is_super_admin()`** — STABLE helper functions replace per-row RLS subqueries, cached per-transaction
+- **Follow count cache** — `follower_count` / `following_count` columns on `profiles`, auto-synced via trigger (avoids `COUNT(*)` on follows table)
+- **BRIN indexes** on time-series tables (`venue_check_ins`, `story_views`, `event_rsvps`) for efficient range scans with minimal index size
+- **Server-side pagination** on admin portal (25 per page) with server-side search and filtering
+- **Role-specific extension tables** — `business_profiles` and `admin_profiles` extend the base `profiles` table, auto-created on role assignment via trigger
+- **Full-text search** indexes (GIN) on events and venues for fast keyword search
+
+### pg_cron Setup (Required after deployment)
+
+1. **Enable pg_cron**: Supabase Dashboard → Database → Extensions → search "pg_cron" → Enable
+2. **Add scheduled jobs** in SQL Editor:
+
+```sql
+-- Refresh trending venues every 10 minutes
+SELECT cron.schedule(
+  'refresh-trending-venues',
+  '*/10 * * * *',
+  'SELECT refresh_trending_venues();'
+);
+
+-- Clean up expired stories daily at 3 AM UTC
+SELECT cron.schedule(
+  'cleanup-expired-stories',
+  '0 3 * * *',
+  'SELECT cleanup_expired_stories();'
+);
+```
+
+3. **Verify jobs**: `SELECT jobid, schedule, command, jobname FROM cron.job;`
+4. **Check run history**: `SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;`
+
+### Manage pg_cron Jobs
+```sql
+-- Remove a job
+SELECT cron.unschedule('refresh-trending-venues');
+
+-- Change frequency (e.g. every 5 min instead of 10)
+SELECT cron.unschedule('refresh-trending-venues');
+SELECT cron.schedule('refresh-trending-venues', '*/5 * * * *', 'SELECT refresh_trending_venues();');
 ```
 
 ---
@@ -230,21 +293,30 @@ UPDATE profiles SET role = 'Super Admin' WHERE user_id = '<user-uuid>';
 ### Completed
 - [x] Consumer mobile app — all screens and features
 - [x] Business portal — venue, event, analytics, subscription management
-- [x] Admin portal — standalone app (port 3002): platform stats, venue promotion manager, user management
+- [x] Admin portal — standalone app (port 3002): platform stats, analytics dashboard, venue promotion manager, user management
 - [x] Supabase auth (email/password, guest mode)
 - [x] My Vibe (Stories) with editor, filters, overlays
 - [x] People tab with follow/unfollow
 - [x] Communities (join/leave, 8 seeded + user-created)
-- [x] Trending venues with paid promotion support
+- [x] Trending venues — curated by admins (only promoted venues shown in consumer app)
 - [x] Real-time news from 14 Nigerian sources (auto-updated every hour)
 - [x] Traffic severity cards
 - [x] Ionicons migration (replaced all emoji icons — iOS 26 fix)
-- [x] Admin RLS policies (admins can view/manage all venues)
+- [x] Admin RLS policies (admins can view/manage all venues, analytics data)
+- [x] Role-specific tables (`business_profiles`, `admin_profiles`) with auto-creation triggers
+- [x] Scalability overhaul: materialized views, auth helper functions, BRIN indexes, follow count cache, server-side pagination
+- [x] pg_cron scheduled jobs for trending refresh and story cleanup
+- [x] Admin analytics dashboard with charts (user growth, role breakdown, venue stats, event engagement, subscription tiers, activity feed)
+- [x] Admin venue manager with location filter pills and server-side area filtering
+- [x] Light/dark mode fix — trending venue cards use fixed white text over dark overlays
+- [x] Venue deduplication (by id + case-insensitive name)
+- [x] Auth context hardening — safety timeout + error handling to prevent infinite loading
 
 ### Known Issues
 - [ ] SMTP not configured — password reset emails won't send
 - [ ] `get-traffic` Edge Function not deployed (TrafficAlert uses mock data)
 - [ ] `expo-video` requires native build — Expo Go QR not supported
+- [ ] No client-side image resolution validation on venue photo uploads (recommended: 1200×800 minimum)
 
 ---
 
@@ -263,4 +335,4 @@ npm run build
 
 **Built for Lagos | Powered by React Native, React, and Supabase**
 
-**Last Updated**: April 1, 2026 | **Version**: 1.6.1
+**Last Updated**: April 3, 2026 | **Version**: 1.8.0

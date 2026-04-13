@@ -31,7 +31,8 @@ gidi-vibe-connect/
 │   ├── business-portal/       # Web portal for venue owners (port 3001)
 │   └── admin-portal/          # Separate web portal for platform admins (port 3002)
 │       └── src/
-│           ├── pages/         # Overview, VenueManager, PromotionsManager, UserManager, Login
+│           ├── pages/         # Overview, Analytics, VenueManager, PromotionsManager, UserManager, Login
+│           ├── hooks/         # useAnalytics.ts (analytics data fetching)
 │           ├── hooks/         # useVenues.ts, useEvents.ts
 │           ├── contexts/      # BusinessAuthContext
 │           └── components/    # DashboardLayout, Sidebar, Header
@@ -73,9 +74,10 @@ gidi-vibe-connect/
 | Route | Page | Purpose |
 |-------|------|---------|
 | `/` | Overview | Platform stats: users, venues, promotions, new signups |
-| `/venues` | Venue Manager | All venues — search, promote/remove |
+| `/analytics` | Analytics | Full dashboard: user growth, role breakdown, venue stats, top venues, events, subscriptions, activity feed |
+| `/venues` | Venue Manager | All venues — search by area, promote/remove, paginated |
 | `/promotions` | Promotions Manager | Active/expired tracking, expiry countdown |
-| `/users` | User Manager | Search, filter by role, inline role change |
+| `/users` | User Manager | Search, filter by role, inline role change, paginated |
 
 ## Database Schema (Supabase)
 
@@ -92,6 +94,8 @@ gidi-vibe-connect/
 - **venue_check_ins** - `user_id, venue_id, checked_in_at`
 - **event_rsvps** - `user_id, event_id, status`
 - **venue_reviews** - `user_id, venue_id, rating, comment`
+- **business_profiles** - `user_id, business_name, business_email, business_phone, business_address, website_url, instagram_handle, is_verified`
+- **admin_profiles** - `user_id, department, permissions[], assigned_areas[], can_manage_users/venues/promotions/content`
 - **business_subscriptions** - `user_id, tier, max_venues, max_events_per_month, etc.`
 - **news** - `title, content, image_url, publish_date, source_url`
 
@@ -103,6 +107,17 @@ gidi-vibe-connect/
 - **social-media** - Post images and story media
 - **venue-photos** - Business portal venue photos
 - **event-images** - Event banners
+
+## Image Upload Guidelines (Venue Photos)
+
+| Property | Value |
+|---|---|
+| **Minimum resolution** | 1200 × 800 px (3:2 aspect ratio) |
+| **Recommended** | 1600 × 1067 px |
+| **Max file size** | 5 MB (bucket allows 10 MB) |
+| **Formats** | JPEG, PNG, WebP |
+
+Consumer app trending venue cards display at 280×320 px. Images should be at least 1200 px wide for sharp rendering on high-DPI screens. The 3:2 aspect ratio allows good cropping for both horizontal and vertical display contexts.
 
 ## Authentication
 
@@ -151,9 +166,18 @@ Always use `colors.xxx` from theme context, never hardcode colors.
 
 ## Recent Decisions
 
+### April 2026
+- **Role-specific tables**: `business_profiles` and `admin_profiles` extend `profiles` — auto-created via trigger on role change
+- **Scalability overhaul**: Materialized `trending_venues` view (refresh via `refresh_trending_venues()`), `auth_role()`/`is_admin()`/`is_super_admin()` helper functions replacing RLS subqueries, BRIN indexes on time-series tables, follow count cache on `profiles`, server-side pagination on admin portal
+- **Pagination**: VenueManager and UserManager now use server-side pagination (25 per page) with search/filter done via Supabase query, not client-side
+- **Story cleanup**: `cleanup_expired_stories()` function deletes stories expired >24h ago + orphaned views
+- **Analytics dashboard**: Full admin analytics page — user growth (30d area chart), users by role (donut), venues by area (bar), venues by category (pie), top 10 trending venues, top events by RSVPs, business subscription tiers, recent activity feed, MAU tracking
+- **Trending venues (consumer)**: Now only shows admin-promoted venues (`is_promoted = true`), not all venues
+- **Auth context fix**: Admin portal auth context has safety timeout (5s) and error handling to prevent infinite loading state
+
 ### March 2026
 - **Ionic icons**: All emoji icons replaced with Ionicons — `newArchEnabled: false` in app.json
-- **Trending algorithm**: `trending_venues` Postgres view with time-decayed hot score; promoted venues pin to top
+- **Trending algorithm**: `trending_venues` materialized view with time-decayed hot score; promoted venues pin to top. Refresh via `SELECT refresh_trending_venues();`
 - **Paid promotions**: Businesses pay to be `is_promoted`; admins set badge + days via Admin Portal Venue Manager
 - **Admin portal separation**: `apps/admin-portal/` is now a completely separate Vite app on port 3002
 - **Business portal**: Business Owner only — admin routes and sidebar section removed
@@ -197,6 +221,51 @@ node scripts/lagos-news-agent.js
 ### Business Portal (`apps/business-portal/.env`)
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+## Scalability Notes
+
+- **trending_venues** is a MATERIALIZED VIEW — must be refreshed periodically via `SELECT refresh_trending_venues();` (set up pg_cron — see setup instructions below)
+- **RLS role checks** use `auth_role()`, `is_admin()`, `is_super_admin()` — STABLE functions cached per-transaction, no per-row subqueries
+- **Follow counts** are cached on `profiles.follower_count` / `profiles.following_count` — kept in sync by `trg_update_follow_counts` trigger. Never do `COUNT(*)` on follows table
+- **Time-series tables** (`venue_check_ins`, `story_views`, `event_rsvps`) use BRIN indexes for efficient range scans
+- **Admin portal lists** use server-side pagination (PAGE_SIZE = 25) — never fetch all rows client-side
+- **Expired stories** cleaned up by `cleanup_expired_stories()` — scheduled via pg_cron daily
+
+### pg_cron Setup (Required)
+
+1. **Enable pg_cron**: Supabase Dashboard → Database → Extensions → search "pg_cron" → Enable
+2. **Add scheduled jobs** in SQL Editor:
+
+```sql
+-- Refresh trending venues every 10 minutes
+SELECT cron.schedule(
+  'refresh-trending-venues',
+  '*/10 * * * *',
+  'SELECT refresh_trending_venues();'
+);
+
+-- Clean up expired stories daily at 3 AM UTC
+SELECT cron.schedule(
+  'cleanup-expired-stories',
+  '0 3 * * *',
+  'SELECT cleanup_expired_stories();'
+);
+```
+
+3. **Verify**: `SELECT jobid, schedule, command, jobname FROM cron.job;`
+
+**Useful pg_cron commands:**
+```sql
+-- Check recent job runs
+SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
+
+-- Remove a job
+SELECT cron.unschedule('refresh-trending-venues');
+
+-- Change frequency (e.g. every 5 min)
+SELECT cron.unschedule('refresh-trending-venues');
+SELECT cron.schedule('refresh-trending-venues', '*/5 * * * *', 'SELECT refresh_trending_venues();');
+```
 
 ## Known Issues / TODOs
 

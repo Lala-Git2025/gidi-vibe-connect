@@ -275,13 +275,15 @@ Full documentation of all features, screens, components, and updates across the 
 - Real visitor count: "42 here today" from `checkins_24h` (replaces random numbers)
 - "Be the first!" shown when no check-ins in last 24h
 - Ionicons: `bookmark-outline`, `location-outline`
-- Deduplicates by name before rendering
+- Deduplicates by both `id` and `name` (case-insensitive) before rendering
+- **Fixed white text colors** for dark overlay cards — works in both light and dark mode (venue name, location, visitor count all use `#fff` instead of theme colors)
 
 #### Data Source
-- Queries `trending_venues` Postgres view (not `venues` table directly)
+- Queries `trending_venues` **materialized view** (not `venues` table directly)
+- **Only shows admin-promoted venues** (`is_promoted = true` filter) — curated by platform admins
 - View returns venues ranked by **time-decayed hot score** (see Database section)
-- Promoted venues always rank first (score = 999999)
-- Fallback: 6 hardcoded sample Lagos venues if DB query fails
+- Promoted venues always rank first (score = 999,999)
+- Fallback: 6 hardcoded sample Lagos venues if DB query fails or no promoted venues exist
 
 ---
 
@@ -325,8 +327,10 @@ score = (checkins_24h × 10) + (checkins_7d × 3) + (live_rating × 20)
 ```
 
 - Promoted venues are pinned to the top (score = 999,999) while `promoted_until` is in the future
-- Computed live via the `trending_venues` Postgres view
-- No cron job needed; view recalculates on every query
+- **Consumer app only shows promoted venues** — `is_promoted = true` filter applied in query
+- Computed via `trending_venues` **materialized view** — precomputed scores, not calculated per request
+- Materialized view refreshed every 10 minutes via `pg_cron` calling `refresh_trending_venues()`
+- Admin analytics page shows top 10 by trending score (all venues, not just promoted)
 
 ### Stories (My Vibe)
 - Users post short-lived media moments (images or video)
@@ -425,9 +429,10 @@ Managed via the Admin Portal Venue Manager (`/venues` in the admin portal):
 | Page | Route | Purpose |
 |---|---|---|
 | Overview | `/` | Platform-wide stats: total users, venues, active promotions, new signups (7d) |
-| Venue Manager | `/venues` | All venues across platform — search, per-row promote/remove, days input |
+| Analytics | `/analytics` | Full dashboard: user growth, role breakdown, venue stats, top venues, events, subscriptions, activity feed |
+| Venue Manager | `/venues` | All venues across platform — search by area, promote/remove, server-side pagination |
 | Promotions Manager | `/promotions` | Active vs expired promotion tracking, expiry countdown, cleanup |
-| User Manager | `/users` | Search users, filter by role, inline role assignment |
+| User Manager | `/users` | Search users, filter by role, inline role assignment, server-side pagination |
 
 ### Admin Overview Stats
 - Total users (from `profiles`)
@@ -435,12 +440,40 @@ Managed via the Admin Portal Venue Manager (`/venues` in the admin portal):
 - Active promotions (is_promoted = true AND promoted_until > now)
 - New users in last 7 days
 
+### Analytics Dashboard
+**File**: `apps/admin-portal/src/pages/Analytics.tsx`
+**Data hooks**: `apps/admin-portal/src/hooks/useAnalytics.ts`
+**Charts library**: Recharts (AreaChart, BarChart, PieChart with ResponsiveContainer)
+
+#### Stat Cards (8 total)
+- Total Users, Monthly Active Users (MAU), Total Venues, Total Events
+- Active Promotions, Total Check-ins, Total RSVPs, Total Reviews
+
+#### Charts
+| Chart | Type | Data Source |
+|---|---|---|
+| User Growth (30 days) | Area chart | `profiles.created_at` grouped by day |
+| Users by Role | Donut chart | `profiles.role` counts |
+| Venues by Area | Horizontal bar | `venues.location` ILIKE area names |
+| Venues by Category | Pie chart | `venues.category` counts |
+| Top Events by RSVPs | Bar chart | `event_rsvps` grouped by event |
+
+#### Lists
+- **Top 10 Trending Venues** — ranked by `trending_score` from materialized view, showing rating + 24h/7d check-ins
+- **Business Subscription Tiers** — donut chart of Free/Premium/Enterprise counts
+- **Recent Activity Feed** — last 15 events: signups, check-ins, RSVPs, reviews (with user names and time-ago)
+
+#### MAU Calculation
+Monthly Active Users = distinct `user_id` values from `venue_check_ins` and `event_rsvps` in the last 30 days (union of both sets).
+
 ### Venue Manager
 - Lists every venue (not just owned)
-- Search by name or location
+- Search by name or location (server-side via Supabase `.or()`)
+- **Location filter pills**: All, Victoria Island, Lekki, Ikoyi, Ikeja, Yaba, Surulere — with venue counts per area
 - Per-row: days input + Promote button → sets is_promoted + promoted_until
 - Active promotions show "Sponsored · Xd left" badge
 - One-click Remove button to deactivate promotion
+- **Server-side pagination**: 25 per page with page navigation controls
 
 ### Promotions Manager
 - Summary: active count, expired count, next expiry
@@ -448,17 +481,20 @@ Managed via the Admin Portal Venue Manager (`/venues` in the admin portal):
 - Expired promotions list (still `is_promoted = true`, needs cleanup) with Remove button
 
 ### User Management
-- Lists up to 200 users ordered by join date
-- Search by full name or username
+- Search by full name or username (server-side)
 - Filter by role (Consumer, Business Owner, Content Creator, Admin, Super Admin)
 - Inline role change via dropdown
 - Super Admin rows are read-only (cannot be demoted)
 - Shield icon displayed for Admin/Super Admin users
+- "(you)" label shown next to current admin's row
+- **Server-side pagination**: 25 per page with page navigation controls
 
 ### Making a User Admin
 Run in Supabase SQL Editor:
 ```sql
 UPDATE profiles SET role = 'Admin' WHERE user_id = '<user-uuid>';
+-- or for full access:
+UPDATE profiles SET role = 'Super Admin' WHERE user_id = '<user-uuid>';
 ```
 
 ---
@@ -483,28 +519,48 @@ UPDATE profiles SET role = 'Admin' WHERE user_id = '<user-uuid>';
 | `event_rsvps` | user_id, event_id, status | Event attendance |
 | `venue_reviews` | user_id, venue_id, rating, comment | Venue ratings |
 | `business_subscriptions` | user_id, tier, max_venues, max_photos_per_venue, etc. | Business plans |
+| `business_profiles` | user_id, business_name, business_email, business_phone, business_address, website_url, instagram_handle, is_verified | Extended business owner data |
+| `admin_profiles` | user_id, department, permissions[], assigned_areas[], can_manage_users/venues/promotions/content | Extended admin data |
 | `verification_requests` | user_id, business_name, status | Business verification |
 
 ### Views
 
 | View | Purpose |
 |---|---|
-| `trending_venues` | Hot-score ranked venues. Promoted venues score 999999. Joins venue_check_ins + venue_reviews to compute live signal. |
+| `trending_venues` (MATERIALIZED) | Hot-score ranked venues. Promoted venues score 999,999. Joins venue_check_ins + venue_reviews to compute live signal. Refreshed every 10 min via pg_cron. |
 
 ### Storage Buckets
-| Bucket | Contents |
+| Bucket | Contents | Limits |
+|---|---|---|
+| `avatars` | Profile pictures | — |
+| `social-media` | Post images, story media | — |
+| `venue-photos` | Business portal venue photos | 10 MB max, JPEG/PNG/WebP |
+| `event-images` | Event banner images | — |
+
+### Image Upload Guidelines (Venue Photos)
+| Property | Recommendation |
 |---|---|
-| `avatars` | Profile pictures |
-| `social-media` | Post images, story media |
-| `event-images` | Event banner images |
+| **Minimum resolution** | 1200 × 800 px (3:2 aspect ratio) |
+| **Recommended resolution** | 1600 × 1067 px |
+| **Max file size** | 5 MB (bucket allows 10 MB) |
+| **Accepted formats** | JPEG, PNG, WebP |
+| **Aspect ratio** | 3:2 preferred — allows cropping for both horizontal cards and vertical venue detail views |
+
+> **Note**: Consumer app trending venue cards display at 280×320 px. Images should be at least 1200 px wide to look sharp on high-DPI screens.
 
 ### Key DB Triggers
 - `handle_new_user` — auto-creates profile row on auth signup
 - `trigger_update_community_member_count` — maintains `member_count` on community_members insert/delete
+- `trg_create_role_profile` — auto-creates `business_profiles` or `admin_profiles` row when user role changes
+- `trg_update_follow_counts` — maintains `follower_count` / `following_count` cache on `profiles` table (avoids `COUNT(*)` on follows)
 
 ### Key RPCs / Edge Functions
 - `create-venue` — Edge Function for business portal venue creation (bypasses anon RLS)
 - `check_event_creation_limit(user_id)` — returns boolean; enforces monthly event quota per tier
+- `refresh_trending_venues()` — refreshes the `trending_venues` materialized view (called by pg_cron every 10 min)
+- `cleanup_expired_stories()` — deletes stories expired >24h ago + orphaned story_views (called by pg_cron daily at 3 AM UTC)
+- `auth_role()` — returns current user's role from profiles (STABLE, cached per-transaction)
+- `is_admin()` / `is_super_admin()` — boolean role checks for RLS policies (STABLE, cached per-transaction)
 
 ---
 
@@ -588,6 +644,62 @@ node scripts/lagos-news-agent.js
 ---
 
 ## Recent Updates
+
+### April 3, 2026 — Scalability, Analytics, Curated Trending, Role Tables
+
+#### Role-Specific Extension Tables
+- **Migration**: `20260402000000_create_business_and_admin_profiles.sql`
+  - `business_profiles`: business_name, email, phone, address, website, instagram, twitter, is_verified
+  - `admin_profiles`: department, permissions[], assigned_areas[], can_manage_users/venues/promotions/content
+  - Auto-created via `trg_create_role_profile` trigger on role change
+  - RLS: owners see own; admins see all business; super admins manage admin profiles
+
+#### Scalability Overhaul
+- **Migration**: `20260402000002_scalability_fixes.sql`
+  - `trending_venues` converted from regular VIEW to MATERIALIZED VIEW with indexes
+  - `auth_role()`, `is_admin()`, `is_super_admin()` STABLE helper functions replace per-row RLS subqueries
+  - RLS policies on venues, business_profiles, admin_profiles, verification_requests rewritten to use helper functions
+  - `follower_count` / `following_count` columns on profiles with `trg_update_follow_counts` trigger
+  - BRIN indexes on `venue_check_ins(checked_in_at)`, `story_views(viewed_at)`, `event_rsvps(rsvp_at)`
+  - `cleanup_expired_stories()` function for daily pg_cron cleanup
+  - GIN indexes on venues for full-text search
+  - Additional indexes on profiles (username/fullname), news (publish_date), venue_reviews (composite)
+
+#### Admin Analytics Dashboard
+- **New page**: `apps/admin-portal/src/pages/Analytics.tsx`
+- **New hooks**: `apps/admin-portal/src/hooks/useAnalytics.ts` (9 custom hooks)
+- 8 stat cards, 5 charts (area, donut, bar, pie), top venues list, subscription tiers, activity feed
+- Charts powered by Recharts (`BarChart`, `PieChart`, `AreaChart` with `ResponsiveContainer`)
+
+#### Admin RLS for Analytics
+- **Migration**: `20260402000003_admin_analytics_rls.sql`
+  - Admin SELECT policies on `venue_check_ins`, `event_rsvps`, `business_subscriptions`, `events`
+  - GRANT SELECT on `trending_venues` to authenticated and anon
+
+#### Curated Trending Venues
+- Consumer app `TrendingVenues.tsx` now filters `.eq('is_promoted', true)` — only admin-promoted venues shown
+- Fixed light mode text visibility — all text on overlay cards now uses fixed white colors (`#fff`) instead of theme colors
+- Enhanced deduplication: checks both `id` and `name` (case-insensitive)
+
+#### Venue Manager Location Filter
+- `VenueManager.tsx` now has location filter pills: Victoria Island, Lekki, Ikoyi, Ikeja, Yaba, Surulere
+- Shows venue count per area
+- Server-side filtering via Supabase `.ilike()`
+
+#### Server-Side Pagination
+- VenueManager and UserManager converted from client-side to server-side pagination (25 per page)
+- Uses Supabase `.range()` and `{ count: 'exact' }` for total count
+- Page navigation controls with Prev/Next buttons
+
+#### Auth Context Fix
+- `AdminAuthContext.tsx`: try/catch around `refreshSession()`, mounted flag, 5-second safety timeout to prevent infinite loading
+
+#### Backfill Migration
+- **Migration**: `20260402000001_backfill_role_profiles.sql`
+  - Inserts `business_profiles` for existing Business Owners
+  - Inserts `admin_profiles` for existing Admins (limited permissions) and Super Admins (all permissions)
+
+---
 
 ### March 25, 2026 — Admin Portal Separation + Venue RLS Fix
 
@@ -725,7 +837,7 @@ Admin users clicking "Manage Venue" on the Admin Venues page were stuck in an in
 - [ ] SMTP not configured — password reset emails won't send (see `SUPABASE-EMAIL-SETUP.md`)
 - [ ] `get-traffic` Supabase Edge Function not deployed — `TOMTOM_API_KEY` not set; TrafficAlert uses mock data
 - [ ] `expo-video` requires native build — cannot use Expo Go QR scanning; must use `npx expo run:ios`
-- [ ] `@expo/ngrok` not installed — tunnel mode unavailable for cross-network testing
+- [ ] No client-side image resolution validation on venue photo uploads — businesses can upload any size (recommended: 1200×800 minimum, see Image Upload Guidelines)
 
 ---
 
@@ -790,7 +902,9 @@ gidi-vibe-connect/
 │       └── src/
 │           ├── App.tsx
 │           ├── contexts/
-│           │   └── AdminAuthContext.tsx   # Admin-only auth (no signup)
+│           │   └── AdminAuthContext.tsx   # Admin-only auth (no signup, 5s safety timeout)
+│           ├── hooks/
+│           │   └── useAnalytics.ts       # 9 analytics data hooks
 │           ├── components/
 │           │   └── layout/
 │           │       ├── AdminLayout.tsx    # Admin/Super Admin gate
@@ -799,9 +913,10 @@ gidi-vibe-connect/
 │           └── pages/
 │               ├── Login.tsx
 │               ├── Overview.tsx           # Platform stats
-│               ├── VenueManager.tsx       # All venues + promote/remove
+│               ├── Analytics.tsx          # Full analytics dashboard (charts, top venues, activity)
+│               ├── VenueManager.tsx       # All venues + area filter + promote/remove + pagination
 │               ├── PromotionsManager.tsx  # Active/expired tracking
-│               └── UserManager.tsx        # User search + role management
+│               └── UserManager.tsx        # User search + role change + pagination
 │
 └── supabase/
     ├── functions/
@@ -814,12 +929,16 @@ gidi-vibe-connect/
         ├── 20260310000000_business_portal_rpcs_and_policies.sql
         ├── 20260313000000_add_amenities_and_tags_to_venues.sql
         ├── 20260313000001_change_venue_category_to_text.sql
-        ├── 20260314000000_trending_venues.sql    # Hot score view + promotion columns
-        └── 20260314000001_admin_venue_rls.sql    # Admin bypass RLS for venues
+        ├── 20260314000000_trending_venues.sql                    # Hot score view + promotion columns
+        ├── 20260314000001_admin_venue_rls.sql                    # Admin bypass RLS for venues
+        ├── 20260402000000_create_business_and_admin_profiles.sql # Role-specific extension tables
+        ├── 20260402000001_backfill_role_profiles.sql             # Backfill existing users
+        ├── 20260402000002_scalability_fixes.sql                  # Materialized view, helpers, BRIN, caching
+        └── 20260402000003_admin_analytics_rls.sql               # Admin RLS for analytics data
 ```
 
 ---
 
-**Last Updated**: March 25, 2026
-**Version**: 1.6.0
+**Last Updated**: April 3, 2026
+**Version**: 1.8.0
 **Status**: Active development — beta-ready
