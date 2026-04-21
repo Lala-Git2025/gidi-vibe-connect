@@ -8,6 +8,7 @@ import { supabase } from '../config/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../contexts/ThemeContext';
 import { Feather, Ionicons } from '@expo/vector-icons';
+import { PostGrid, GridPost } from '../components/PostGrid';
 
 // Helper function to convert hex color to rgba
 const hexToRgba = (hex: string, opacity: number): string => {
@@ -97,6 +98,12 @@ export default function ProfileScreen() {
     category: string;
     earned_at: string;
   }>>([]);
+  // Posts & follower stats for profile grid
+  const [userPosts, setUserPosts] = useState<GridPost[]>([]);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [profileTab, setProfileTab] = useState<'posts' | 'stats'>('posts');
+
   const [allBadges, setAllBadges] = useState<Array<{
     id: string;
     name: string;
@@ -120,6 +127,8 @@ export default function ProfileScreen() {
         fetchAvatar(currentUser.id);
         fetchUserStats(currentUser.id);
         fetchUserBadges(currentUser.id);
+        fetchUserPosts(currentUser.id);
+        fetchFollowCounts(currentUser.id);
       }
       fetchAllBadges();
     });
@@ -135,6 +144,8 @@ export default function ProfileScreen() {
         fetchAvatar(currentUser.id);
         fetchUserStats(currentUser.id);
         fetchUserBadges(currentUser.id);
+        fetchUserPosts(currentUser.id);
+        fetchFollowCounts(currentUser.id);
       } else {
         // Clear data on sign out
         setAvatarUrl(null);
@@ -146,13 +157,16 @@ export default function ProfileScreen() {
           photos_uploaded: 0, posts_created: 0, xp: 0, level: 1,
         });
         setUserBadges([]);
+        setUserPosts([]);
+        setFollowerCount(0);
+        setFollowingCount(0);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Re-fetch stats whenever the Profile tab comes into focus
+  // Re-fetch stats and posts whenever the Profile tab comes into focus
   useFocusEffect(
     useCallback(() => {
       supabase.auth.getSession().then(({ data: { session } }) => {
@@ -160,6 +174,8 @@ export default function ProfileScreen() {
         if (u) {
           fetchUserStats(u.id);
           fetchUserBadges(u.id);
+          fetchUserPosts(u.id);
+          fetchFollowCounts(u.id);
         }
       });
     }, [])
@@ -292,6 +308,33 @@ export default function ProfileScreen() {
       fetchUserBadges(user.id);
     } catch (error) {
       console.log('Error incrementing stat:', error);
+    }
+  };
+
+  const fetchUserPosts = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from('social_posts')
+        .select('id, content, media_urls, created_at, likes_count, comments_count, user_id')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      setUserPosts((data as GridPost[]) ?? []);
+    } catch (error) {
+      console.log('Error fetching user posts:', error);
+    }
+  };
+
+  const fetchFollowCounts = async (userId: string) => {
+    try {
+      const [{ count: followers }, { count: following }] = await Promise.all([
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId),
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
+      ]);
+      setFollowerCount(followers ?? 0);
+      setFollowingCount(following ?? 0);
+    } catch (error) {
+      console.log('Error fetching follow counts:', error);
     }
   };
 
@@ -750,7 +793,65 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* Your Stats */}
+        {/* Follower Stats Row */}
+        {!isGuest && (
+          <View style={styles.followerStatsRow}>
+            <View style={styles.followerStat}>
+              <Text style={styles.followerStatNum}>{userPosts.length}</Text>
+              <Text style={styles.followerStatLabel}>Posts</Text>
+            </View>
+            <View style={styles.followerStatDivider} />
+            <View style={styles.followerStat}>
+              <Text style={styles.followerStatNum}>{followerCount}</Text>
+              <Text style={styles.followerStatLabel}>Followers</Text>
+            </View>
+            <View style={styles.followerStatDivider} />
+            <View style={styles.followerStat}>
+              <Text style={styles.followerStatNum}>{followingCount}</Text>
+              <Text style={styles.followerStatLabel}>Following</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Profile Tab Switcher: Posts / Stats */}
+        {!isGuest && (
+          <View style={styles.profileTabs}>
+            <TouchableOpacity
+              style={[styles.profileTab, profileTab === 'posts' && styles.profileTabActive]}
+              onPress={() => setProfileTab('posts')}
+            >
+              <Ionicons
+                name={profileTab === 'posts' ? 'grid' : 'grid-outline'}
+                size={22}
+                color={profileTab === 'posts' ? colors.primary : colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.profileTab, profileTab === 'stats' && styles.profileTabActive]}
+              onPress={() => setProfileTab('stats')}
+            >
+              <Ionicons
+                name={profileTab === 'stats' ? 'bar-chart' : 'bar-chart-outline'}
+                size={22}
+                color={profileTab === 'stats' ? colors.primary : colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Posts Grid (Instagram-style) */}
+        {!isGuest && profileTab === 'posts' && (
+          <View style={{ marginBottom: 24 }}>
+            <PostGrid
+              posts={userPosts}
+              emptyMessage="Share your first post from the Social tab"
+            />
+          </View>
+        )}
+
+        {/* Your Stats, Level & Progress, Badges — shown on 'stats' tab or for guests */}
+        {(isGuest || profileTab === 'stats') && (
+        <>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your Stats</Text>
           <View style={styles.statsGrid}>
@@ -840,6 +941,8 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
+        </>
+        )}
 
       </ScrollView>
 
@@ -1231,6 +1334,50 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  // Follower Stats Row
+  followerStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    marginHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  followerStat: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  followerStatNum: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  followerStatLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  followerStatDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: colors.border,
+  },
+  // Profile Tabs (grid / stats toggle)
+  profileTabs: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  profileTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  profileTabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
   },
   // Header
   header: {

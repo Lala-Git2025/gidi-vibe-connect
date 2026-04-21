@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { PostGrid } from '../components/PostGrid';
 
 type Tab = 'feed' | 'communities' | 'people';
 
@@ -1430,37 +1431,12 @@ const fetchCurrentUser = async () => {
                 ) : null}
               </View>
 
-              {/* Posts grid */}
-              {viewingProfilePosts.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Ionicons name="document-text-outline" size={64} color={colors.textSecondary} style={{ opacity: 0.5, marginBottom: 16 }} />
-                  <Text style={styles.emptyStateText}>No posts yet</Text>
-                </View>
-              ) : (
-                <>
-                  <Text style={[styles.sectionTitle, { paddingHorizontal: 16, marginBottom: 8 }]}>Posts</Text>
-                  {viewingProfilePosts.map(post => (
-                    <View key={post.id} style={[styles.postCard, { marginHorizontal: 16 }]}>
-                      <Text style={styles.postContentText}>{post.content}</Text>
-                      {post.media_urls && post.media_urls.length > 0 && (
-                        <PostImage uri={post.media_urls[0]} style={styles.postImage} />
-                      )}
-                      <View style={[styles.postActions, { marginTop: 8 }]}>
-                        <View style={styles.actionButton}>
-                          <Ionicons name="thumbs-up-outline" size={16} color={colors.textSecondary} />
-                          <Text style={styles.actionText}>{post.likes_count || 0}</Text>
-                        </View>
-                        <View style={styles.actionButton}>
-                          <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
-                          <Text style={styles.actionText}>{post.comments_count || 0}</Text>
-                        </View>
-                        <Text style={styles.postMetaText}>{formatTimeAgo(post.created_at)}</Text>
-                      </View>
-                    </View>
-                  ))}
-                  <View style={{ height: 32 }} />
-                </>
-              )}
+              {/* Posts grid (Instagram-style) */}
+              <PostGrid
+                posts={viewingProfilePosts}
+                emptyMessage="No posts yet"
+              />
+              <View style={{ height: 32 }} />
             </ScrollView>
           )}
         </SafeAreaView>
