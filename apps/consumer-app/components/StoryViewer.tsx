@@ -10,8 +10,18 @@ import {
   Animated,
   StatusBar,
 } from 'react-native';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTheme } from '../contexts/ThemeContext';
+
+// expo-video requires a native build — gracefully degrade in Expo Go
+let VideoView: any = null;
+let useVideoPlayer: any = null;
+try {
+  const expoVideo = require('expo-video');
+  VideoView = expoVideo.VideoView;
+  useVideoPlayer = expoVideo.useVideoPlayer;
+} catch {
+  // expo-video not available (Expo Go) — video stories will show as images
+}
 import { FILTER_OVERLAY_MAP } from './StoryEditor';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -83,14 +93,16 @@ export const StoryViewer = ({
   });
   const filterColor = FILTER_OVERLAY_MAP[currentStory?.filter_effect ?? 'none'] ?? 'transparent';
 
-  // expo-video player — always created, only active when isVideo
-  const videoPlayer = useVideoPlayer(
-    isVideo ? { uri: currentStory?.image_url ?? '' } : null,
-    (player) => {
-      player.loop = false;
-      player.play();
-    }
-  );
+  // expo-video player — only available in native builds, not Expo Go
+  const videoPlayer = useVideoPlayer
+    ? useVideoPlayer(
+        isVideo ? { uri: currentStory?.image_url ?? '' } : null,
+        (player: any) => {
+          player.loop = false;
+          player.play();
+        }
+      )
+    : null;
 
   // Advance to next story when video finishes
   useEffect(() => {
@@ -174,7 +186,7 @@ export const StoryViewer = ({
       <View style={styles.container}>
 
         {/* ── Background media ── */}
-        {isVideo ? (
+        {isVideo && VideoView && videoPlayer ? (
           <VideoView
             player={videoPlayer}
             style={styles.media}

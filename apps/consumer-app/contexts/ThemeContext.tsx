@@ -75,9 +75,12 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   const loadThemePreference = async () => {
     try {
-      const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-      if (savedTheme && ['light', 'dark', 'auto'].includes(savedTheme)) {
-        setThemeModeState(savedTheme as ThemeMode);
+      const result = await Promise.race([
+        AsyncStorage.getItem(THEME_STORAGE_KEY),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+      ]);
+      if (result && ['light', 'dark', 'auto'].includes(result)) {
+        setThemeModeState(result as ThemeMode);
       }
     } catch (error) {
       console.error('Failed to load theme preference:', error);
@@ -104,6 +107,14 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     setThemeMode,
     colors,
   };
+
+  // Safety timeout — if AsyncStorage hangs, render anyway after 3s
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!isReady) setIsReady(true);
+    }, 3000);
+    return () => clearTimeout(timeout);
+  }, [isReady]);
 
   // Don't render until theme is loaded to prevent flash
   if (!isReady) {
