@@ -116,15 +116,15 @@ function categorizeArticle(title: string, summary: string = ''): string {
   return 'general';
 }
 
-const categories: { icon: string; label: string; screen: string }[] = [
-  { icon: 'wine', label: "Bars & Lounges", screen: "Explore" },
-  { icon: 'restaurant', label: "Restaurants", screen: "Explore" },
-  { icon: 'newspaper', label: "GIDI News", screen: "News" },
-  { icon: 'musical-notes', label: "Nightlife", screen: "Explore" },
-  { icon: 'sunny', label: "DayLife", screen: "Events" },
-  { icon: 'calendar', label: "Events", screen: "Events" },
-  { icon: 'chatbubbles', label: "Social", screen: "Social" },
-  { icon: 'apps', label: "See More", screen: "Discover" },
+const categories: { icon: string; label: string; screen: string; color: string }[] = [
+  { icon: 'wine',           label: "Bars & Lounges", screen: "Explore",  color: '#7C3AED' }, // purple
+  { icon: 'restaurant',     label: "Restaurants",    screen: "Explore",  color: '#EA580C' }, // orange
+  { icon: 'newspaper',      label: "GIDI News",      screen: "News",     color: '#0891B2' }, // teal
+  { icon: 'musical-notes',  label: "Nightlife",      screen: "Explore",  color: '#DB2777' }, // pink
+  { icon: 'sunny',          label: "DayLife",        screen: "Events",   color: '#F59E0B' }, // amber
+  { icon: 'calendar',       label: "Events",         screen: "Events",   color: '#4338CA' }, // indigo
+  { icon: 'chatbubbles',    label: "Social",         screen: "Social",   color: '#10B981' }, // emerald
+  { icon: 'apps',           label: "See More",       screen: "Discover", color: '#DC2626' }, // red
 ];
 
 export default function HomeScreen() {
@@ -330,8 +330,11 @@ export default function HomeScreen() {
                 key={index}
                 style={styles.categoryCard}
                 onPress={() => handleCategoryPress(category)}
+                activeOpacity={0.75}
               >
-                <Ionicons name={category.icon as any} size={28} color={colors.primary} />
+                <View style={[styles.categoryIconBadge, { backgroundColor: category.color }]}>
+                  <Ionicons name={category.icon as any} size={22} color="#fff" />
+                </View>
                 <Text style={styles.categoryLabel}>{category.label}</Text>
               </TouchableOpacity>
             ))}
@@ -546,14 +549,27 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   categoryCard: {
     width: cardWidth,
-    height: 96,
+    height: 100,
     backgroundColor: colors.cardBackground,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 8,
+    paddingHorizontal: 6,
+  },
+  categoryIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   categoryEmoji: {
     fontSize: 32,
