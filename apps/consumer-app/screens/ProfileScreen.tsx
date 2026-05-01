@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../contexts/ThemeContext';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { PostGrid, GridPost } from '../components/PostGrid';
+import { CreatePostModal } from '../components/CreatePostModal';
 
 // Helper function to convert hex color to rgba
 const hexToRgba = (hex: string, opacity: number): string => {
@@ -103,6 +104,7 @@ export default function ProfileScreen() {
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [profileTab, setProfileTab] = useState<'posts' | 'stats'>('posts');
+  const [showCreatePost, setShowCreatePost] = useState(false);
 
   const [allBadges, setAllBadges] = useState<Array<{
     id: string;
@@ -842,9 +844,21 @@ export default function ProfileScreen() {
         {/* Posts Grid (Instagram-style) */}
         {!isGuest && profileTab === 'posts' && (
           <View style={{ marginBottom: 24 }}>
+            {/* New Post button */}
+            <TouchableOpacity
+              style={styles.newPostButton}
+              onPress={() => setShowCreatePost(true)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.newPostIcon}>
+                <Ionicons name="add" size={28} color={colors.primary} />
+              </View>
+              <Text style={styles.newPostText}>New Post</Text>
+            </TouchableOpacity>
+
             <PostGrid
               posts={userPosts}
-              emptyMessage="Share your first post from the Social tab"
+              emptyMessage="Share your first photo or post"
             />
           </View>
         )}
@@ -1323,6 +1337,18 @@ export default function ProfileScreen() {
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Create Post Modal */}
+      <CreatePostModal
+        visible={showCreatePost}
+        onClose={() => setShowCreatePost(false)}
+        onPostCreated={() => {
+          if (user) {
+            fetchUserPosts(user.id);
+            fetchUserStats(user.id);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -1378,6 +1404,36 @@ const getStyles = (colors: any) => StyleSheet.create({
   profileTabActive: {
     borderBottomWidth: 2,
     borderBottomColor: colors.primary,
+  },
+  // New Post Button
+  newPostButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+  },
+  newPostIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  newPostText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.primary,
   },
   // Header
   header: {
