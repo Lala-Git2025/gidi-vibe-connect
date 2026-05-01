@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0D0D0D"/>
+      <stop offset="100%" style="stop-color:#1C1C2E"/>
+    </linearGradient>
+    <linearGradient id="gold2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700"/>
+      <stop offset="50%" style="stop-color:#EAB308"/>
+      <stop offset="100%" style="stop-color:#B8860B"/>
+    </linearGradient>
+    <radialGradient id="spotlight" cx="50%" cy="35%" r="50%">
+      <stop offset="0%" style="stop-color:#EAB308;stop-opacity:0.15"/>
+      <stop offset="100%" style="stop-color:#EAB308;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="224" fill="url(#bg2)"/>
+
+  <!-- Ambient spotlight glow -->
+  <circle cx="512" cy="380" r="400" fill="url(#spotlight)"/>
+
+  <!-- Stylized Lagos skyline silhouette at bottom -->
+  <path d="M140 780 L140 680 L180 680 L180 720 L220 720 L220 640 L260 640 L260 720
+           L320 720 L320 580 L360 560 L400 580 L400 720
+           L440 720 L440 620 L480 600 L520 560 L560 600 L560 720
+           L600 720 L600 660 L640 660 L640 720
+           L700 720 L700 600 L740 580 L780 600 L780 720
+           L820 720 L820 680 L860 680 L860 780 Z"
+    fill="#1A1A1A" stroke="#EAB308" stroke-width="2" opacity="0.6"/>
+
+  <!-- Main icon: Two overlapping location pins forming a "connection" -->
+  <!-- Left pin -->
+  <g transform="translate(340, 260)">
+    <path d="M80 0 C124 0 160 36 160 80 C160 140 80 200 80 200 C80 200 0 140 0 80 C0 36 36 0 80 0 Z"
+      fill="none" stroke="url(#gold2)" stroke-width="32" stroke-linejoin="round"/>
+    <circle cx="80" cy="80" r="28" fill="url(#gold2)"/>
+  </g>
+
+  <!-- Right pin (overlapping) -->
+  <g transform="translate(484, 280)">
+    <path d="M80 0 C124 0 160 36 160 80 C160 140 80 200 80 200 C80 200 0 140 0 80 C0 36 36 0 80 0 Z"
+      fill="none" stroke="url(#gold2)" stroke-width="32" stroke-linejoin="round"/>
+    <circle cx="80" cy="80" r="28" fill="url(#gold2)"/>
+  </g>
+
+  <!-- Connection arc between pins -->
+  <path d="M420 340 Q 512 280 604 360"
+    fill="none" stroke="#EAB308" stroke-width="8" stroke-dasharray="12 8" opacity="0.6"/>
+
+  <!-- Wi-fi/signal arcs at top suggesting live/connected -->
+  <path d="M472 210 Q512 180 552 210" fill="none" stroke="#EAB308" stroke-width="6" stroke-linecap="round" opacity="0.4"/>
+  <path d="M450 185 Q512 145 574 185" fill="none" stroke="#EAB308" stroke-width="6" stroke-linecap="round" opacity="0.25"/>
+</svg>

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0A0A0A"/>
+      <stop offset="50%" style="stop-color:#111118"/>
+      <stop offset="100%" style="stop-color:#0A0A0A"/>
+    </linearGradient>
+    <linearGradient id="gold3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFE066"/>
+      <stop offset="40%" style="stop-color:#EAB308"/>
+      <stop offset="100%" style="stop-color:#A67C00"/>
+    </linearGradient>
+    <linearGradient id="goldLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFE066;stop-opacity:0.2"/>
+      <stop offset="100%" style="stop-color:#EAB308;stop-opacity:0.05"/>
+    </linearGradient>
+    <filter id="glow3">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="224" fill="url(#bg3)"/>
+
+  <!-- Subtle diamond pattern overlay for premium feel -->
+  <pattern id="diamonds" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+    <path d="M32 0 L64 32 L32 64 L0 32 Z" fill="none" stroke="#EAB308" stroke-width="0.5" opacity="0.06"/>
+  </pattern>
+  <rect width="1024" height="1024" rx="224" fill="url(#diamonds)"/>
+
+  <!-- Outer golden ring -->
+  <circle cx="512" cy="472" r="300" fill="none" stroke="url(#gold3)" stroke-width="6" opacity="0.2"/>
+
+  <!-- Bold monogram "G" — modern, geometric -->
+  <!-- The G is open on the right, with the horizontal bar pointing inward -->
+  <path d="M512 200
+    A272 272 0 1 0 700 530
+    L580 530
+    L580 472
+    A130 130 0 1 1 512 330"
+    fill="none" stroke="url(#gold3)" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"
+    filter="url(#glow3)"/>
+
+  <!-- Dot at the center of G suggesting "hub" / connection point -->
+  <circle cx="500" cy="472" r="32" fill="url(#gold3)"/>
+
+  <!-- Three radiating connection lines from center dot -->
+  <line x1="500" y1="440" x2="500" y2="380" stroke="#EAB308" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+  <line x1="528" y1="484" x2="576" y2="520" stroke="#EAB308" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+  <line x1="472" y1="484" x2="424" y2="520" stroke="#EAB308" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Small connection dots at end of lines -->
+  <circle cx="500" cy="372" r="10" fill="#EAB308" opacity="0.6"/>
+  <circle cx="584" cy="528" r="10" fill="#EAB308" opacity="0.6"/>
+  <circle cx="416" cy="528" r="10" fill="#EAB308" opacity="0.6"/>
+
+  <!-- Subtle tagline area — "GIDI CONNECT" text for full logo use -->
+  <text x="512" y="840" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="900" letter-spacing="16" fill="url(#gold3)">GIDI</text>
+  <text x="512" y="900" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="300" letter-spacing="24" fill="#EAB308" opacity="0.6">CONNECT</text>
+</svg>
