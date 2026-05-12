@@ -75,14 +75,44 @@ export default function Settings() {
     }
   };
 
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
   const handleDeleteAccount = async () => {
     const confirmed = window.confirm(
-      'Are you sure you want to delete your account? This will permanently remove all your venues, events, and data. This cannot be undone.'
+      'This permanently deletes your account along with all your venues, events, offers, and uploaded photos. This cannot be undone. Continue?'
     );
     if (!confirmed) return;
-    await signOut();
-    // Account deletion requires an admin RPC or Supabase dashboard action
-    alert('Please contact support@gidivibe.com to complete account deletion.');
+
+    setDeletingAccount(true);
+    try {
+      // Calls the delete-account edge function which:
+      //   1. Verifies the caller's JWT
+      //   2. Removes their files from storage buckets
+      //   3. Calls supabase.auth.admin.deleteUser → cascades through every
+      //      FK-linked row (profiles → venues → events → offers, etc.)
+      const { data, error } = await supabase.functions.invoke('delete-account', {
+        method: 'POST',
+      });
+
+      if (error) {
+        console.error('delete-account error:', error);
+        window.alert('We couldn\'t delete your account. Please try again, or contact support.');
+        return;
+      }
+      if (data?.error) {
+        window.alert(data.error);
+        return;
+      }
+
+      // Auth session is now invalid; sign out locally to clear UI state.
+      await signOut();
+      window.alert('Your account and data have been permanently deleted.');
+    } catch (err) {
+      console.error('delete-account exception:', err);
+      window.alert(err instanceof Error ? err.message : 'Failed to delete account');
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   return (
@@ -241,9 +271,14 @@ export default function Settings() {
           <p className="text-sm text-muted-foreground mb-4">
             Deleting your account will permanently remove all venues, events, photos, and analytics. This action cannot be undone.
           </p>
-          <Button variant="destructive" onClick={handleDeleteAccount} className="gap-2">
+          <Button
+            variant="destructive"
+            onClick={handleDeleteAccount}
+            disabled={deletingAccount}
+            className="gap-2"
+          >
             <Trash2 className="w-4 h-4" />
-            Delete Account
+            {deletingAccount ? 'Deleting…' : 'Delete Account'}
           </Button>
         </CardContent>
       </Card>
