@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
-  Image, Animated, Dimensions,
+  Image, Animated, Dimensions, Share,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import * as Sharing from 'expo-sharing';
+import { File, Paths } from 'expo-file-system';
 import { PostGrid } from '../components/PostGrid';
 import { CreatePostModal, EditingPost } from '../components/CreatePostModal';
 import { SocialDrawer, DrawerView } from '../components/SocialDrawer';
@@ -88,6 +90,18 @@ interface Post {
   };
 }
 
+interface Comment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  profiles?: {
+    full_name: string;
+    avatar_url?: string | null;
+  };
+}
+
 interface PeopleProfile {
   user_id: string;
   full_name: string;
@@ -156,6 +170,14 @@ export default function SocialScreen() {
   const [viewingProfilePosts, setViewingProfilePosts] = useState<Post[]>([]);
   const [viewingProfileLoading, setViewingProfileLoading] = useState(false);
 
+  // Likes / Comments state
+  const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
+  const [commentsModalPost, setCommentsModalPost] = useState<Post | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+
   const styles = getStyles(colors, insets);
 
   // Returns the stored color or derives a consistent one from the name hash
@@ -209,10 +231,19 @@ export default function SocialScreen() {
   };
 
   // ── Data fetching ──────────────────────────────────────────────────
+  // Auth (current user, likes set, etc.) only needs to load once on mount.
   useEffect(() => {
-    fetchCurrentUser().then(() => fetchFeedPosts());
-    fetchCommunities();
+    fetchCurrentUser();
   }, []);
+
+  // Refetch feed posts + communities on every focus so newly-created posts
+  // and joined/left communities reflect immediately after navigating back.
+  useFocusEffect(
+    useCallback(() => {
+      fetchFeedPosts();
+      fetchCommunities();
+    }, []),
+  );
 
   const fetchCurrentUser = async () => {
     const { data: { session }, error: authError } = await supabase.auth.getSession();
@@ -220,6 +251,7 @@ export default function SocialScreen() {
     if (authError || !user) return;
 
     setCurrentUserId(user.id);
+    fetchUserLikes(user.id);
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -648,6 +680,179 @@ export default function SocialScreen() {
     }
   };
 
+  // ── Likes / Comments / Share ───────────────────────────────────────
+  const fetchUserLikes = async (uid: string) => {
+    const { data } = await supabase
+      .from('post_likes')
+      .select('post_id')
+      .eq('user_id', uid);
+    if (data) setLikedPostIds(new Set(data.map((r: any) => r.post_id as string)));
+  };
+
+  const handleLikeToggle = async (post: Post) => {
+    if (!currentUserId) {
+      Alert.alert('Sign In Required', 'Please sign in to like posts.');
+      return;
+    }
+
+    const isLiked = likedPostIds.has(post.id);
+
+    // Optimistic update
+    const newLiked = new Set(likedPostIds);
+    if (isLiked) newLiked.delete(post.id);
+    else newLiked.add(post.id);
+    setLikedPostIds(newLiked);
+
+    setFeedPosts(prev => prev.map(p =>
+      p.id === post.id
+        ? { ...p, likes_count: (p.likes_count || 0) + (isLiked ? -1 : 1) }
+        : p
+    ));
+
+    try {
+      if (isLiked) {
+        await supabase
+          .from('post_likes')
+          .delete()
+          .eq('post_id', post.id)
+          .eq('user_id', currentUserId);
+      } else {
+        await supabase
+          .from('post_likes')
+          .insert({ post_id: post.id, user_id: currentUserId });
+      }
+      // social_posts.likes_count is updated by the trg_update_post_likes_count
+      // trigger — no manual sync needed.
+    } catch (err) {
+      // Revert on error
+      console.error('Like toggle error:', err);
+      setLikedPostIds(likedPostIds);
+      setFeedPosts(prev => prev.map(p =>
+        p.id === post.id ? { ...p, likes_count: post.likes_count } : p
+      ));
+    }
+  };
+
+  const handleShare = async (post: Post) => {
+    const authorName = post.profiles?.full_name?.trim() || 'someone on Gidi Connect';
+    const message = `"${post.content}"\n\n— ${authorName} on Gidi Connect`;
+    const hasImage = !!(post.media_urls && post.media_urls.length > 0);
+
+    // Text-only post → use the platform Share sheet
+    if (!hasImage) {
+      try {
+        await Share.share({ message, title: 'Post from Gidi Connect' });
+      } catch (err) {
+        console.error('Share error:', err);
+      }
+      return;
+    }
+
+    // Image post → download to cache and share the file as an attachment
+    try {
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        await Share.share({ message, title: 'Post from Gidi Connect' });
+        return;
+      }
+
+      const url = post.media_urls![0];
+      const ext = (url.split('.').pop()?.split('?')[0] || 'jpg').toLowerCase();
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'jpg';
+      const filename = `gidi-share-${post.id}.${safeExt}`;
+      const mimeType = safeExt === 'png' ? 'image/png'
+        : safeExt === 'webp' ? 'image/webp'
+        : safeExt === 'gif' ? 'image/gif'
+        : 'image/jpeg';
+
+      const file = await File.downloadFileAsync(
+        url,
+        new File(Paths.cache, filename),
+        { idempotent: true }
+      );
+
+      await Sharing.shareAsync(file.uri, {
+        mimeType,
+        dialogTitle: 'Share post',
+        UTI: safeExt === 'png' ? 'public.png' : 'public.jpeg',
+      });
+    } catch (err) {
+      console.error('Image share failed, falling back to text:', err);
+      try {
+        await Share.share({ message, title: 'Post from Gidi Connect' });
+      } catch {}
+    }
+  };
+
+  const openComments = async (post: Post) => {
+    setCommentsModalPost(post);
+    setComments([]);
+    setCommentsLoading(true);
+    try {
+      const { data: rows, error } = await supabase
+        .from('comments')
+        .select('*')
+        .eq('post_id', post.id)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      if (!rows || rows.length === 0) { setComments([]); return; }
+
+      const userIds = [...new Set(rows.map((r: any) => r.user_id as string))];
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, avatar_url')
+        .in('user_id', userIds);
+
+      const profMap = new Map((profs ?? []).map((p: any) => [p.user_id, p]));
+      setComments(rows.map((r: any) => ({ ...r, profiles: profMap.get(r.user_id) ?? null })));
+    } catch (err) {
+      console.error('Error loading comments:', err);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const submitComment = async () => {
+    if (!commentsModalPost || !newComment.trim()) return;
+    if (!currentUserId) {
+      Alert.alert('Sign In Required', 'Please sign in to comment.');
+      return;
+    }
+
+    setSubmittingComment(true);
+    const content = newComment.trim();
+    try {
+      const { data: inserted, error } = await supabase
+        .from('comments')
+        .insert({ post_id: commentsModalPost.id, user_id: currentUserId, content })
+        .select()
+        .single();
+      if (error) throw error;
+
+      // Append to list with current user's profile
+      const myProfile = {
+        full_name: currentUserName || 'You',
+        avatar_url: currentUserAvatar,
+      };
+      setComments(prev => [...prev, { ...(inserted as any), profiles: myProfile }]);
+      setNewComment('');
+
+      // Optimistically reflect the new count locally. The authoritative
+      // social_posts.comments_count is updated by the
+      // trg_update_post_comments_count trigger — no manual sync needed.
+      const newCount = (commentsModalPost.comments_count || 0) + 1;
+      setFeedPosts(prev => prev.map(p =>
+        p.id === commentsModalPost.id ? { ...p, comments_count: newCount } : p
+      ));
+      setCommentsModalPost(prev => prev ? { ...prev, comments_count: newCount } : null);
+    } catch (err) {
+      console.error('Submit comment error:', err);
+      Alert.alert('Error', 'Failed to post comment. Please try again.');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
   // ── Derived data ───────────────────────────────────────────────────
   const joinedCommunities = communities.filter(c => c.is_joined);
 
@@ -844,19 +1049,37 @@ export default function SocialScreen() {
 
                   {/* Post Actions */}
                   <View style={styles.postActions}>
-                    <TouchableOpacity style={styles.actionButton}>
-                      <Ionicons name="arrow-up-outline" size={18} color={colors.textSecondary} />
-                      <Text style={styles.actionText}>{post.likes_count || 0}</Text>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => handleLikeToggle(post)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name={likedPostIds.has(post.id) ? 'heart' : 'heart-outline'}
+                        size={20}
+                        color={likedPostIds.has(post.id) ? '#E11D48' : colors.textSecondary}
+                      />
+                      <Text style={[
+                        styles.actionText,
+                        likedPostIds.has(post.id) && { color: '#E11D48' },
+                      ]}>
+                        {post.likes_count || 0}
+                      </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionButton}>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => openComments(post)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
                       <Ionicons name="chatbubble-outline" size={18} color={colors.textSecondary} />
                       <Text style={styles.actionText}>{post.comments_count || 0}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionButton}>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => handleShare(post)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
                       <Ionicons name="share-outline" size={18} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionButton}>
-                      <Ionicons name="bookmark-outline" size={18} color={colors.textSecondary} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1167,6 +1390,96 @@ export default function SocialScreen() {
             </ScrollView>
           )}
         </SafeAreaView>
+      </Modal>
+
+      {/* ── Comments Modal ─────────────────────────────────────────── */}
+      <Modal
+        visible={!!commentsModalPost}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => { setCommentsModalPost(null); setNewComment(''); }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalContainer}
+        >
+          <View style={styles.commentsSheet}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => { setCommentsModalPost(null); setNewComment(''); }}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>
+                {comments.length} {comments.length === 1 ? 'Comment' : 'Comments'}
+              </Text>
+              <View style={{ width: 22 }} />
+            </View>
+
+            {/* Comments list */}
+            <ScrollView
+              style={styles.commentsList}
+              contentContainerStyle={{ paddingVertical: 12 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {commentsLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 24 }} />
+              ) : comments.length === 0 ? (
+                <View style={styles.emptyComments}>
+                  <Ionicons name="chatbubble-outline" size={36} color={colors.textSecondary} />
+                  <Text style={styles.emptyCommentsText}>Be the first to comment</Text>
+                </View>
+              ) : (
+                comments.map(c => (
+                  <View key={c.id} style={styles.commentRow}>
+                    <View style={styles.commentAvatar}>
+                      {c.profiles?.avatar_url ? (
+                        <Image source={{ uri: c.profiles.avatar_url }} style={styles.commentAvatarImg} />
+                      ) : (
+                        <Text style={styles.commentAvatarText}>
+                          {getInitials(c.profiles?.full_name || 'A')}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.commentBody}>
+                      <View style={styles.commentBubble}>
+                        <Text style={styles.commentName}>{c.profiles?.full_name || 'User'}</Text>
+                        <Text style={styles.commentText}>{c.content}</Text>
+                      </View>
+                      <Text style={styles.commentTime}>{formatTimeAgo(c.created_at)}</Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            {/* Input */}
+            <View style={styles.commentInputRow}>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="Add a comment..."
+                placeholderTextColor={colors.textSecondary}
+                value={newComment}
+                onChangeText={setNewComment}
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.commentSendBtn,
+                  (!newComment.trim() || submittingComment) && styles.commentSendBtnDisabled,
+                ]}
+                onPress={submitComment}
+                disabled={!newComment.trim() || submittingComment}
+              >
+                {submittingComment ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <Ionicons name="send" size={18} color="#000" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -1730,5 +2043,112 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
   },
   profileModalFollowingBtnText: {
     color: colors.primary,
+  },
+  // ── Comments Modal ──────────────────────────────────────────────────
+  commentsSheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: '80%',
+  },
+  commentsList: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  emptyComments: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    gap: 8,
+  },
+  emptyCommentsText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  commentRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  commentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  commentAvatarImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  commentAvatarText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+  },
+  commentBody: {
+    flex: 1,
+  },
+  commentBubble: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  commentName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  commentText: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 19,
+  },
+  commentTime: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 4,
+    marginLeft: 12,
+  },
+  commentInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: insets.bottom + 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 10,
+    backgroundColor: colors.background,
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    fontSize: 15,
+    color: colors.text,
+    maxHeight: 100,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  commentSendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentSendBtnDisabled: {
+    opacity: 0.4,
   },
 });
