@@ -1,25 +1,35 @@
 # Remaining Work to 100% Production Ready
 
-**Current Status**: 85-90% Ready
+**Current Status**: 88-92% Ready
 **Target**: 100% Production Ready
+
+> **🔎 For a comprehensive launch-readiness inventory** (every screen, every edge function, every external integration with file:line references and P0/P1/P2 priorities) see [AUDIT.md](AUDIT.md). This document tracks the original to-do list; AUDIT.md captures the much larger surface area found in the 2026-05-11 comprehensive audit.
+
+---
+
+## ✅ Recently Fixed (May 2026 session)
+
+- ✅ **#1 Mobile Post Creation UI** — `CreatePostModal` shipped and integrated into Social FAB + Profile New Post button.
+- ✅ **#4 ExploreAreaScreen** — venue cards now navigate to the Explore detail modal via `venueId` (no more `alert()`-and-stub). Trending + new + selected-area lists all work.
+- ✅ **#6 Error Boundaries** — `ErrorBoundary` component wraps the app root in `App.tsx`.
+- ✅ **`alert()` → `Alert.alert()`** in `ExploreAreaScreen` (3 places) and `NewsScreen` (1 place) — these would have crashed silently on native.
+- ✅ **Account deletion** — real `delete-account` edge function calling `auth.admin.deleteUser` + storage cleanup; wired from consumer Profile and business-portal Settings. Replaces the previous "Account Deleted" fake.
+- ✅ **Storage RLS hardening** — `venue-photos` / `event-images` / `avatars` / `social-media` now enforce ownership on INSERT/UPDATE/DELETE. Closed a "any authenticated user can upload/delete any photo" hole.
+- ✅ **Post counter triggers** — `social_posts.likes_count` and `comments_count` are now kept in sync by DB triggers on `post_likes` / `comments`. One-time backfill repairs prior drift. Manual client-side sync removed.
+- ✅ **Stale data after navigation** — Home / Explore / Events / Social now use `useFocusEffect` so feeds refresh whenever you return to the screen.
+- ✅ **Discover screen filters** — `category`, `neighbourhood`, and `area` params now propagate to Explore / ExploreArea, pre-selecting the right chip on arrival.
+- ✅ **TrendingVenues fallback** — removed hardcoded fake venues (IDs `'1'`..`'6'` that broke tap navigation). Now falls back to top-rated real venues, then empty state.
+
+See [AUDIT.md §6](AUDIT.md) for the prioritized list of what remains.
 
 ---
 
 ## 🔴 Critical Items (Must Fix - 5% of remaining work)
 
-### 1. Mobile Post Creation UI
-**File**: [apps/consumer-app/screens/SocialScreen.tsx](apps/consumer-app/screens/SocialScreen.tsx)
-**Issue**: "Create Post" button exists but has no form/modal
-**Impact**: Mobile users can't create social posts (only web users can)
-**Effort**: 4-6 hours
-**Implementation**:
-- [ ] Add modal/bottom sheet for post creation
-- [ ] Integrate image picker for media uploads
-- [ ] Form with content, location, tags fields
-- [ ] Submit to `social_posts` table
-- [ ] Refresh feed after successful post
-
-**Why Critical**: Social posts are a core feature, mobile users need this
+### 1. Mobile Post Creation UI — ✅ FIXED (May 2026)
+**Resolved by**: [apps/consumer-app/components/CreatePostModal.tsx](apps/consumer-app/components/CreatePostModal.tsx)
+**Wired into**: Social FAB ([SocialScreen.tsx](apps/consumer-app/screens/SocialScreen.tsx)) + Profile "New Post" button ([ProfileScreen.tsx](apps/consumer-app/screens/ProfileScreen.tsx))
+**Status**: Image picker + Supabase upload (`social-media` bucket via XHR ArrayBuffer) + XP via `increment_user_stat` RPC. Edit mode supported.
 
 ---
 
@@ -49,17 +59,17 @@
 
 ---
 
-### 4. ExploreAreaScreen Implementation
+### 4. ExploreAreaScreen Implementation — ✅ Mostly FIXED (May 2026)
 **File**: [apps/consumer-app/screens/ExploreAreaScreen.tsx](apps/consumer-app/screens/ExploreAreaScreen.tsx)
-**Issue**: Shows "Coming Soon" placeholder
-**Impact**: Users can't explore area-specific venues/events
-**Effort**: 6-8 hours
-**Implementation**:
-- [ ] Design UI for area exploration
-- [ ] Filter venues by area
-- [ ] Show area-specific events
-- [ ] Display area stats and highlights
-- [ ] Add map integration
+**Resolved**:
+- [x] Area cards + selection wired to filter venues by area
+- [x] Trending Now + New & Hot horizontal scrolls render real venues
+- [x] Venue cards navigate to Explore detail modal via `venueId` (was a broken `alert()` previously)
+- [x] Receives `route.params.area` from DiscoverScreen and pre-selects that area
+**Still missing**:
+- [ ] Map integration
+- [ ] Bare emoji on area cards should become Ionicons (CLAUDE.md convention)
+- [ ] Area-specific events list
 
 ---
 
@@ -72,17 +82,8 @@
 
 ---
 
-### 6. Error Boundaries
-**Location**: Throughout app
-**Issue**: No global error handling
-**Impact**: App crashes aren't caught gracefully
-**Effort**: 3-4 hours
-**Implementation**:
-- [ ] Add React Error Boundary component
-- [ ] Wrap main app sections
-- [ ] Show friendly error messages
-- [ ] Log errors for debugging
-- [ ] Add retry mechanisms
+### 6. Error Boundaries — ✅ FIXED
+**Resolved by**: [apps/consumer-app/components/ErrorBoundary.tsx](apps/consumer-app/components/ErrorBoundary.tsx) wrapped around the root in [App.tsx](apps/consumer-app/App.tsx). Dev shows full stack; prod hides it. **Remaining**: wire Sentry/Bugsnag (see item #7).
 
 ---
 
@@ -391,3 +392,67 @@ If you can only do a few things, do them in this order:
 ---
 
 *Focus on items 1-5 to reach 95%+ readiness for a strong beta launch!*
+
+---
+
+## Deferred — Deep-Linked Post Sharing
+
+**Current state (May 2026)**: Share button on social posts uses `expo-sharing` to share the image attachment, falling back to text-only via the platform `Share` API for posts with no media. This works but has two limitations:
+
+1. **Image-only posts lose the caption.** Native file shares don't include accompanying text — receiving apps see only the image.
+2. **No back-link to Gidi Connect.** A friend who receives the share has no way to open the post in the app.
+
+**Goal**: When a user shares a post, the recipient sees a rich preview (cover image + author + first line of caption) and one tap opens that post inside the Gidi Connect app — or, on devices without the app, a web fallback.
+
+### What needs to be built
+
+1. **Public post page (web)**
+   - Route: `https://gidiconnect.app/post/:id` (or wherever the marketing site lives).
+   - Server-rendered with Open Graph + Twitter Card meta tags so iMessage/WhatsApp/Twitter render a real preview.
+   - Renders post content, author, image, "Open in app" deep link.
+   - Reuses existing Supabase data; needs a small Next.js or Vite SSR app, or a Supabase Edge Function emitting HTML.
+
+2. **Universal Links (iOS) / App Links (Android)**
+   - Configure `apple-app-site-association` and `assetlinks.json` files served from `gidiconnect.app/.well-known/`.
+   - Update [apps/consumer-app/app.json](apps/consumer-app/app.json) with `associatedDomains` (iOS) and `intentFilters` (Android).
+   - Tapping a `gidiconnect.app/post/:id` link opens the app directly to that post — no browser bounce.
+
+3. **In-app deep link handler**
+   - `Linking.addEventListener('url', ...)` in `App.tsx` parses the path and navigates: `Linking → Social tab → open post by ID`.
+   - Cold-start path: read the initial URL via `Linking.getInitialURL()`.
+   - Add a `usePostById(id)` query in case the post isn't in the loaded feed yet.
+
+4. **Update `handleShare` in [apps/consumer-app/screens/SocialScreen.tsx](apps/consumer-app/screens/SocialScreen.tsx)**
+   - Replace the current "image attachment" flow with a single message:
+     ```
+     "<post content>"
+     — <author> on Gidi Connect
+     https://gidiconnect.app/post/<id>
+     ```
+   - The link does the heavy lifting — receiving app fetches the OG preview itself.
+   - Remove the cache-download + `expo-sharing` path (or keep it as a "Save image" action under a long-press).
+
+### Effort
+
+- Public post page: ~1 day (Vite/Next.js mini-app or Edge Function)
+- Universal/App Links config + verification: ~0.5 day
+- In-app handler + tests: ~0.5 day
+- Migration of share flow + caption preservation: ~0.5 day
+
+**Total: 2.5–3 days.**
+
+### Open questions
+
+- **Where does the web app live?** New Vite app in `apps/web-public/`? Or extend `apps/business-portal`? Recommend a separate, minimal SSR app — different SEO/perf needs.
+- **Auth on shared post pages**: should non-logged-in viewers see full post + comments, or only a teaser? Recommend: full post visible publicly (drives discovery), engagement (like/comment) gated to logged-in users.
+- **Stories shares** — same mechanism, but stories expire. Decide: render a "this story has ended" page after 24h, or 404? Recommend the former.
+
+### Dependencies
+
+- Domain `gidiconnect.app` registered + DNS pointing somewhere we control.
+- App Store / Play Store team IDs for App Links verification.
+- A hosting target for the public web app (Vercel free tier is fine).
+
+### Why this is the better long-term solution
+
+The current flow shares pixels. The deep-link flow shares **the post** — recoverable, openable, attributable, and analytic. It also unlocks: web previews on Twitter/LinkedIn, embeddable post URLs, and a path to a future SEO-driven discovery surface.

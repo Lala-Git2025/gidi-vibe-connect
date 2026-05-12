@@ -166,6 +166,17 @@ Always use `colors.xxx` from theme context, never hardcode colors.
 
 ## Recent Decisions
 
+### May 2026
+- **Comprehensive audit shipped**: see [AUDIT.md](AUDIT.md). Identified ~60 distinct issues across the three apps (10 P0 launch blockers, 33 P1 painful gaps, 17 P2 polish items). AUDIT.md is the canonical launch-readiness checklist; REMAINING-WORK.md is the older to-do list with a status banner pointing at AUDIT.md.
+- **Real account deletion**: new `delete-account` edge function calls `auth.admin.deleteUser` and cleans up storage objects across `avatars`, `social-media`, `stories` buckets. Wired from consumer ProfileScreen and business-portal Settings, replacing the previous "Account Deleted" fake (which only signed the user out). **GDPR / app-store compliance.** Deploy: `npx supabase functions deploy delete-account`.
+- **Post counter triggers**: migration `20260511000000_post_counter_triggers.sql` adds DB triggers that keep `social_posts.likes_count` and `comments_count` in sync on every `post_likes` / `comments` insert/delete. One-time backfill repairs prior drift. SocialScreen no longer manually `UPDATE`s these columns from the client.
+- **Storage RLS hardening**: migration `20260511000001_storage_rls_hardening.sql` closes the "any authenticated user can upload/delete any photo" gap. New policies: `venue-photos` requires the caller to own the venue identified by the first folder segment (or be an admin); `event-images` requires `organizer_id = auth.uid()`; `avatars` and `social-media` require `(storage.foldername(name))[1] = auth.uid()::text`. Dropped the overlapping permissive policies from `20260309000001` and `20260310000000`.
+- **`alert()` → `Alert.alert()`**: ExploreAreaScreen had three venue-card taps using `alert()` (web-only, silently no-ops on native). Replaced + wired venue navigation properly via `route.params.venueId`. NewsScreen `openArticle` fallback fixed too.
+- **Discover filter params now propagate**: `ExploreScreen` reads `route.params.category` (matches a known chip when possible; drops to search box for pseudo-categories) and `neighbourhood`; `ExploreAreaScreen` reads `route.params.area` and pre-selects the matching `LAGOS_AREAS` id. Previously Discover tiles opened unfiltered screens.
+- **`useFocusEffect` on Home/Explore/Events/Social**: refetch data on focus instead of only on first mount. Pattern: `useFocusEffect(useCallback(() => fetchSomething(), []))`. Auth/session checks stay in one-shot `useEffect` so they don't re-run.
+- **TrendingVenues no longer ships fake data**: removed `FALLBACK_VENUES` (synthetic IDs `'1'`..`'6'` that broke tap → modal lookup). Two-stage real-data fallback: promoted venues → top-rated venues → empty state.
+- **Documentation triad**: `AUDIT.md` (audit findings + status), `REMAINING-WORK.md` (original to-do list, kept for history), `AI_AGENTS_PLAN.md` (agentic AI roadmap with implementation sketches).
+
 ### April 2026
 - **Role-specific tables**: `business_profiles` and `admin_profiles` extend `profiles` — auto-created via trigger on role change
 - **Scalability overhaul**: Materialized `trending_venues` view (refresh via `refresh_trending_venues()`), `auth_role()`/`is_admin()`/`is_super_admin()` helper functions replacing RLS subqueries, BRIN indexes on time-series tables, follow count cache on `profiles`, server-side pagination on admin portal
