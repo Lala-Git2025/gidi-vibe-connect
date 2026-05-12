@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Image, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Image, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../config/supabase';
@@ -75,6 +75,7 @@ const LAGOS_AREAS = [
 
 export default function ExploreAreaScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const { colors, activeTheme } = useTheme();
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -89,6 +90,22 @@ export default function ExploreAreaScreen() {
   });
 
   const styles = getStyles(colors);
+
+  // If navigated from a Discover neighbourhood tile (or anywhere passing
+  // `{ area: '<name>' }`), pre-select that area on mount. We map the human
+  // name → the internal id used by LAGOS_AREAS.
+  useEffect(() => {
+    const params = route.params as { area?: string } | undefined;
+    if (!params?.area) return;
+
+    const target = params.area.toLowerCase();
+    const match = LAGOS_AREAS.find(
+      a => a.name.toLowerCase() === target || a.id === target,
+    );
+    if (match) setSelectedArea(match.id);
+
+    navigation.setParams({ area: undefined } as any);
+  }, [route.params]);
 
   useEffect(() => {
     fetchVenues();
@@ -151,6 +168,16 @@ export default function ExploreAreaScreen() {
     return venues.filter(v =>
       v.location.toLowerCase().includes(areaName.toLowerCase())
     ).length;
+  };
+
+  // Open a venue's detail by hopping to the Explore tab and passing
+  // its id — ExploreScreen reads `route.params.venueId` and opens the modal.
+  const handleVenuePress = (venue: Venue) => {
+    if (!venue?.id) {
+      Alert.alert(venue.name, `${venue.location}\n\nRating: ${venue.rating}⭐`);
+      return;
+    }
+    (navigation as any).navigate('Explore', { venueId: venue.id });
   };
 
   if (!fontsLoaded) {
@@ -228,7 +255,7 @@ export default function ExploreAreaScreen() {
                   <TouchableOpacity
                     key={venue.id}
                     style={styles.venueCard}
-                    onPress={() => alert(`${venue.name}\n${venue.location}\n\nRating: ${venue.rating}⭐\n\nFull details coming soon!`)}
+                    onPress={() => handleVenuePress(venue)}
                   >
                     <Image
                       source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?w=800&q=85' }}
@@ -259,7 +286,7 @@ export default function ExploreAreaScreen() {
                   <TouchableOpacity
                     key={venue.id}
                     style={styles.venueCard}
-                    onPress={() => alert(`${venue.name}\n${venue.location}\n\nRating: ${venue.rating}⭐\n\nFull details coming soon!`)}
+                    onPress={() => handleVenuePress(venue)}
                   >
                     <Image
                       source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?w=800&q=85' }}
@@ -295,7 +322,7 @@ export default function ExploreAreaScreen() {
                   <TouchableOpacity
                     key={venue.id}
                     style={styles.venueListCard}
-                    onPress={() => alert(`${venue.name}\n${venue.location}\n\nRating: ${venue.rating}⭐\nCategory: ${venue.category}\n\nFull details coming soon!`)}
+                    onPress={() => handleVenuePress(venue)}
                   >
                     <Image
                       source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?w=800&q=85' }}

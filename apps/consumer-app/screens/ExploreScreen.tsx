@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { useTheme } from '../contexts/ThemeContext';
@@ -490,12 +490,20 @@ export default function ExploreScreen() {
   const [fontsLoaded] = useFonts({ Orbitron_700Bold, Orbitron_900Black });
   const styles = getStyles(colors);
 
+  // Auth check once on mount — session doesn't change without a sign-in flow.
   useEffect(() => {
-    fetchVenues();
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setUserId(session.user.id);
     });
   }, []);
+
+  // Refetch venues on every focus so newly-promoted / newly-created venues
+  // appear without requiring a pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      fetchVenues();
+    }, []),
+  );
 
   // Auto-open venue detail modal when navigated with a venueId param
   useEffect(() => {
@@ -509,6 +517,38 @@ export default function ExploreScreen() {
       navigation.setParams({ venueId: undefined } as any);
     }
   }, [route.params, venues]);
+
+  // Apply category / neighbourhood / search filter when navigated from
+  // DiscoverScreen tiles (or any external entry point).
+  //   - `category`     → matches a CATEGORIES chip when possible.
+  //                      Pseudo-categories ('brunch', 'first_dates', etc.)
+  //                      drop into the search box as free-text.
+  //   - `neighbourhood`→ sets the area chip directly.
+  useEffect(() => {
+    const params = route.params as
+      | { category?: string; neighbourhood?: string }
+      | undefined;
+    if (!params) return;
+
+    if (params.category) {
+      const known = CATEGORIES.find(
+        c => c.label.toLowerCase() === params.category!.toLowerCase(),
+      );
+      if (known) {
+        setActiveCategory(known.label);
+      } else {
+        // Unknown bucket — let the search filter try to match it across
+        // name/location/description.
+        setSearchQuery(params.category.replace(/_/g, ' '));
+      }
+      navigation.setParams({ category: undefined } as any);
+    }
+
+    if (params.neighbourhood) {
+      setActiveNeighbourhood(params.neighbourhood);
+      navigation.setParams({ neighbourhood: undefined } as any);
+    }
+  }, [route.params]);
 
   const fetchVenues = async () => {
     try {

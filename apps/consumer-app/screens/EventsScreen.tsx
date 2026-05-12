@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -84,9 +84,8 @@ export default function EventsScreen() {
 
   const styles = getStyles(colors);
 
+  // Auth + RSVP state only need to load once.
   useEffect(() => {
-    loadEvents();
-    // getSession() reads from local storage — instant and reliable
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUserId(session.user.id);
@@ -94,6 +93,14 @@ export default function EventsScreen() {
       }
     });
   }, []);
+
+  // Refetch events on every focus so newly-created events appear after
+  // navigating away and coming back.
+  useFocusEffect(
+    useCallback(() => {
+      loadEvents();
+    }, []),
+  );
 
   const fetchUserRSVPs = async (uid: string) => {
     try {

@@ -43,14 +43,11 @@ const dedupeVenues = (list: Venue[]): Venue[] => {
   });
 };
 
-const FALLBACK_VENUES: Venue[] = [
-  { id: '1', name: 'Quilox',                  location: 'Victoria Island, Lagos', rating: 4.8, professional_media_urls: ['https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&q=80'] },
-  { id: '2', name: 'The Shank',               location: 'Lekki Phase 1, Lagos',   rating: 4.7, professional_media_urls: ['https://images.unsplash.com/photo-1514565131-fce0801e5785?w=800&q=80'] },
-  { id: '3', name: 'Brass & Copper',          location: 'Ikoyi, Lagos',           rating: 4.6, professional_media_urls: ['https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80'] },
-  { id: '4', name: 'Hard Rock Cafe',          location: 'Oniru, Lagos',           rating: 4.5, professional_media_urls: ['https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80'] },
-  { id: '5', name: 'Sky Restaurant & Lounge', location: 'Ikeja GRA, Lagos',       rating: 4.6, professional_media_urls: ['https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=800&q=80'] },
-  { id: '6', name: 'Bungalow Beach Bar',      location: 'Surulere, Lagos',        rating: 4.4, professional_media_urls: ['https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80'] },
-];
+// NOTE: hardcoded fallback venues were removed on 2026-05-11.
+// They used synthetic IDs ('1'..'6') that didn't exist in the DB, so
+// tapping a fallback card tried to open a venue modal with no matching
+// row and silently failed. We now render the empty state instead — see
+// the empty-container branch below.
 
 export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
   const { colors } = useTheme();
@@ -65,19 +62,35 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
 
   const fetchTrendingVenues = async () => {
     try {
-      const { data, error } = await supabase
+      // Primary: admin-promoted venues, ranked by trending_score.
+      const { data: promoted, error: promotedErr } = await supabase
         .from('trending_venues')
         .select('id, name, location, rating, live_rating, professional_media_urls, is_promoted, promotion_label, checkins_24h')
         .eq('is_promoted', true)
         .order('trending_score', { ascending: false })
         .limit(10);
 
-      if (error) throw error;
+      if (promotedErr) throw promotedErr;
 
-      const unique = data ? dedupeVenues(data as Venue[]).slice(0, 6) : [];
-      setVenues(unique.length > 0 ? unique : FALLBACK_VENUES);
-    } catch {
-      setVenues(FALLBACK_VENUES);
+      const promotedUnique = promoted ? dedupeVenues(promoted as Venue[]).slice(0, 6) : [];
+      if (promotedUnique.length > 0) {
+        setVenues(promotedUnique);
+        return;
+      }
+
+      // Backstop: when nothing is promoted yet, surface the top-rated *real*
+      // venues so the home page isn't empty. Still real DB rows — tapping
+      // a card opens the venue's detail modal as expected.
+      const { data: topRated } = await supabase
+        .from('venues')
+        .select('id, name, location, rating, professional_media_urls')
+        .order('rating', { ascending: false })
+        .limit(6);
+
+      setVenues(topRated ? dedupeVenues(topRated as Venue[]) : []);
+    } catch (err) {
+      console.log('TrendingVenues fetch error:', err);
+      setVenues([]);
     } finally {
       setLoading(false);
     }

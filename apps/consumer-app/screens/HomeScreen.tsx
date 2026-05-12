@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, Image, RefreshControl, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { TrafficAlert } from '../components/TrafficAlert';
@@ -203,10 +203,13 @@ export default function HomeScreen() {
     }
   };
 
-  // Fetch latest news from Supabase
-  useEffect(() => {
-    fetchLatestNews();
-  }, []);
+  // Fetch latest news on every focus so the Home feed stays current after
+  // the user navigates away and comes back.
+  useFocusEffect(
+    useCallback(() => {
+      fetchLatestNews();
+    }, []),
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);

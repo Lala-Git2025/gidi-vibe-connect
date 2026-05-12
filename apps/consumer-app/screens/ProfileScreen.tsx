@@ -678,7 +678,7 @@ export default function ProfileScreen() {
 
     Alert.alert(
       'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone.',
+      'This permanently deletes your account, posts, comments, stories, follows, and uploaded media. This cannot be undone. Continue?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -686,12 +686,39 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Sign out the user (actual deletion would need admin API)
+              // Calls the delete-account edge function which:
+              //   1. Verifies the caller's JWT
+              //   2. Removes their files from avatars/social-media/stories buckets
+              //   3. Calls supabase.auth.admin.deleteUser → cascades through
+              //      profiles + every FK-linked row
+              const { data, error } = await supabase.functions.invoke('delete-account', {
+                method: 'POST',
+              });
+
+              if (error) {
+                console.error('delete-account error:', error);
+                Alert.alert(
+                  'Error',
+                  'We couldn\'t delete your account. Please try again, or contact support.',
+                );
+                return;
+              }
+              if (data?.error) {
+                Alert.alert('Error', data.error);
+                return;
+              }
+
+              // The auth session is now invalid server-side; force a local sign-out
+              // so the app clears state and routes back to the sign-in screen.
               await supabase.auth.signOut();
-              Alert.alert('Account Deleted', 'Your account has been deleted.');
               setSettingsModalVisible(false);
+              Alert.alert(
+                'Account Deleted',
+                'Your account and data have been permanently deleted.',
+              );
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to delete account');
+              console.error('delete-account exception:', error);
+              Alert.alert('Error', error?.message || 'Failed to delete account');
             }
           }
         }

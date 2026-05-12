@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  Image, ActivityIndicator, RefreshControl, Linking,
+  Image, ActivityIndicator, RefreshControl, Linking, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -243,7 +243,11 @@ export default function NewsScreen() {
   const latest   = filtered.filter(item => hoursAgo(item.publish_date) >  BREAKING_AGE_HOURS);
 
   const openArticle = (url?: string) => {
-    if (url) Linking.openURL(url).catch(() => alert('Could not open article'));
+    if (url) {
+      Linking.openURL(url).catch(() =>
+        Alert.alert('Unable to open article', 'The link could not be opened.'),
+      );
+    }
   };
 
   // ─── Render ──────────────────────────────────────────────────────────────────
