@@ -56,11 +56,11 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="ap-shell">
       <AdminSidebar />
       <div className="md:pl-64 flex flex-col flex-1">
         <AdminHeader />
-        <main className="flex-1 p-6">
+        <main className="flex-1" style={{ padding: '24px 28px' }}>
           <Outlet />
         </main>
       </div>

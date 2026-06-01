@@ -1,169 +1,164 @@
 import { useState, useEffect } from 'react';
+import { AlertTriangle, Construction, CheckCircle2 } from 'lucide-react';
+
+type Severity = 'heavy' | 'slow' | 'free';
 
 interface TrafficData {
   id: string;
-  location: string;
-  severity: 'light' | 'moderate' | 'heavy' | 'critical';
-  description: string;
-  area: string;
+  severity: Severity;
+  name: string;
+  direction: string;
+  delay: string;
 }
 
-const LAGOS_HOTSPOTS = [
-  { location: 'Third Mainland Bridge', direction: 'Inward Island', area: 'Island' },
-  { location: 'Eko Bridge', direction: 'Both Directions', area: 'Island' },
-  { location: 'Carter Bridge', direction: 'Outward Mainland', area: 'Mainland' },
-  { location: 'Ikorodu Road', direction: 'Ketu to Ojota', area: 'Mainland' },
-  { location: 'Lekki-Epe Expressway', direction: 'Lekki to Ajah', area: 'Lekki' },
-  { location: 'Apapa-Oshodi Expressway', direction: 'Both Directions', area: 'Mainland' },
-  { location: 'Lagos-Ibadan Expressway', direction: 'Berger to Kara', area: 'Mainland' },
-  { location: 'Ozumba Mbadiwe', direction: 'VI to Lekki', area: 'Island' },
-  { location: 'Iyana-Ipaja', direction: 'Inward Ikeja', area: 'Mainland' },
-  { location: 'Admiralty Way', direction: 'Both Directions', area: 'Lekki' },
-  { location: 'Allen Avenue', direction: 'Ikeja', area: 'Mainland' },
-  { location: 'Falomo Bridge', direction: 'Ikoyi to VI', area: 'Island' },
+const LAGOS_HOTSPOTS: Array<{ name: string; direction: string }> = [
+  { name: 'Third Mainland Bridge', direction: 'Outbound · Oworonshoki' },
+  { name: 'Ozumba Mbadiwe',        direction: 'Lekki bound · Falomo' },
+  { name: 'Lekki–Epe Expressway',  direction: 'Both directions · clear' },
+  { name: 'Eko Bridge',            direction: 'Island bound' },
+  { name: 'Carter Bridge',         direction: 'Mainland bound' },
+  { name: 'Ikorodu Road',          direction: 'Ketu to Ojota' },
+  { name: 'Apapa-Oshodi Expwy',    direction: 'Both directions' },
+  { name: 'Falomo Bridge',         direction: 'Ikoyi to VI' },
 ];
 
-const generateTrafficAlerts = (): TrafficData[] => {
+const generateAlerts = (): TrafficData[] => {
   const now = new Date();
   const hour = now.getHours();
   const day = now.getDay();
 
-  const severityTexts = {
-    light: 'Light traffic flow',
-    moderate: 'Moderate traffic',
-    heavy: 'Heavy gridlock',
-    critical: 'Critical congestion'
-  };
-
-  const getSeverityForTime = () => {
-    // Weekdays (Monday-Friday)
+  const pickSeverity = (): Severity => {
     if (day >= 1 && day <= 5) {
-      // Morning rush (6am-10am) or Evening rush (4pm-8pm)
       if ((hour >= 6 && hour <= 10) || (hour >= 16 && hour <= 20)) {
-        return Math.random() > 0.5 ? 'heavy' : 'critical';
+        return Math.random() > 0.5 ? 'heavy' : 'slow';
       }
-      // Midday (11am-3pm)
-      else if (hour >= 11 && hour <= 15) {
-        return Math.random() > 0.5 ? 'moderate' : 'heavy';
+      if (hour >= 11 && hour <= 15) {
+        return Math.random() > 0.5 ? 'slow' : 'heavy';
       }
-      // Off-peak hours
-      else {
-        return Math.random() > 0.7 ? 'moderate' : 'light';
-      }
+      return Math.random() > 0.7 ? 'slow' : 'free';
     }
-    // Weekends
-    else {
-      if (hour >= 14 && hour <= 20) {
-        return Math.random() > 0.6 ? 'moderate' : 'light';
-      } else {
-        return 'light';
-      }
+    if (hour >= 14 && hour <= 20) {
+      return Math.random() > 0.6 ? 'slow' : 'free';
     }
+    return 'free';
   };
 
-  // Generate traffic for 4-6 random hotspots
-  const numberOfAlerts = Math.floor(Math.random() * 3) + 4; // 4-6 alerts
+  const minutesFor = (sev: Severity) => {
+    if (sev === 'heavy') return `+${30 + Math.floor(Math.random() * 30)} min`;
+    if (sev === 'slow')  return `+${10 + Math.floor(Math.random() * 18)} min`;
+    return 'on time';
+  };
+
   const shuffled = [...LAGOS_HOTSPOTS].sort(() => Math.random() - 0.5);
-  const selectedHotspots = shuffled.slice(0, numberOfAlerts);
-
-  return selectedHotspots.map((hotspot, index) => {
-    const severity = getSeverityForTime() as 'light' | 'moderate' | 'heavy' | 'critical';
-
+  return shuffled.slice(0, 3).map((h, i) => {
+    const sev = pickSeverity();
     return {
-      id: `traffic-${Date.now()}-${index}`,
-      location: hotspot.location,
-      area: hotspot.area,
-      severity,
-      description: `${severityTexts[severity]} - ${hotspot.direction}`
+      id: `traffic-${Date.now()}-${i}`,
+      severity: sev,
+      name: h.name,
+      direction: h.direction,
+      delay: minutesFor(sev),
     };
   });
 };
 
-const getSeverityColor = (severity: string) => {
-  switch (severity) {
-    case 'critical': return '#dc2626';
-    case 'heavy': return '#ef4444';
-    case 'moderate': return '#eab308';
-    case 'light': return '#22c55e';
-    default: return '#eab308';
-  }
-};
-
-const getSeverityEmoji = (severity: string) => {
-  switch (severity) {
-    case 'critical': return '🚨';
-    case 'heavy': return '⚠️';
-    case 'moderate': return '⚡';
-    case 'light': return '✅';
-    default: return '⚠️';
-  }
-};
+const SEV_CONFIG = {
+  heavy: { Icon: AlertTriangle,  tint: 'rgba(239,68,68,0.18)',  color: '#FCA5A5', dot: '#EF4444', label: 'Heavy' },
+  slow:  { Icon: Construction,   tint: 'rgba(249,115,22,0.18)', color: '#FB923C', dot: '#F97316', label: 'Slow'  },
+  free:  { Icon: CheckCircle2,   tint: 'rgba(16,185,129,0.18)', color: '#34D399', dot: '#10B981', label: 'Free'  },
+} as const;
 
 export const TrafficAlert = () => {
-  const [trafficAlerts, setTrafficAlerts] = useState<TrafficData[]>([]);
+  const [alerts, setAlerts] = useState<TrafficData[]>([]);
 
   useEffect(() => {
-    setTrafficAlerts(generateTrafficAlerts());
-
-    // Update traffic every 5 minutes
-    const interval = setInterval(() => {
-      setTrafficAlerts(generateTrafficAlerts());
-    }, 5 * 60 * 1000);
-
+    setAlerts(generateAlerts());
+    const interval = setInterval(() => setAlerts(generateAlerts()), 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  if (trafficAlerts.length === 0) return null;
+  if (alerts.length === 0) return null;
 
   return (
-    <div className="mb-5">
-      <div className="flex justify-between items-center px-4 mb-3">
-        <h2 className="text-base font-bold text-white">🚦 Live Traffic Updates</h2>
-        <div className="flex items-center gap-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-          <span className="text-[11px] text-gray-500 font-semibold">Live</span>
-        </div>
-      </div>
-
-      <div className="flex gap-3 overflow-x-auto px-4 scrollbar-hide">
-        {trafficAlerts.map((traffic) => (
-          <div
-            key={traffic.id}
-            className="min-w-[200px] bg-zinc-900 rounded-2xl border border-zinc-800 p-3"
-          >
-            <div className="flex justify-between items-center mb-2.5">
+    <div style={{ padding: '4px 18px 24px' }}>
+      <h2 className="gc2-section-h" style={{ padding: 0, marginBottom: 14 }}>
+        <span>
+          Lagos <span className="accent">Traffic</span> Now
+        </span>
+        <button className="seeall">See All</button>
+      </h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {alerts.map((a) => {
+          const s = SEV_CONFIG[a.severity];
+          const IconComponent = s.Icon;
+          return (
+            <button
+              key={a.id}
+              className="gc2-card gc2-tap"
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                textAlign: 'left',
+                cursor: 'pointer',
+                width: '100%',
+              }}
+            >
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: getSeverityColor(traffic.severity) }}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  background: s.tint,
+                  color: s.color,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  position: 'relative',
+                }}
               >
-                <span className="text-base">{getSeverityEmoji(traffic.severity)}</span>
-              </div>
-              <span className="text-[10px] font-bold text-yellow-500 bg-yellow-500/15 px-2 py-1 rounded-md">
-                {traffic.area}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <h3 className="text-sm font-bold text-white truncate">
-                {traffic.location}
-              </h3>
-              <p className="text-xs text-gray-400 line-clamp-2 leading-4">
-                {traffic.description}
-              </p>
-              <div
-                className="self-start px-2 py-1 rounded-md mt-1"
-                style={{ backgroundColor: `${getSeverityColor(traffic.severity)}20` }}
-              >
+                <IconComponent className="w-5 h-5" />
                 <span
-                  className="text-[9px] font-bold tracking-wide"
-                  style={{ color: getSeverityColor(traffic.severity) }}
-                >
-                  {traffic.severity.toUpperCase()}
-                </span>
+                  style={{
+                    position: 'absolute',
+                    top: -3,
+                    right: -3,
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: s.dot,
+                    boxShadow: `0 0 8px ${s.dot}`,
+                    animation: 'gc2Blink 1.4s infinite',
+                  }}
+                />
               </div>
-            </div>
-          </div>
-        ))}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{a.name}</div>
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>{a.direction}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 900,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    color: s.color,
+                  }}
+                >
+                  {s.label}
+                </div>
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3, fontWeight: 600 }}>
+                  {a.delay}
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

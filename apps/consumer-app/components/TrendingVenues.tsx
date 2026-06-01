@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../config/supabase';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, polished } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Venue {
@@ -26,6 +27,14 @@ const getVibeStatus = (rating: number) => {
   if (rating >= 4.0) return 'Buzzing';
   if (rating >= 3.5) return 'Vibing';
   return 'Chill';
+};
+
+// Pair the vibe label with its signature emoji — same set the polished kit uses.
+const getVibeWithEmoji = (rating: number) => {
+  if (rating >= 4.5) return 'Electric ⚡️';
+  if (rating >= 4.0) return 'Buzzing 🔥';
+  if (rating >= 3.5) return 'Vibing ✨';
+  return 'Chill 🎵';
 };
 
 const isActivePromotion = (venue: Venue) => !!venue.is_promoted;
@@ -119,60 +128,82 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
       style={styles.scrollView}
       contentContainerStyle={styles.scrollContent}
     >
-      {venues.map((venue) => (
-        <TouchableOpacity
-          key={venue.id}
-          style={styles.venueCard}
-          onPress={() => (navigation as any).navigate('Explore', { venueId: venue.id })}
-          activeOpacity={0.85}
-        >
-          {/* Background Image */}
-          <Image
-            source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?q=80&w=1000' }}
-            style={styles.venueImage}
-            resizeMode="cover"
-          />
+      {venues.map((venue, idx) => {
+        const rank = idx + 1;
+        const here = venue.checkins_24h ?? 0;
+        const promoted = isActivePromotion(venue);
+        const vibeLabel = getVibeWithEmoji(venue.live_rating ?? venue.rating);
+        return (
+          <TouchableOpacity
+            key={venue.id}
+            style={styles.venueCard}
+            onPress={() => (navigation as any).navigate('Explore', { venueId: venue.id })}
+            activeOpacity={0.85}
+          >
+            {/* Background image */}
+            <Image
+              source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?q=80&w=1000' }}
+              style={styles.venueImage}
+              resizeMode="cover"
+            />
+            {/* Polished gradient overlay — transparent at top, near-black at bottom */}
+            <LinearGradient
+              colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.92)']}
+              locations={[0, 0.35, 0.65, 1]}
+              style={StyleSheet.absoluteFillObject}
+            />
+            {/* Gold inner rim */}
+            <View style={styles.goldRim} pointerEvents="none" />
 
-          {/* Gradient Overlay */}
-          <View style={styles.gradient} />
-
-          {/* Content */}
-          <View style={styles.content}>
-            {/* Top Row */}
-            <View style={styles.topRow}>
-              <View style={[styles.vibeBadge, isActivePromotion(venue) && styles.sponsoredBadge]}>
-                {isActivePromotion(venue) ? (
-                  <Text style={styles.sponsoredText}>{venue.promotion_label || 'Sponsored'}</Text>
-                ) : (
-                  <Text style={styles.vibeText}>{getVibeStatus(venue.live_rating ?? venue.rating)}</Text>
-                )}
-              </View>
-              <View style={styles.bookmarkButton}>
-                <Ionicons name="bookmark-outline" size={18} color="#fff" />
-              </View>
-            </View>
-
-            {/* Bottom Content */}
-            <View style={styles.bottomContent}>
-              <Text style={styles.venueName} numberOfLines={1}>{venue.name}</Text>
-              <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={14} color="rgba(255, 255, 255, 0.8)" />
-                <Text style={styles.locationText} numberOfLines={1}>{venue.location}</Text>
-              </View>
-              <View style={styles.visitorsRow}>
-                <View style={styles.avatarStack}>
-                  {[1, 2, 3].map((i) => (
-                    <View key={i} style={[styles.avatar, { marginLeft: i > 1 ? -8 : 0 }]} />
-                  ))}
+            <View style={styles.content}>
+              {/* Top row — #N Tonight + glass vibe pill (or Sponsored) on the left, bookmark on the right */}
+              <View style={styles.topRow}>
+                <View style={styles.topLeft}>
+                  <Text style={styles.rankLabel}>
+                    {promoted ? (venue.promotion_label || 'Sponsored') : `#${rank} Tonight`}
+                  </Text>
+                  <View style={styles.vibePill}>
+                    <Text style={styles.vibePillText}>{vibeLabel}</Text>
+                  </View>
                 </View>
-                <Text style={styles.visitorsText}>
-                  {(venue.checkins_24h ?? 0) > 0 ? `${venue.checkins_24h} here today` : 'Be the first!'}
-                </Text>
+                <TouchableOpacity style={styles.bookmarkBtn} onPress={(e) => e.stopPropagation()}>
+                  <Ionicons name="bookmark-outline" size={16} color="#fff" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Bottom content — name + location + glass info bar */}
+              <View style={styles.bottomContent}>
+                <Text style={styles.venueName} numberOfLines={1}>{venue.name}</Text>
+                <View style={styles.locationRow}>
+                  <Ionicons name="location-outline" size={13} color="#E4E4E7" />
+                  <Text style={styles.locationText} numberOfLines={1}>{venue.location}</Text>
+                </View>
+
+                {/* Glass info bar — avatar stack + here-now + rating */}
+                <View style={styles.infoBar}>
+                  <View style={styles.infoLeft}>
+                    <View style={styles.avatarStack}>
+                      {['#F97316', '#3B82F6', '#10B981'].map((c, i) => (
+                        <View key={i} style={[styles.avatar, { backgroundColor: c, marginLeft: i === 0 ? 0 : -8 }]} />
+                      ))}
+                    </View>
+                    <Text style={styles.infoText}>
+                      {here > 0 ? (
+                        <><Text style={styles.infoNum}>{here}</Text> here now</>
+                      ) : (
+                        'Be the first!'
+                      )}
+                    </Text>
+                  </View>
+                  <Text style={styles.infoRating}>
+                    <Ionicons name="star" size={11} color={polished.goldMid} /> {venue.rating.toFixed(1)}
+                  </Text>
+                </View>
               </View>
             </View>
-          </View>
-        </TouchableOpacity>
-      ))}
+          </TouchableOpacity>
+        );
+      })}
     </ScrollView>
   );
 };
@@ -183,7 +214,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: 16,
   },
   scrollContent: {
-    gap: 12,
+    gap: 14,
     paddingRight: 16,
   },
   loadingContainer: {
@@ -200,23 +231,30 @@ const getStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 14,
   },
+  // Polished photo card — rim-lit gold, heavy shadow, 320×268.
   venueCard: {
-    width: 280,
+    width: 268,
     height: 320,
-    borderRadius: 16,
+    borderRadius: 22,
     overflow: 'hidden',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
   },
   venueImage: {
     width: '100%',
     height: '100%',
     position: 'absolute',
   },
-  gradient: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  // Inset gold rim drawn on top of the image — borderColor + huge inner radius
+  goldRim: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(234,179,8,0.55)',
   },
   content: {
     flex: 1,
@@ -228,62 +266,81 @@ const getStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  vibeBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  topLeft: {
+    gap: 8,
+  },
+  rankLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: polished.goldMid,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  // Glass pill — used everywhere we put a label on imagery
+  vibePill: {
+    alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
   },
-  sponsoredBadge: {
-    backgroundColor: colors.primary,
-  },
-  vibeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  sponsoredText: {
+  vibePillText: {
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#fff',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
-  bookmarkButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  bookmarkBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bookmarkIcon: {
-    fontSize: 18,
-    fontFamily: '',
-  },
   bottomContent: {
-    gap: 8,
+    gap: 6,
   },
   venueName: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '900',
     color: '#fff',
+    letterSpacing: -0.4,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  locationIcon: {
-    fontSize: 14,
-    fontFamily: '',
-  },
   locationText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    color: '#E4E4E7',
     flex: 1,
   },
-  visitorsRow: {
+  // Glass info bar — replaces the bare visitor row from the old design
+  infoBar: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  infoLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -292,16 +349,23 @@ const getStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
   },
   avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: '#000',
   },
-  visitorsText: {
-    fontSize: 12,
-    fontWeight: '600',
+  infoText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  infoNum: {
+    color: polished.goldMid,
+  },
+  infoRating: {
+    fontSize: 11,
+    fontWeight: '800',
     color: '#fff',
   },
 });

@@ -1,11 +1,18 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User, Bell } from 'lucide-react';
+import { Bell, Search, Sparkles, Plus, ChevronDown, LogOut } from 'lucide-react';
 import { useBusinessAuth } from '../../contexts/BusinessAuthContext';
-import { Button } from '../ui/button';
 
 export function Header() {
   const navigate = useNavigate();
   const { user, profile, signOut } = useBusinessAuth();
+
+  const fullName = profile?.full_name || 'Business Owner';
+  const initials = fullName
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
 
   const handleSignOut = async () => {
     await signOut();
@@ -13,37 +20,93 @@ export function Header() {
   };
 
   return (
-    <header className="bg-card border-b h-16 flex items-center justify-between px-6">
-      <div className="flex items-center flex-1">
-        <h1 className="text-lg font-semibold text-foreground">
-          Welcome back, {profile?.full_name || 'Business Owner'}
-        </h1>
+    <header className="bp2-topbar">
+      {/* Search */}
+      <div className="bp2-search">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <input placeholder="Search venues, events, analytics…" />
+        <span className="kbd">⌘K</span>
       </div>
 
-      <div className="flex items-center space-x-4">
-        {/* Notifications */}
-        <Button variant="ghost" size="sm" className="relative">
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-1 right-1 h-2 w-2 bg-primary rounded-full"></span>
-        </Button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button className="bp2-btn bp2-btn-secondary" style={{ position: 'relative' }}>
+          <Sparkles className="h-3.5 w-3.5" color="#EAB308" />
+          What's new
+          <span
+            style={{
+              position: 'absolute',
+              top: -2,
+              right: -2,
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: '#EAB308',
+              boxShadow: '0 0 6px rgba(234,179,8,0.8)',
+              animation: 'bp2Pulse 1.6s infinite',
+            }}
+          />
+        </button>
 
-        {/* User Menu */}
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <User className="h-4 w-4 text-primary" />
-            </div>
-            <div className="hidden sm:block text-sm">
-              <p className="font-medium">{profile?.full_name}</p>
-              <p className="text-xs text-muted-foreground">{user?.email}</p>
-            </div>
+        <button className="bp2-btn bp2-btn-primary" onClick={() => navigate('/venues/new')}>
+          <Plus className="h-3.5 w-3.5" />
+          Add venue
+        </button>
+
+        <div style={{ width: 1, height: 28, background: '#E5E7EB', margin: '0 6px' }} />
+
+        <button className="bp2-btn bp2-btn-ghost bp2-btn-icon" style={{ position: 'relative' }} aria-label="Notifications">
+          <Bell className="h-4 w-4" />
+          <span
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 9,
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: '#EF4444',
+              border: '2px solid #F7F6F2',
+            }}
+          />
+        </button>
+
+        <button
+          onClick={handleSignOut}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '4px 10px 4px 4px',
+            background: '#fff',
+            border: '1px solid #E5E7EB',
+            borderRadius: 999,
+            cursor: 'pointer',
+          }}
+          title="Sign out"
+        >
+          <div
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg,#EAB308,#F97316)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#18181B',
+              fontWeight: 800,
+              fontSize: 12,
+            }}
+          >
+            {initials}
           </div>
-
-          <Button variant="ghost" size="sm" onClick={handleSignOut}>
-            <LogOut className="h-4 w-4" />
-            <span className="ml-2 hidden sm:inline">Sign Out</span>
-          </Button>
-        </div>
+          <div style={{ lineHeight: 1.15, textAlign: 'left' }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{fullName}</div>
+            <div style={{ fontSize: 11, color: '#6B7280' }}>{user?.email}</div>
+          </div>
+          <LogOut className="h-4 w-4 text-muted-foreground" />
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        </button>
       </div>
     </header>
   );

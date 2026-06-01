@@ -1,12 +1,14 @@
 import { Header } from "@/components/Header";
 import { BottomNavigation } from "@/components/BottomNavigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
-import { TrendingUp, Users, User as UserIcon, Camera, MessageCircle, Share2, ThumbsUp } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { Camera, MapPin, MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, BadgeCheck } from "lucide-react";
+import { supabase as supabaseTyped } from "@/integrations/supabase/client";
+
+// The generated Supabase types lag behind the runtime schema for
+// `communities` / `community_members` / `social_posts`. Cast to a loose
+// client here so the typed client stays strict everywhere else.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const supabase: any = supabaseTyped;
 import { useToast } from "@/hooks/use-toast";
 
 interface Community {
@@ -26,13 +28,309 @@ interface Post {
   community_id: string;
   likes_count: number;
   comments_count: number;
-  profiles?: {
-    full_name: string;
-  };
-  communities?: {
-    name: string;
-  };
+  profiles?: { full_name: string };
+  communities?: { name: string };
 }
+
+const COMMUNITY_TINT: Record<string, string> = {
+  '🌙': '#7C3AED',
+  '🍕': '#EA580C',
+  '🏝️': '#0891B2',
+  '🎨': '#DB2777',
+  '🏙️': '#10B981',
+  '🎵': '#4338CA',
+  '🍔': '#EA580C',
+};
+
+const tintFor = (icon: string) => COMMUNITY_TINT[icon] || '#7C3AED';
+
+const formatTimeAgo = (dateString: string) => {
+  const now = new Date();
+  const postDate = new Date(dateString);
+  const diffInMins = Math.floor((now.getTime() - postDate.getTime()) / (1000 * 60));
+  const diffInHours = Math.floor(diffInMins / 60);
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInMins < 60) return `${diffInMins}m ago`;
+  if (diffInHours < 24) return `${diffInHours}h ago`;
+  return `${diffInDays}d ago`;
+};
+
+const SocialTabs = ({ tab, onChange }: { tab: 'feed' | 'communities' | 'people'; onChange: (t: 'feed' | 'communities' | 'people') => void }) => {
+  const tabs: Array<{ id: 'feed' | 'communities' | 'people'; label: string }> = [
+    { id: 'feed', label: 'Feed' },
+    { id: 'communities', label: 'Communities' },
+    { id: 'people', label: 'People' },
+  ];
+  return (
+    <div style={{ padding: '14px 18px 8px' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 6,
+          background: '#0F0F12',
+          border: '1px solid #27272A',
+          borderRadius: 14,
+          padding: 5,
+        }}
+      >
+        {tabs.map((t) => {
+          const a = t.id === tab;
+          return (
+            <button
+              key={t.id}
+              onClick={() => onChange(t.id)}
+              className="gc2-tap"
+              style={{
+                flex: 1,
+                border: 0,
+                padding: '9px 0',
+                borderRadius: 10,
+                background: a ? 'linear-gradient(180deg, #FDE047, #EAB308)' : 'transparent',
+                color: a ? '#18181B' : '#9CA3AF',
+                fontWeight: a ? 800 : 600,
+                fontSize: 13,
+                boxShadow: a ? '0 0 16px rgba(234,179,8,0.4)' : 'none',
+                letterSpacing: '0.02em',
+                cursor: 'pointer',
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const ComposerCard = () => (
+  <div style={{ padding: '4px 18px 8px' }}>
+    <div
+      className="gc2-card"
+      style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}
+    >
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: '50%',
+          background:
+            'conic-gradient(from 0deg, #FDE047, #EAB308, #F97316, #DB2777, #EAB308)',
+          padding: 2,
+          animation: 'gc2RingRotate 10s linear infinite',
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: '50%',
+            background: '#000',
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#FACC15',
+            fontWeight: 800,
+            fontSize: 14,
+          }}
+        >
+          You
+        </div>
+      </div>
+      <button
+        className="gc2-tap"
+        style={{
+          flex: 1,
+          height: 44,
+          borderRadius: 12,
+          border: '1px solid #27272A',
+          background: '#0F0F12',
+          color: '#6B7280',
+          textAlign: 'left',
+          padding: '0 14px',
+          fontSize: 13,
+          fontWeight: 500,
+          cursor: 'pointer',
+        }}
+      >
+        Share a vibe with Lagos…
+      </button>
+      <button
+        className="gc2-tap"
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 12,
+          border: 0,
+          background: 'linear-gradient(180deg, #FDE047, #EAB308)',
+          color: '#18181B',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 0 14px rgba(234,179,8,0.5)',
+          cursor: 'pointer',
+        }}
+        aria-label="Add photo"
+      >
+        <Camera className="w-5 h-5" />
+      </button>
+    </div>
+  </div>
+);
+
+const PostCard = ({ post }: { post: Post }) => {
+  const fullName = post.profiles?.full_name || 'Anonymous User';
+  return (
+    <div
+      className="gc2-card"
+      style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}
+    >
+      <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            padding: 2,
+            background: 'conic-gradient(from 0deg, #FDE047, #EAB308, #F97316, #EAB308)',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: '50%',
+              border: '2px solid #000',
+              overflow: 'hidden',
+              background: '#27272A',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#FACC15',
+              fontWeight: 800,
+              fontSize: 13,
+            }}
+          >
+            {fullName
+              .split(' ')
+              .map((n) => n[0])
+              .slice(0, 2)
+              .join('')
+              .toUpperCase()}
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{fullName}</span>
+            <BadgeCheck className="w-3.5 h-3.5" color="#FACC15" />
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: '#9CA3AF',
+              marginTop: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <MapPin className="w-3 h-3" />
+            <span>{post.communities?.name || 'General'}</span>
+            <span>·</span>
+            <span>{formatTimeAgo(post.created_at)}</span>
+          </div>
+        </div>
+        <button
+          className="gc2-tap"
+          style={{ background: 'transparent', border: 0, color: '#9CA3AF', cursor: 'pointer' }}
+        >
+          <MoreHorizontal className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div
+        style={{
+          padding: '0 14px 12px',
+          fontSize: 14,
+          color: '#E4E4E7',
+          lineHeight: 1.5,
+        }}
+      >
+        {post.content}
+      </div>
+
+      <div
+        style={{
+          padding: '10px 14px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderTop: '1px solid rgba(255,255,255,0.04)',
+        }}
+      >
+        <div style={{ display: 'flex', gap: 18 }}>
+          <button
+            className="gc2-tap"
+            style={{
+              background: 'transparent',
+              border: 0,
+              color: '#9CA3AF',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <Heart className="w-4 h-4" />
+            <span style={{ color: '#fff' }}>{post.likes_count || 0}</span>
+          </button>
+          <button
+            className="gc2-tap"
+            style={{
+              background: 'transparent',
+              border: 0,
+              color: '#9CA3AF',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span style={{ color: '#fff' }}>{post.comments_count || 0}</span>
+          </button>
+          <button
+            className="gc2-tap"
+            style={{
+              background: 'transparent',
+              border: 0,
+              color: '#9CA3AF',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+        </div>
+        <button
+          className="gc2-tap"
+          style={{ background: 'transparent', border: 0, color: '#9CA3AF', cursor: 'pointer' }}
+        >
+          <Bookmark className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const Social = () => {
   const [activeTab, setActiveTab] = useState<'feed' | 'communities' | 'people'>('feed');
@@ -41,7 +339,6 @@ const Social = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  // Fetch communities from database
   useEffect(() => {
     fetchCommunities();
     fetchFeedPosts();
@@ -58,13 +355,7 @@ const Social = () => {
       if (error) throw error;
 
       if (data) {
-        // TODO: Check which communities the user has joined
-        // For now, mark all as not joined
-        const communitiesWithJoinStatus = data.map(community => ({
-          ...community,
-          is_joined: false
-        }));
-        setCommunities(communitiesWithJoinStatus);
+        setCommunities(data.map((c) => ({ ...c, is_joined: false })));
       }
     } catch (error) {
       console.error('Error fetching communities:', error);
@@ -91,13 +382,9 @@ const Social = () => {
         .limit(20);
 
       if (error) throw error;
-
-      if (data) {
-        setFeedPosts(data);
-      }
+      if (data) setFeedPosts(data);
     } catch (error) {
       console.error('Error fetching posts:', error);
-      // Silently fail - feed will show empty
     }
   };
 
@@ -114,47 +401,28 @@ const Social = () => {
         return;
       }
 
-      const community = communities.find(c => c.id === communityId);
+      const community = communities.find((c) => c.id === communityId);
       const isJoined = community?.is_joined;
 
       if (isJoined) {
-        // Leave community
         const { error } = await supabase
           .from('community_members')
           .delete()
           .eq('user_id', user.id)
           .eq('community_id', communityId);
-
         if (error) throw error;
-
-        toast({
-          title: "Left Community",
-          description: `You've left ${community?.name}`,
-        });
+        toast({ title: "Left Community", description: `You've left ${community?.name}` });
       } else {
-        // Join community
         const { error } = await supabase
           .from('community_members')
-          .insert({
-            user_id: user.id,
-            community_id: communityId,
-            role: 'member'
-          });
-
+          .insert({ user_id: user.id, community_id: communityId, role: 'member' });
         if (error) throw error;
-
-        toast({
-          title: "Joined Community",
-          description: `Welcome to ${community?.name}!`,
-        });
+        toast({ title: "Joined Community", description: `Welcome to ${community?.name}!` });
       }
 
-      // Update local state
-      setCommunities(communities.map(c =>
-        c.id === communityId ? { ...c, is_joined: !isJoined } : c
-      ));
-
-      // Refresh communities to get updated member count
+      setCommunities(
+        communities.map((c) => (c.id === communityId ? { ...c, is_joined: !isJoined } : c)),
+      );
       fetchCommunities();
     } catch (error) {
       console.error('Error joining/leaving community:', error);
@@ -166,264 +434,145 @@ const Social = () => {
     }
   };
 
-  const formatTimeAgo = (dateString: string) => {
-    const now = new Date();
-    const postDate = new Date(dateString);
-    const diffInMs = now.getTime() - postDate.getTime();
-    const diffInMins = Math.floor(diffInMs / (1000 * 60));
-    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-    if (diffInMins < 60) {
-      return `${diffInMins}m ago`;
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`;
-    } else {
-      return `${diffInDays}d ago`;
-    }
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase();
-  };
-
   return (
-    <div className="min-h-screen bg-background pb-16 md:pb-0 dark">
+    <div className="gc2-screen dark" style={{ paddingBottom: '88px' }}>
       <Header />
-
       <main className="pt-16">
-        <div className="container mx-auto px-4 py-8 max-w-7xl">
-          {/* Social Hub Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-foreground mb-2">Social Hub</h1>
-            <p className="text-muted-foreground">
-              Connect with the GIDI community, join discussions, and share your experiences
-            </p>
-          </div>
+        <SocialTabs tab={activeTab} onChange={setActiveTab} />
 
-          {/* Search Bar */}
-          <div className="mb-6">
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground">🔍</span>
-              <Input
-                placeholder="Search communities, people, or posts..."
-                className="pl-12 pr-4 py-3 text-base bg-card border-border rounded-xl"
-              />
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <div className="grid grid-cols-3 gap-2 mb-8">
-            <Button
-              variant={activeTab === 'feed' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('feed')}
-              className={`rounded-xl ${activeTab === 'feed' ? 'bg-primary text-black' : 'bg-card border-border'}`}
-            >
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Feed
-            </Button>
-            <Button
-              variant={activeTab === 'communities' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('communities')}
-              className={`rounded-xl ${activeTab === 'communities' ? 'bg-primary text-black' : 'bg-card border-border'}`}
-            >
-              <Users className="w-4 h-4 mr-2" />
-              Communities
-            </Button>
-            <Button
-              variant={activeTab === 'people' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('people')}
-              className={`rounded-xl ${activeTab === 'people' ? 'bg-primary text-black' : 'bg-card border-border'}`}
-            >
-              <UserIcon className="w-4 h-4 mr-2" />
-              People
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Content */}
-            <div className="lg:col-span-2">
-              {activeTab === 'feed' && (
-                <>
-                  {/* Create Post Button */}
-                  <Button className="w-full mb-6 h-14 bg-primary hover:bg-primary/90 text-black font-semibold rounded-xl">
-                    <Camera className="w-5 h-5 mr-2" />
-                    Create Post
-                  </Button>
-
-                  {/* Feed Posts */}
-                  <div className="space-y-4">
-                    {feedPosts.length === 0 ? (
-                      <Card>
-                        <CardContent className="p-12 text-center">
-                          <MessageCircle className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                          <h3 className="text-lg font-semibold mb-2">No Posts Yet</h3>
-                          <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                            Be the first to share something with the community!
-                          </p>
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      feedPosts.map((post) => (
-                        <Card key={post.id} className="overflow-hidden">
-                          <CardContent className="p-6">
-                            {/* Post Header */}
-                            <div className="flex items-start gap-3 mb-4">
-                              <Avatar className="w-12 h-12">
-                                <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                                  {getInitials(post.profiles?.full_name || 'Anonymous User')}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1">
-                                <h3 className="font-semibold text-foreground">
-                                  {post.profiles?.full_name || 'Anonymous User'}
-                                </h3>
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <span>{post.communities?.name || 'General'}</span>
-                                  <span>•</span>
-                                  <span>{formatTimeAgo(post.created_at)}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Post Content */}
-                            <div className="mb-4">
-                              <p className="text-muted-foreground leading-relaxed">
-                                {post.content}
-                              </p>
-                            </div>
-
-                            {/* Post Actions */}
-                            <div className="flex items-center gap-6 pt-4 border-t border-border">
-                              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-                                <ThumbsUp className="w-4 h-4 mr-2" />
-                                <span>{post.likes_count || 0}</span>
-                              </Button>
-                              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-                                <MessageCircle className="w-4 h-4 mr-2" />
-                                <span>{post.comments_count || 0}</span>
-                              </Button>
-                              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-                                <Share2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </>
-              )}
-
-              {activeTab === 'communities' && (
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-bold mb-6">All Communities</h2>
-                  {loading ? (
-                    <Card>
-                      <CardContent className="p-12 text-center">
-                        <p className="text-muted-foreground">Loading communities...</p>
-                      </CardContent>
-                    </Card>
-                  ) : communities.length === 0 ? (
-                    <Card>
-                      <CardContent className="p-12 text-center">
-                        <Users className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold mb-2">No Communities Yet</h3>
-                        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                          Be the first to create a community!
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    communities.map((community) => (
-                      <Card key={community.id} className="overflow-hidden">
-                        <CardContent className="p-6">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-2xl">
-                                {community.icon}
-                              </div>
-                              <div>
-                                <h3 className="font-semibold text-foreground">{community.name}</h3>
-                                <p className="text-sm text-muted-foreground">
-                                  {community.member_count.toLocaleString()} {community.member_count === 1 ? 'member' : 'members'}
-                                </p>
-                                {community.description && (
-                                  <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                                    {community.description}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <Button
-                              variant={community.is_joined ? "outline" : "default"}
-                              className={community.is_joined ? "" : "bg-primary hover:bg-primary/90 text-black"}
-                              onClick={() => handleJoinCommunity(community.id)}
-                            >
-                              {community.is_joined ? "Joined" : "Join"}
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
+        {activeTab === 'feed' && (
+          <>
+            <ComposerCard />
+            <div style={{ padding: '4px 18px 18px' }}>
+              {feedPosts.length === 0 ? (
+                <div
+                  className="gc2-card"
+                  style={{ padding: 32, textAlign: 'center', color: '#9CA3AF' }}
+                >
+                  <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <h3
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 800,
+                      color: '#fff',
+                      marginBottom: 6,
+                    }}
+                  >
+                    No Posts Yet
+                  </h3>
+                  <p style={{ fontSize: 12 }}>Be the first to share something with the community!</p>
                 </div>
-              )}
-
-              {activeTab === 'people' && (
-                <div className="text-center py-12">
-                  <UserIcon className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Find People</h3>
-                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                    Discover and connect with other members of the GIDI community
-                  </p>
-                </div>
+              ) : (
+                feedPosts.map((p) => <PostCard key={p.id} post={p} />)
               )}
             </div>
+          </>
+        )}
 
-            {/* Sidebar - Top Communities */}
-            <div className="hidden lg:block">
-              <div className="sticky top-20">
-                <Card>
-                  <CardContent className="p-6">
-                    <h3 className="text-lg font-bold mb-4">Top Communities</h3>
-                    <div className="space-y-4">
-                      {communities.slice(0, 5).map((community) => (
-                        <div key={community.id} className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-card border border-border flex items-center justify-center text-xl">
-                              {community.icon}
-                            </div>
-                            <div>
-                              <p className="font-semibold text-sm">{community.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {community.member_count.toLocaleString()} members
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant={community.is_joined ? "outline" : "default"}
-                            className={`text-xs ${community.is_joined ? "" : "bg-primary hover:bg-primary/90 text-black"}`}
-                            onClick={() => handleJoinCommunity(community.id)}
-                          >
-                            {community.is_joined ? "Joined" : "Join"}
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+        {activeTab === 'communities' && (
+          <div
+            style={{
+              padding: '4px 18px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            {loading ? (
+              <div className="gc2-card" style={{ padding: 32, textAlign: 'center', color: '#9CA3AF' }}>
+                Loading communities…
               </div>
+            ) : communities.length === 0 ? (
+              <div className="gc2-card" style={{ padding: 32, textAlign: 'center', color: '#9CA3AF' }}>
+                No communities yet
+              </div>
+            ) : (
+              communities.map((c) => {
+                const tint = tintFor(c.icon);
+                return (
+                  <div
+                    key={c.id}
+                    className="gc2-card"
+                    style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 14 }}
+                  >
+                    <div
+                      style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 14,
+                        background: `linear-gradient(135deg, ${tint}, ${tint}88)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 26,
+                        boxShadow: `0 6px 18px ${tint}33`,
+                      }}
+                    >
+                      {c.icon}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{c.name}</div>
+                      <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>
+                        <span style={{ color: '#FACC15', fontWeight: 700 }}>
+                          {c.member_count.toLocaleString()}
+                        </span>{' '}
+                        members
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleJoinCommunity(c.id)}
+                      className="gc2-tap"
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: 999,
+                        border: c.is_joined ? '1.5px solid #27272A' : 0,
+                        background: c.is_joined
+                          ? 'transparent'
+                          : 'linear-gradient(180deg, #FDE047, #EAB308)',
+                        color: c.is_joined ? '#9CA3AF' : '#18181B',
+                        fontWeight: 800,
+                        fontSize: 12,
+                        boxShadow: c.is_joined ? 'none' : '0 0 14px rgba(234,179,8,0.4)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {c.is_joined ? 'Joined' : 'Join'}
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {activeTab === 'people' && (
+          <div
+            style={{
+              padding: '4px 18px 18px',
+              textAlign: 'center',
+            }}
+          >
+            <div
+              className="gc2-card"
+              style={{ padding: 48, color: '#9CA3AF' }}
+            >
+              <h3
+                style={{
+                  fontSize: 16,
+                  fontWeight: 800,
+                  color: '#fff',
+                  marginBottom: 6,
+                }}
+              >
+                Find People
+              </h3>
+              <p style={{ fontSize: 12 }}>
+                Discover and connect with other members of the GIDI community
+              </p>
             </div>
           </div>
-        </div>
+        )}
       </main>
-
       <BottomNavigation />
     </div>
   );

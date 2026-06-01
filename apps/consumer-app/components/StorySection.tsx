@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,15 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../config/supabase';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, polished } from '../contexts/ThemeContext';
 import { StoryEditor, StoryEditorData } from './StoryEditor';
 import { StoryViewer } from './StoryViewer';
 
@@ -38,9 +42,87 @@ interface UserStoryGroup {
   has_unseen: boolean;
 }
 
+// Shared rotation driver — one looped Animated.Value powers every ring on
+// screen, so we don't pay for N parallel animations.
+const useRingRotation = () => {
+  const rotation = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(rotation, {
+        toValue: 1,
+        duration: 6000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [rotation]);
+  return rotation;
+};
+
+interface PolishedRingProps {
+  kind: 'creator' | 'peer' | 'add';
+  rotation: Animated.Value;
+  seen: boolean;
+  children: React.ReactNode;
+}
+
+// Animated ring: outer wrapper is static; only the gradient layer rotates
+// inside it. The avatar is a sibling of the rotating layer, so the photo
+// stays perfectly still while the ring spins around it.
+const PolishedRing = ({ kind, rotation, seen, children }: PolishedRingProps) => {
+  const spin = rotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  if (kind === 'add') {
+    return (
+      <View style={ringBase.addRing}>
+        {children}
+      </View>
+    );
+  }
+
+  if (seen) {
+    return (
+      <View style={[ringBase.ring, ringBase.ringSeen]}>
+        <View style={ringBase.ringInner}>{children}</View>
+      </View>
+    );
+  }
+
+  const stops =
+    kind === 'creator'
+      ? (polished.creatorRingStops as readonly string[])
+      : (polished.peerRingStops as readonly string[]);
+
+  return (
+    <View style={ringBase.ring}>
+      {/* Rotating gradient layer — image is NOT inside this, so it stays still */}
+      <Animated.View
+        style={[StyleSheet.absoluteFillObject, { transform: [{ rotate: spin }] }]}
+      >
+        <LinearGradient
+          colors={stops as unknown as readonly [string, string, ...string[]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </Animated.View>
+      {/* Static avatar — sibling of the spinner, sits centered on top */}
+      <View style={ringBase.ringInner}>
+        {children}
+      </View>
+    </View>
+  );
+};
+
 export const StorySection = () => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
+  const ringRotation = useRingRotation();
 
   const [userGroups, setUserGroups] = useState<UserStoryGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -314,32 +396,33 @@ export const StorySection = () => {
             onPress={handleCreateStory}
             disabled={uploading}
           >
-            <View style={styles.addCircle}>
-              {uploading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Text style={styles.addIcon}>+</Text>
-              )}
-            </View>
+            <PolishedRing kind="add" rotation={ringRotation} seen={false}>
+              <View style={styles.addInner}>
+                {uploading ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Ionicons name="add" size={28} color={colors.primary} />
+                )}
+              </View>
+            </PolishedRing>
             <Text style={styles.label}>My Vibe</Text>
           </TouchableOpacity>
 
           {/* ── All user story groups ── */}
           {userGroups.map((group, idx) => {
             const isOwn = group.user_id === currentUserId;
+            const isUnseen = isOwn || group.has_unseen;
+            // Prefer first name on own bubble — full names truncate to nothing at 72px wide.
+            const ownLabel = group.full_name.split(' ')[0] || group.full_name;
+            const kind: 'creator' | 'peer' = group.is_creator ? 'creator' : 'peer';
             return (
               <TouchableOpacity
                 key={group.user_id}
                 style={styles.storyItem}
                 onPress={() => setSelectedGroupIndex(idx)}
               >
-                <View
-                  style={[
-                    styles.ring,
-                    isOwn || group.has_unseen ? styles.ringUnseen : styles.ringSeen,
-                  ]}
-                >
-                  <View style={styles.ringInner}>
+                <View style={styles.ringWrap}>
+                  <PolishedRing kind={kind} rotation={ringRotation} seen={!isUnseen}>
                     {group.avatar_url ? (
                       <Image
                         source={{ uri: group.avatar_url }}
@@ -353,10 +436,18 @@ export const StorySection = () => {
                         </Text>
                       </View>
                     )}
-                  </View>
+                  </PolishedRing>
+                  {group.is_creator && (
+                    <LinearGradient
+                      colors={['#FDE047', '#EAB308']}
+                      style={styles.verifiedBadge}
+                    >
+                      <Text style={styles.verifiedStar}>⭐</Text>
+                    </LinearGradient>
+                  )}
                 </View>
                 <Text style={styles.label} numberOfLines={1}>
-                  {isOwn ? 'My Vibe' : group.full_name}
+                  {isOwn ? ownLabel : group.full_name}
                 </Text>
               </TouchableOpacity>
             );
@@ -388,6 +479,40 @@ export const StorySection = () => {
   );
 };
 
+// Ring styles — used by the PolishedRing primitive. Theme-independent.
+const ringBase = StyleSheet.create({
+  ring: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringSeen: {
+    backgroundColor: '#3F3F46',
+  },
+  ringInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 3,
+    borderColor: '#000',
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  addRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#3F3F46',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
 const getStyles = (colors: any) =>
   StyleSheet.create({
     loadingContainer: {
@@ -397,48 +522,29 @@ const getStyles = (colors: any) =>
     },
     container: {
       backgroundColor: colors.background,
-      paddingVertical: 16,
+      paddingVertical: 12,
     },
     scrollContent: {
-      paddingHorizontal: 16,
-      gap: 16,
+      paddingHorizontal: 18,
+      gap: 14,
     },
     storyItem: {
       alignItems: 'center',
       gap: 6,
-      width: 68,
+      width: 76,
     },
-    addCircle: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
-      borderWidth: 2,
-      borderStyle: 'dashed',
-      borderColor: colors.primary,
-      backgroundColor: colors.cardBackground,
+    ringWrap: {
+      position: 'relative',
+      width: 72,
+      height: 72,
+    },
+    addInner: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      backgroundColor: '#18181B',
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    addIcon: {
-      fontSize: 28,
-      lineHeight: 32,
-      color: colors.primary,
-      fontWeight: 'bold',
-    },
-    ring: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
-      padding: 3,
-    },
-    ringUnseen: { backgroundColor: colors.primary },
-    ringSeen: { backgroundColor: colors.border },
-    ringInner: {
-      flex: 1,
-      borderRadius: 29,
-      borderWidth: 2,
-      borderColor: colors.background,
-      overflow: 'hidden',
     },
     avatar: { width: '100%', height: '100%' },
     avatarFallback: {
@@ -449,14 +555,33 @@ const getStyles = (colors: any) =>
     },
     avatarInitial: {
       fontSize: 22,
-      fontWeight: 'bold',
-      color: colors.primary,
+      fontWeight: '900',
+      color: polished.goldMid,
     },
     label: {
       fontSize: 11,
-      fontWeight: '500',
+      fontWeight: '700',
       color: colors.text,
-      maxWidth: 68,
+      maxWidth: 72,
       textAlign: 'center',
+    },
+    verifiedBadge: {
+      position: 'absolute',
+      bottom: -2,
+      right: -2,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 3,
+      borderColor: '#000',
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: polished.goldDeep,
+      shadowOpacity: 0.8,
+      shadowRadius: 6,
+      elevation: 6,
+    },
+    verifiedStar: {
+      fontSize: 9,
     },
   });

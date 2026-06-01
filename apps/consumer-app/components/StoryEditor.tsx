@@ -557,16 +557,31 @@ export const StoryEditor = ({ uri, mediaType, onDone, onCancel }: Props) => {
           </View>
         )}
 
-        {/* ── Caption Modal ────────────────────────── */}
+        {/* ── Caption Modal ──────────────────────────
+            The sheet is anchored with explicit absolute positioning instead
+            of flex:1 + justifyContent:'flex-end'. The flex approach loses its
+            full-screen frame when nested in another transparent Modal on
+            Android, causing the sheet to "snap" to the top of its container
+            after the slide animation settles. Absolute bottom-anchor is
+            layout-stable regardless of the parent's height. */}
         <Modal
           visible={toolMode === 'caption'}
           transparent
           animationType="slide"
           onRequestClose={() => setToolMode('none')}
         >
+          {/* Dismiss tap area — full screen, dim backdrop */}
+          <TouchableOpacity
+            style={styles.captionBackdrop}
+            activeOpacity={1}
+            onPress={() => setToolMode('none')}
+          />
           <KeyboardAvoidingView
-            style={styles.captionOverlay}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.captionAnchor}
+            behavior="padding"
+            // pointerEvents:'box-none' lets touches pass through to backdrop
+            // for the non-sheet area, while the sheet itself remains tappable.
+            pointerEvents="box-none"
           >
             <View style={styles.captionSheet}>
               <View style={styles.captionHandle} />
@@ -822,9 +837,12 @@ const getStyles = (colors: any) =>
     stickerEmoji: { fontSize: 28, fontFamily: '' },
 
     // Caption modal
-    captionOverlay: {
-      flex: 1,
+    captionBackdrop: {
+      ...StyleSheet.absoluteFillObject,
       backgroundColor: 'rgba(0,0,0,0.6)',
+    },
+    captionAnchor: {
+      ...StyleSheet.absoluteFillObject,
       justifyContent: 'flex-end',
     },
     captionSheet: {

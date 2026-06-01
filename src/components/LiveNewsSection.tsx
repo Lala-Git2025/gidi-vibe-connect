@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -13,7 +11,7 @@ interface NewsItem {
   source?: string;
   external_url?: string;
   category: string;
-  tags: string[];
+  tags?: string[];
 }
 
 /**
@@ -26,13 +24,11 @@ function deduplicateNews(articles: NewsItem[]): NewsItem[] {
   for (const article of articles) {
     const normalizedTitle = normalizeTitle(article.title);
 
-    // Check if we've seen a similar title
     let isDuplicate = false;
     for (const seenTitle of seenTitles) {
       if (areTitlesSimilar(normalizedTitle, seenTitle)) {
         isDuplicate = true;
 
-        // If this article has an image and the existing one doesn't, replace it
         const existingIndex = uniqueArticles.findIndex(
           a => normalizeTitle(a.title) === seenTitle
         );
@@ -40,7 +36,6 @@ function deduplicateNews(articles: NewsItem[]): NewsItem[] {
         if (existingIndex !== -1) {
           const existing = uniqueArticles[existingIndex];
           if (article.featured_image_url && !existing.featured_image_url) {
-            // Replace with article that has image
             uniqueArticles[existingIndex] = article;
             seenTitles.delete(seenTitle);
             seenTitles.add(normalizedTitle);
@@ -59,91 +54,77 @@ function deduplicateNews(articles: NewsItem[]): NewsItem[] {
   return uniqueArticles;
 }
 
-/**
- * Normalize title for comparison
- */
 function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
-    .replace(/[^\w\s]/g, ' ') // Remove punctuation
-    .replace(/\s+/g, ' ')      // Normalize spaces
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
-/**
- * Check if two titles are similar (70% word overlap)
- */
 function areTitlesSimilar(title1: string, title2: string): boolean {
   const words1 = new Set(title1.split(' ').filter(w => w.length > 3));
   const words2 = new Set(title2.split(' ').filter(w => w.length > 3));
 
   if (words1.size === 0 || words2.size === 0) return false;
 
-  // Count common words
   let commonWords = 0;
   for (const word of words1) {
-    if (words2.has(word)) {
-      commonWords++;
-    }
+    if (words2.has(word)) commonWords++;
   }
 
-  // Calculate similarity
   const similarity = commonWords / Math.min(words1.size, words2.size);
-
-  // Consider titles similar if they share 70% or more words
   return similarity >= 0.7;
 }
+
+const isBreaking = (publishedAt: string) => {
+  const now = Date.now();
+  const ts = new Date(publishedAt).getTime();
+  return now - ts < 30 * 60 * 1000;
+};
+
+const CATEGORY_GRADIENT: Record<string, string> = {
+  politics:      'linear-gradient(135deg,#0891B2,#3B82F6)',
+  traffic:       'linear-gradient(135deg,#EA580C,#EAB308)',
+  food:          'linear-gradient(135deg,#F97316,#7C2D12)',
+  entertainment: 'linear-gradient(135deg,#DB2777,#831843)',
+  default:       'linear-gradient(135deg,#27272A,#18181B)',
+};
 
 export const LiveNewsSection = () => {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
 
-  const fetchNews = async (refresh = false) => {
-    if (refresh) setRefreshing(true);
-    else setLoading(true);
-
+  const fetchNews = async () => {
+    setLoading(true);
     try {
-      // Fetch directly from the news table
       const { data, error } = await supabase
         .from('news')
         .select('*')
-        .not('external_url', 'is', null)  // Only fetch articles with valid URLs
+        .not('external_url', 'is', null)
         .order('publish_date', { ascending: false })
         .limit(6);
 
-      if (error) {
-        console.error('Error fetching news:', error);
-        throw error;
-      }
+      if (error) throw error;
 
       if (data && data.length > 0) {
-        // Filter out articles with fake/placeholder URLs
         const validNews = data.filter(item => {
           if (!item.external_url) return false;
           const urlLower = item.external_url.toLowerCase();
-          // Exclude fake URLs
-          if (urlLower.includes('example.com') ||
-              urlLower.includes('localhost') ||
-              urlLower.includes('test.com') ||
-              urlLower.includes('placeholder')) {
+          if (
+            urlLower.includes('example.com') ||
+            urlLower.includes('localhost') ||
+            urlLower.includes('test.com') ||
+            urlLower.includes('placeholder')
+          ) {
             return false;
           }
           return item.external_url.startsWith('http');
         });
 
-        // Remove duplicates based on title similarity
         const deduplicatedNews = deduplicateNews(validNews);
-
         setNews(deduplicatedNews);
-
-        if (refresh) {
-          toast({
-            title: "News Updated",
-            description: `Loaded ${deduplicatedNews.length} latest articles`,
-          });
-        }
       } else {
         setNews([]);
       }
@@ -157,7 +138,6 @@ export const LiveNewsSection = () => {
       setNews([]);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -173,105 +153,196 @@ export const LiveNewsSection = () => {
     const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
     const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
-    if (diffInMins < 60) {
-      return `${diffInMins}m ago`;
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`;
-    } else if (diffInDays < 7) {
-      return `${diffInDays}d ago`;
-    } else {
-      return publishDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
+    if (diffInMins < 60) return `${diffInMins}m ago`;
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    if (diffInDays < 7) return `${diffInDays}d ago`;
+    return publishDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   if (loading) {
     return (
-      <section className="bg-background py-8 px-4">
-        <div className="container mx-auto max-w-6xl">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-foreground">Latest GIDI News</h2>
-            <div className="animate-spin w-5 h-5 border-2 border-primary border-t-transparent rounded-full"></div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <Card key={i} className="overflow-hidden animate-pulse">
-                <div className="h-48 bg-muted"></div>
-                <CardContent className="p-4">
-                  <div className="h-4 bg-muted rounded mb-2"></div>
-                  <div className="h-3 bg-muted rounded mb-4"></div>
-                  <div className="h-3 bg-muted rounded w-1/2"></div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+      <section style={{ marginBottom: 24 }}>
+        <h2 className="gc2-section-h" style={{ marginBottom: 14 }}>
+          <span>
+            Latest <span className="accent">Lagos</span> News 📰
+          </span>
+        </h2>
+        <div className="gc2-rail" style={{ display: 'flex', gap: 12, padding: '4px 18px 8px' }}>
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              style={{
+                flex: '0 0 auto',
+                width: 260,
+                height: 232,
+                borderRadius: 14,
+                background: '#0F0F12',
+                border: '1px solid #27272A',
+              }}
+            />
+          ))}
         </div>
       </section>
     );
   }
 
   return (
-    <section className="bg-background py-8">
-      <div className="container mx-auto max-w-6xl">
-        <div className="flex items-center justify-between mb-6 px-4">
-          <h2 className="text-2xl font-bold text-foreground">Latest GIDI News 📰</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => fetchNews(true)}
-            disabled={refreshing}
-            className="text-primary hover:text-primary/80"
-          >
-            See All →
-          </Button>
-        </div>
-
-        <div className="overflow-x-auto scrollbar-hide">
-          <div className="flex gap-3 px-4 pb-2">
-            {news.map((article) => (
-              <Card
-                key={article.id}
-                className="flex-none w-60 overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer"
-                onClick={() => article.external_url && window.open(article.external_url, '_blank')}
-              >
+    <section style={{ marginBottom: 24 }}>
+      <h2 className="gc2-section-h" style={{ marginBottom: 14 }}>
+        <span>
+          Latest <span className="accent">Lagos</span> News 📰
+        </span>
+        <button className="seeall" onClick={() => fetchNews()}>
+          See All
+        </button>
+      </h2>
+      <div className="gc2-rail" style={{ display: 'flex', gap: 12, padding: '4px 18px 8px' }}>
+        {news.map((article) => {
+          const breaking = isBreaking(article.publish_date);
+          const gradient =
+            CATEGORY_GRADIENT[article.category?.toLowerCase()] || CATEGORY_GRADIENT.default;
+          return (
+            <button
+              key={article.id}
+              onClick={() => article.external_url && window.open(article.external_url, '_blank')}
+              className="gc2-tap"
+              style={{
+                flex: '0 0 auto',
+                width: 260,
+                background: 'linear-gradient(180deg, #18181B 0%, #0F0F12 100%)',
+                border: '1px solid #27272A',
+                borderRadius: 14,
+                overflow: 'hidden',
+                padding: 0,
+                textAlign: 'left',
+                boxShadow: '0 10px 22px rgba(0,0,0,0.5)',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ position: 'relative', height: 128, background: gradient }}>
                 {article.featured_image_url && (
-                  <div className="relative h-36 overflow-hidden">
-                    <img
-                      src={article.featured_image_url}
-                      alt={article.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
+                  <img
+                    src={article.featured_image_url}
+                    alt=""
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      filter: 'saturate(1.2)',
+                    }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                )}
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background:
+                      'linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.7) 100%)',
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 10,
+                    left: 10,
+                    background: 'linear-gradient(180deg, #FDE047, #EAB308)',
+                    color: '#18181B',
+                    padding: '4px 9px',
+                    borderRadius: 5,
+                    fontSize: 10,
+                    fontWeight: 900,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    boxShadow: '0 2px 8px rgba(234,179,8,0.45)',
+                  }}
+                >
+                  {article.category}
+                </span>
+                {breaking && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      right: 10,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      background: 'rgba(239,68,68,0.95)',
+                      color: '#fff',
+                      padding: '4px 8px',
+                      borderRadius: 5,
+                      fontSize: 9,
+                      fontWeight: 900,
+                      letterSpacing: '0.10em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: '#fff',
+                        animation: 'gc2Blink 1.2s infinite',
                       }}
                     />
+                    Breaking
+                  </span>
+                )}
+                <span
+                  style={{
+                    position: 'absolute',
+                    bottom: 10,
+                    left: 10,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#fff',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.7)',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {formatDate(article.publish_date)}
+                </span>
+              </div>
+              <div style={{ padding: '12px 14px 14px' }}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color: '#fff',
+                    lineHeight: 1.32,
+                    marginBottom: 6,
+                    letterSpacing: '-0.005em',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {article.title}
+                </div>
+                {article.summary && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: '#9CA3AF',
+                      lineHeight: 1.45,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {article.summary}
                   </div>
                 )}
-
-                <CardContent className="p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(article.publish_date)}
-                    </span>
-                    {article.external_url && (
-                      <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
-                        <span className="text-primary text-xs font-bold">↗</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <h3 className="text-sm font-bold leading-tight line-clamp-2 mb-2">
-                    {article.title}
-                  </h3>
-
-                  {article.summary && (
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                      {article.summary}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
     </section>
   );

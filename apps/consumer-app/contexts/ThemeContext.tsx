@@ -12,6 +12,26 @@ interface ThemeContextType {
   colors: typeof lightColors;
 }
 
+// Polished V2 palette — these constants are theme-independent and consumed
+// directly by the polished components (story rings, gold pills, vibe-check
+// gradient, etc.). Keep these stable across light/dark for brand cohesion.
+export const polished = {
+  // Gold stops — used everywhere a gradient is needed: pills, rings, buttons.
+  goldStops: ['#FDE047', '#EAB308', '#A16207'] as const,
+  goldHi:    '#FDE047',
+  goldMid:   '#FACC15',
+  goldDeep:  '#EAB308',
+  goldDark:  '#A16207',
+
+  // Ring stops — long, looped gradient that fakes a conic gradient when the
+  // ring is rotated. Same colors used on creator stories + profile avatar.
+  creatorRingStops: ['#FDE047', '#EAB308', '#F97316', '#DB2777', '#EAB308', '#FDE047'] as const,
+  peerRingStops:    ['#A855F7', '#DB2777', '#F97316', '#A855F7'] as const,
+
+  // News category card background gradients
+  categoryDefault: ['#27272A', '#18181B'] as const,
+} as const;
+
 const lightColors = {
   background: '#FFFFFF',
   cardBackground: '#F9FAFB',
@@ -24,6 +44,11 @@ const lightColors = {
   error: '#EF4444',
   warning: '#F97316',
   info: '#3B82F6',
+  // Polished tokens
+  goldHi: polished.goldHi,
+  goldMid: polished.goldMid,
+  goldDeep: polished.goldDeep,
+  goldDark: polished.goldDark,
 };
 
 const darkColors = {
@@ -38,6 +63,11 @@ const darkColors = {
   error: '#EF4444',
   warning: '#F97316',
   info: '#3B82F6',
+  // Polished tokens
+  goldHi: polished.goldHi,
+  goldMid: polished.goldMid,
+  goldDeep: polished.goldDeep,
+  goldDark: polished.goldDark,
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);

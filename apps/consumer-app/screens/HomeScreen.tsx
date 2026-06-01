@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, Image, RefreshControl, Alert, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, Image, RefreshControl, Alert, ActivityIndicator, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, polished } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { TrafficAlert } from '../components/TrafficAlert';
 import { VibeCheck } from '../components/VibeCheck';
@@ -14,6 +15,20 @@ import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 48) / 2;
+
+/**
+ * Route news images through images.weserv.nl — a free image proxy.
+ * Two problems it solves:
+ *   1. Hotlink protection on CDNs (e.g. lindaikejisblog) that 403 direct requests.
+ *   2. Unencoded special chars in upstream URLs (e.g. `?operations=autocrop(1200:630)`
+ *      on pulse.ng's CDN — parens trip some HTTP clients).
+ * weserv re-encodes the URL, strips referer, and re-emits a clean image stream.
+ */
+function proxyImage(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  const stripped = url.replace(/^https?:\/\//, '');
+  return `https://images.weserv.nl/?url=${encodeURIComponent(stripped)}&w=520&output=webp`;
+}
 
 /**
  * Deduplicate news articles based on title similarity
@@ -116,15 +131,24 @@ function categorizeArticle(title: string, summary: string = ''): string {
   return 'general';
 }
 
-const categories: { icon: string; label: string; screen: string; color: string }[] = [
-  { icon: 'wine',           label: "Bars & Lounges", screen: "Explore",  color: '#7C3AED' }, // purple
-  { icon: 'restaurant',     label: "Restaurants",    screen: "Explore",  color: '#EA580C' }, // orange
-  { icon: 'newspaper',      label: "GIDI News",      screen: "News",     color: '#0891B2' }, // teal
-  { icon: 'musical-notes',  label: "Nightlife",      screen: "Explore",  color: '#DB2777' }, // pink
-  { icon: 'sunny',          label: "DayLife",        screen: "Events",   color: '#F59E0B' }, // amber
-  { icon: 'calendar',       label: "Events",         screen: "Events",   color: '#4338CA' }, // indigo
-  { icon: 'chatbubbles',    label: "Social",         screen: "Social",   color: '#10B981' }, // emerald
-  { icon: 'apps',           label: "See More",       screen: "Discover", color: '#DC2626' }, // red
+interface Category {
+  icon: string;
+  label: string;
+  sub: string;
+  screen: string;
+  c1: string;
+  c2: string;
+}
+
+const categories: Category[] = [
+  { icon: 'wine',           label: 'Bars',        sub: 'Lounges',     screen: 'Explore',  c1: '#7C3AED', c2: '#4338CA' },
+  { icon: 'restaurant',     label: 'Restaurants', sub: 'Eateries',    screen: 'Explore',  c1: '#EA580C', c2: '#7C2D12' },
+  { icon: 'musical-notes',  label: 'Nightlife',   sub: 'Clubs',       screen: 'Explore',  c1: '#DB2777', c2: '#831843' },
+  { icon: 'sunny',          label: 'DayLife',     sub: 'Outdoor',     screen: 'Events',   c1: '#F59E0B', c2: '#92400E' },
+  { icon: 'calendar',       label: 'Events',      sub: 'This week',   screen: 'Events',   c1: '#4338CA', c2: '#1E1B4B' },
+  { icon: 'chatbubbles',    label: 'Social',      sub: 'Communities', screen: 'Social',   c1: '#10B981', c2: '#064E3B' },
+  { icon: 'newspaper',      label: 'News',        sub: 'Latest',      screen: 'News',     c1: '#0891B2', c2: '#0E7490' },
+  { icon: 'apps',           label: 'See More',    sub: 'Explore all', screen: 'Discover', c1: '#DC2626', c2: '#7F1D1D' },
 ];
 
 export default function HomeScreen() {
@@ -140,6 +164,8 @@ export default function HomeScreen() {
   }>>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [venueRefreshTrigger, setVenueRefreshTrigger] = useState(0);
+  // News image URLs that 404'd / failed hotlink checks — show placeholder instead.
+  const [brokenNewsImages, setBrokenNewsImages] = useState<Set<string>>(new Set());
 
   // Load Orbitron font
   const [fontsLoaded] = useFonts({
@@ -156,7 +182,7 @@ export default function HomeScreen() {
         .select('title, summary, category, publish_date, featured_image_url, external_url')
         .not('external_url', 'is', null)  // Only fetch articles with URLs
         .order('publish_date', { ascending: false })
-        .limit(10);  // Fetch more to account for filtering
+        .limit(60);  // wider window so we can pick a diverse cross-section
 
       if (error) {
         console.error('Error fetching news:', error);
@@ -182,17 +208,38 @@ export default function HomeScreen() {
         // Remove duplicates based on title similarity
         const deduplicatedNews = deduplicateNews(validNews);
 
-        const formattedNews = deduplicatedNews.slice(0, 3).map(item => {
-          const correctCategory = categorizeArticle(item.title, item.summary);
-          return {
-            title: item.title,
-            summary: item.summary,
-            time: formatTimeAgo(item.publish_date),
-            category: correctCategory.charAt(0).toUpperCase() + correctCategory.slice(1),
-            featured_image_url: item.featured_image_url,
-            external_url: item.external_url
-          };
-        });
+        // Re-categorize using the regex bank (DB categories are noisy).
+        const recategorized = deduplicatedNews.map(item => ({
+          ...item,
+          _cat: categorizeArticle(item.title, item.summary),
+        }));
+
+        // Pick the freshest article from each distinct category until we
+        // have N cards. Falls back to ordinary recency once we run out of
+        // unique categories.
+        const HOME_CARDS = 5;
+        const seenCats = new Set<string>();
+        const diverse: typeof recategorized = [];
+        for (const item of recategorized) {
+          if (diverse.length >= HOME_CARDS) break;
+          if (seenCats.has(item._cat)) continue;
+          seenCats.add(item._cat);
+          diverse.push(item);
+        }
+        for (const item of recategorized) {
+          if (diverse.length >= HOME_CARDS) break;
+          if (diverse.includes(item)) continue;
+          diverse.push(item);
+        }
+
+        const formattedNews = diverse.map(item => ({
+          title: item.title,
+          summary: item.summary,
+          time: formatTimeAgo(item.publish_date),
+          category: item._cat.charAt(0).toUpperCase() + item._cat.slice(1),
+          featured_image_url: proxyImage(item.featured_image_url),
+          external_url: item.external_url,
+        }));
         setLiveNews(formattedNews);
       } else {
         setLiveNews([]);
@@ -239,12 +286,31 @@ export default function HomeScreen() {
   const getCurrentTimeGreeting = () => {
     const hour = new Date().getHours();
     const day = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
-
-    if (hour < 12) return `${day} MORNING`;
-    if (hour < 17) return `${day} AFTERNOON`;
-    if (hour < 21) return `${day} EVENING`;
-    return `${day} NIGHT`;
+    const part =
+      hour < 12 ? 'MORNING' :
+      hour < 17 ? 'AFTERNOON' :
+      hour < 21 ? 'EVENING' : 'NIGHT';
+    return { day, part };
   };
+
+  // Pulsing green "live" dot driven by Animated; no extra deps.
+  const livePulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(livePulse, {
+          toValue: 0.4, duration: 800,
+          easing: Easing.inOut(Easing.ease), useNativeDriver: true,
+        }),
+        Animated.timing(livePulse, {
+          toValue: 1, duration: 800,
+          easing: Easing.inOut(Easing.ease), useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [livePulse]);
 
   const handleCategoryPress = (category: any) => {
     if (category.url) {
@@ -283,21 +349,42 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Header */}
+        {/* Header — polished: gold-gradient wordmark + breathing live dot + bell with notification pip */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
+            {/* expo-linear-gradient can't fill text, so we use a gold-toned color
+                with text-shadow approximation. */}
             <Text style={styles.appName}>GIDI CONNECT</Text>
-            <View style={styles.liveDot} />
+            <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
           </View>
-          <TouchableOpacity onPress={() => Alert.alert('Coming Soon', 'Notifications are on the way!')}>
-            <Ionicons name="notifications-outline" size={22} color={colors.text} />
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.headerIconBtn}>
+              <Ionicons name="search" size={20} color={colors.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={() => Alert.alert('Coming Soon', 'Notifications are on the way!')}
+            >
+              <Ionicons name="notifications-outline" size={20} color={colors.text} />
+              <View style={styles.notifPip} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Time-based Greeting */}
+        {/* Time-based Greeting — daypart in gold */}
         <View style={styles.greetingSection}>
-          <Text style={styles.greetingTime}>{getCurrentTimeGreeting()}</Text>
+          {(() => {
+            const { day, part } = getCurrentTimeGreeting();
+            return (
+              <Text style={styles.greetingTime}>
+                {day} <Text style={styles.greetingPart}>{part}</Text>
+              </Text>
+            );
+          })()}
         </View>
+
+        {/* My Vibe — promoted up here from below the menu cards */}
+        <StorySection />
 
         {/* Search Section */}
         <TouchableOpacity
@@ -325,7 +412,7 @@ export default function HomeScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Categories Grid */}
+        {/* Categories Grid — jewel-tone gradient tiles with corner shine */}
         <View style={styles.categoriesSection}>
           <View style={styles.categoriesGrid}>
             {categories.map((category, index) => (
@@ -333,19 +420,31 @@ export default function HomeScreen() {
                 key={index}
                 style={styles.categoryCard}
                 onPress={() => handleCategoryPress(category)}
-                activeOpacity={0.75}
+                activeOpacity={0.8}
               >
-                <View style={[styles.categoryIconBadge, { backgroundColor: category.color }]}>
-                  <Ionicons name={category.icon as any} size={22} color="#fff" />
-                </View>
-                <Text style={styles.categoryLabel}>{category.label}</Text>
+                <LinearGradient
+                  colors={[category.c1, category.c2]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.categoryGradient}
+                >
+                  {/* Corner shine highlight */}
+                  <View style={styles.categoryShine} />
+                  <Ionicons
+                    name={category.icon as any}
+                    size={22}
+                    color="#fff"
+                    style={styles.categoryIcon}
+                  />
+                  <View style={styles.categoryTextWrap}>
+                    <Text style={styles.categoryLabel}>{category.label}</Text>
+                    <Text style={styles.categorySub}>{category.sub}</Text>
+                  </View>
+                </LinearGradient>
               </TouchableOpacity>
             ))}
           </View>
         </View>
-
-        {/* Stories Section */}
-        <StorySection />
 
         {/* Live News Section — hidden when no articles loaded yet */}
         {liveNews.length > 0 && (
@@ -369,12 +468,21 @@ export default function HomeScreen() {
                   }
                 }}
               >
-                {news.featured_image_url ? (
+                {news.featured_image_url && !brokenNewsImages.has(news.featured_image_url) ? (
                   <View style={styles.newsImageContainer}>
                     <Image
                       source={{ uri: news.featured_image_url }}
                       style={styles.newsImage}
                       resizeMode="cover"
+                      onError={() => {
+                        const url = news.featured_image_url!;
+                        setBrokenNewsImages(prev => {
+                          if (prev.has(url)) return prev;
+                          const next = new Set(prev);
+                          next.add(url);
+                          return next;
+                        });
+                      }}
                     />
                     <View style={styles.newsCategoryBadge}>
                       <Text style={styles.newsCategoryText}>{news.category}</Text>
@@ -431,48 +539,82 @@ const getStyles = (colors: any) => StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  // Header
+  // Header — polished
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: 'rgba(234,179,8,0.08)',
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 9,
   },
   appName: {
-    fontSize: 20,
+    fontSize: 15,
     fontFamily: 'Orbitron_900Black',
-    color: colors.primary,
+    color: polished.goldMid,
     letterSpacing: 2,
+    textShadowColor: 'rgba(234,179,8,0.55)',
+    textShadowRadius: 8,
+    textShadowOffset: { width: 0, height: 0 },
   },
   liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.success,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#22C55E',
+    shadowColor: '#22C55E',
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    elevation: 4,
   },
-  headerIcon: {
-    fontSize: 20,
-    fontFamily: '',
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
-  // Greeting
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  notifPip: {
+    position: 'absolute',
+    top: 9,
+    right: 10,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+    borderColor: colors.background,
+    shadowColor: '#EF4444',
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  // Greeting — polished
   greetingSection: {
-    paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 16,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
   greetingTime: {
-    fontSize: 14,
+    fontSize: 11,
     color: colors.textSecondary,
-    letterSpacing: 1,
-    fontWeight: '500',
+    letterSpacing: 3,
+    fontWeight: '600',
+  },
+  greetingPart: {
+    color: polished.goldMid,
   },
   // Search
   searchSection: {
@@ -540,49 +682,59 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontWeight: 'bold',
     fontFamily: '',
   },
-  // Categories
+  // Categories — polished gradient tiles
   categoriesSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 6,
   },
   categoriesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   categoryCard: {
     width: cardWidth,
-    height: 100,
-    backgroundColor: colors.cardBackground,
+    height: 96,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 6,
+    overflow: 'hidden',
   },
-  categoryIconBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+  categoryGradient: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    position: 'relative',
   },
-  categoryEmoji: {
-    fontSize: 32,
-    fontFamily: '',
+  categoryShine: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    opacity: 0.5,
+  },
+  categoryIcon: {
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  categoryTextWrap: {
+    alignItems: 'flex-start',
   },
   categoryLabel: {
-    fontSize: 12,
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.1,
+  },
+  categorySub: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.78)',
+    marginTop: 2,
     fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
   },
   // Section
   section: {

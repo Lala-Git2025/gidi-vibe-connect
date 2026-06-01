@@ -1,11 +1,86 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../config/supabase';
+import { Zap } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface VibeData {
   area: string;
   count: number;
-  status: string;
+  vibe: string;
+  emoji: string;
 }
+
+const PINGS = [
+  { x: '54%', y: '46%', color: '#FACC15', label: 'VI',       big: true },
+  { x: '74%', y: '54%', color: '#FACC15', label: 'Lekki',    big: false },
+  { x: '20%', y: '28%', color: '#34D399', label: 'Ikeja',    big: false },
+  { x: '44%', y: '50%', color: '#60A5FA', label: 'Ikoyi',    big: false },
+  { x: '38%', y: '20%', color: '#C084FC', label: 'Surulere', big: false },
+];
+
+const VibePing = ({ x, y, color, label, big }: { x: string; y: string; color: string; label: string; big: boolean }) => {
+  const size = big ? 44 : 32;
+  return (
+    <div style={{ position: 'absolute', top: y, left: x }}>
+      <div
+        style={{
+          position: 'absolute',
+          width: size + 14,
+          height: size + 14,
+          borderRadius: '50%',
+          background: color,
+          opacity: 0.25,
+          filter: 'blur(2px)',
+          animation: 'gc2Ping 2.4s ease-out infinite',
+          left: -7,
+          top: -7,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: 4,
+          left: 4,
+          width: size - 8,
+          height: size - 8,
+          borderRadius: '50%',
+          background: color,
+          opacity: 0.55,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          left: 8,
+          width: size - 16,
+          height: size - 16,
+          borderRadius: '50%',
+          background: color,
+          boxShadow: `0 0 10px ${color}`,
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          top: size + 4,
+          left: -10,
+          fontSize: 9,
+          fontWeight: 800,
+          color: '#fff',
+          background: 'rgba(0,0,0,0.7)',
+          padding: '2px 7px',
+          borderRadius: 5,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          border: '1px solid rgba(255,255,255,0.08)',
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+};
 
 export const VibeCheck = () => {
   const [vibeData, setVibeData] = useState<VibeData | null>(null);
@@ -25,9 +100,8 @@ export const VibeCheck = () => {
 
       if (error) throw error;
 
-      // Calculate which area is most active
       const areaCounts: Record<string, number> = {};
-      (data || []).forEach(venue => {
+      (data || []).forEach((venue: { location: string }) => {
         const area = venue.location.split(',')[0].trim();
         areaCounts[area] = (areaCounts[area] || 0) + 1;
       });
@@ -41,13 +115,16 @@ export const VibeCheck = () => {
         }
       });
 
-      const status = maxCount >= 20 ? 'Electric ⚡️' : maxCount >= 10 ? 'Buzzing 🔥' : maxCount >= 5 ? 'Vibing ✨' : 'Chill 🎵';
+      const { vibe, emoji } =
+        maxCount >= 20 ? { vibe: 'Electric', emoji: '⚡️' } :
+        maxCount >= 10 ? { vibe: 'Buzzing',  emoji: '🔥' } :
+        maxCount >= 5  ? { vibe: 'Vibing',   emoji: '✨' } :
+                         { vibe: 'Chill',    emoji: '🎵' };
 
-      setVibeData({ area: maxArea, count: maxCount, status });
+      setVibeData({ area: maxArea, count: maxCount, vibe, emoji });
     } catch (error) {
       console.error('Error fetching vibe data:', error);
-      // Fallback to default data
-      setVibeData({ area: 'Victoria Island', count: 24, status: 'Electric ⚡️' });
+      setVibeData({ area: 'Victoria Island', count: 24, vibe: 'Electric', emoji: '⚡️' });
     } finally {
       setLoading(false);
     }
@@ -55,101 +132,160 @@ export const VibeCheck = () => {
 
   if (loading) {
     return (
-      <div className="px-4 mb-6 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div>
+      <div style={{ padding: '4px 18px 6px' }}>
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500" />
+        </div>
       </div>
     );
   }
 
   const area = vibeData?.area || 'Victoria Island';
   const count = vibeData?.count || 24;
-  const status = vibeData?.status || 'Electric ⚡️';
+  const vibe = vibeData?.vibe || 'Electric';
+  const emoji = vibeData?.emoji || '⚡️';
 
   return (
-    <div className="px-4 mb-6">
-      <div className="rounded-3xl p-1 bg-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.8)]">
-        <div className="h-48 rounded-[21px] overflow-hidden relative">
-          {/* Lagos Map Background */}
+    <div style={{ padding: '4px 18px 6px' }}>
+      <div
+        style={{
+          position: 'relative',
+          borderRadius: 28,
+          padding: 3,
+          background: 'conic-gradient(from 0deg, #FDE047, #EAB308, #F97316, #EAB308, #FDE047)',
+          animation: 'gc2BorderBreathe 3.2s ease-in-out infinite',
+        }}
+      >
+        <div
+          style={{
+            position: 'relative',
+            height: 218,
+            borderRadius: 25,
+            overflow: 'hidden',
+            background: '#000',
+          }}
+        >
           <img
             src="https://images.unsplash.com/photo-1578041237426-2a5c5f90c31e?w=1200&q=80"
-            alt="Lagos Map"
-            className="absolute w-full h-full object-cover opacity-80"
+            alt=""
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              opacity: 0.55,
+              filter: 'saturate(1.3) contrast(1.1)',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.7) 100%)',
+            }}
           />
 
-          {/* Dark Gradient Overlay */}
-          <div className="absolute w-full h-full bg-black/60" />
-
-          {/* Map Grid Lines */}
-          <div className="absolute w-full h-full">
-            <div className="absolute w-full h-px bg-amber-400/15 top-0" />
-            <div className="absolute w-full h-px bg-amber-400/15 top-1/3" />
-            <div className="absolute w-full h-px bg-amber-400/15 top-2/3" />
-            <div className="absolute w-px h-full bg-amber-400/15 left-1/3" />
-            <div className="absolute w-px h-full bg-amber-400/15 left-2/3" />
+          {/* faint gold grid */}
+          <div style={{ position: 'absolute', inset: 0 }}>
+            {[25, 50, 75].map((v) => (
+              <div
+                key={'h' + v}
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: v + '%',
+                  height: 1,
+                  background:
+                    'linear-gradient(90deg, transparent, rgba(250,204,21,0.18), transparent)',
+                }}
+              />
+            ))}
+            {[25, 50, 75].map((v) => (
+              <div
+                key={'v' + v}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  left: v + '%',
+                  width: 1,
+                  background:
+                    'linear-gradient(180deg, transparent, rgba(250,204,21,0.18), transparent)',
+                }}
+              />
+            ))}
           </div>
 
-          {/* Pulsing Dots - Victoria Island */}
-          <div className="absolute top-[45%] left-[55%]">
-            <div className="animate-pulse">
-              <div className="absolute w-10 h-10 rounded-full bg-amber-400 opacity-40" />
-              <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-amber-400 opacity-70" />
-              <div className="absolute top-3 left-3 w-4 h-4 rounded-full bg-amber-400" />
-              <span className="absolute top-11 text-[9px] font-bold text-white bg-black/60 px-1 py-0.5 rounded whitespace-nowrap">VI</span>
-            </div>
+          {PINGS.map((p) => (
+            <VibePing key={p.label} {...p} />
+          ))}
+
+          <div style={{ position: 'absolute', left: 16, right: 16, top: 14 }}>
+            <span className="gc2-eyebrow">
+              <span className="live-pip" />
+              Live · Vibe Check
+            </span>
           </div>
 
-          {/* Pulsing Dots - Lekki */}
-          <div className="absolute top-[52%] left-[75%]">
-            <div className="animate-pulse">
-              <div className="absolute w-10 h-10 rounded-full bg-amber-400 opacity-40" />
-              <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-amber-400 opacity-70" />
-              <div className="absolute top-3 left-3 w-4 h-4 rounded-full bg-amber-400" />
-              <span className="absolute top-11 text-[9px] font-bold text-white bg-black/60 px-1 py-0.5 rounded whitespace-nowrap">Lekki</span>
+          <div style={{ position: 'absolute', left: 16, right: 16, bottom: 14 }}>
+            <div
+              style={{
+                fontFamily: "'Orbitron', system-ui, sans-serif",
+                fontWeight: 900,
+                fontSize: 26,
+                lineHeight: 1.05,
+                color: '#fff',
+                textShadow: '0 2px 8px rgba(0,0,0,0.85)',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              <span
+                style={{
+                  display: 'block',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  color: '#fff',
+                  opacity: 0.85,
+                  marginBottom: 2,
+                }}
+              >
+                {area} is
+              </span>
+              <span
+                style={{
+                  background: 'linear-gradient(180deg, #FDE047, #FACC15, #EAB308)',
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  filter: 'drop-shadow(0 0 16px rgba(234,179,8,0.6))',
+                  animation: 'gc2Breathe 3s ease-in-out infinite',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                  fontSize: 30,
+                }}
+              >
+                {vibe} {emoji}
+              </span>
             </div>
-          </div>
-
-          {/* Pulsing Dots - Ikeja */}
-          <div className="absolute top-[35%] left-[25%]">
-            <div className="animate-pulse">
-              <div className="absolute w-10 h-10 rounded-full bg-emerald-400 opacity-40" />
-              <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-emerald-400 opacity-70" />
-              <div className="absolute top-3 left-3 w-4 h-4 rounded-full bg-emerald-400" />
-              <span className="absolute top-11 text-[9px] font-bold text-white bg-black/60 px-1 py-0.5 rounded whitespace-nowrap">Ikeja</span>
+            <div
+              style={{
+                marginTop: 7,
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#FBBF24',
+                letterSpacing: '0.04em',
+                textShadow: '0 1px 3px rgba(0,0,0,0.85)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Zap className="w-3 h-3" />
+              {count} venues active right now
             </div>
-          </div>
-
-          {/* Pulsing Dots - Ikoyi */}
-          <div className="absolute top-[50%] left-[48%]">
-            <div className="animate-pulse">
-              <div className="absolute w-10 h-10 rounded-full bg-blue-400 opacity-40" />
-              <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-blue-400 opacity-70" />
-              <div className="absolute top-3 left-3 w-4 h-4 rounded-full bg-blue-400" />
-              <span className="absolute top-11 text-[9px] font-bold text-white bg-black/60 px-1 py-0.5 rounded whitespace-nowrap">Ikoyi</span>
-            </div>
-          </div>
-
-          {/* Pulsing Dots - Surulere */}
-          <div className="absolute top-[28%] left-[42%]">
-            <div className="animate-pulse">
-              <div className="absolute w-10 h-10 rounded-full bg-purple-400 opacity-40" />
-              <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-purple-400 opacity-70" />
-              <div className="absolute top-3 left-3 w-4 h-4 rounded-full bg-purple-400" />
-              <span className="absolute top-11 text-[9px] font-bold text-white bg-black/60 px-1 py-0.5 rounded whitespace-nowrap">Surulere</span>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="absolute bottom-4 left-4 right-4">
-            <div className="animate-pulse inline-flex items-center gap-1.5 bg-yellow-500 border-2 border-amber-300 px-3 py-1.5 rounded-2xl mb-3 shadow-[0_0_8px_rgba(234,179,8,0.8)]">
-              <div className="w-2 h-2 rounded-full bg-white" />
-              <span className="text-[11px] font-bold text-black tracking-widest">LIVE VIBE CHECK</span>
-            </div>
-            <h2 className="text-[22px] font-bold text-white mb-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]">
-              {area} is <span className="text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]">{status}</span>
-            </h2>
-            <p className="text-[15px] text-amber-300 font-semibold drop-shadow-[0_1px_3px_rgba(0,0,0,0.75)]">
-              {count} Venues active right now
-            </p>
           </div>
         </div>
       </div>

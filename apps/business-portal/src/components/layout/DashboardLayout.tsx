@@ -68,11 +68,11 @@ export function DashboardLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="bp2-shell">
       <Sidebar />
       <div className="md:pl-64 flex flex-col flex-1">
         <Header />
-        <main className="flex-1 p-6">
+        <main className="flex-1" style={{ padding: '28px 32px' }}>
           <Outlet />
         </main>
       </div>

@@ -2,13 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
-  Image, Animated, Dimensions, Share,
+  Image, Animated, Easing, Dimensions, Share,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, polished } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
@@ -180,6 +181,25 @@ export default function SocialScreen() {
 
   const styles = getStyles(colors, insets);
 
+  // Pulsing green "live" dot — same pattern as HomeScreen's polished header.
+  const livePulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(livePulse, {
+          toValue: 0.4, duration: 800,
+          easing: Easing.inOut(Easing.ease), useNativeDriver: true,
+        }),
+        Animated.timing(livePulse, {
+          toValue: 1, duration: 800,
+          easing: Easing.inOut(Easing.ease), useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [livePulse]);
+
   // Returns the stored color or derives a consistent one from the name hash
   const getCommunityColor = (community: Community): string => {
     if (community.color) return community.color;
@@ -218,6 +238,12 @@ export default function SocialScreen() {
     setSelectedCommunityName('');
   };
 
+  const handleSelectCommunities = () => {
+    setCurrentView('communities');
+    setSelectedCommunityId(null);
+    setSelectedCommunityName('');
+  };
+
   const handleSelectCommunity = (community: Community) => {
     setCurrentView('community');
     setSelectedCommunityId(community.id);
@@ -228,6 +254,13 @@ export default function SocialScreen() {
     setCurrentView('people');
     setSelectedCommunityId(null);
     if (people.length === 0) fetchPeople();
+  };
+
+  // Top-level inline tabs replace the hamburger-drawer primary nav.
+  const handleTabPress = (tab: 'feed' | 'communities' | 'people') => {
+    if (tab === 'feed') handleSelectFeed();
+    else if (tab === 'communities') handleSelectCommunities();
+    else if (tab === 'people') handleSelectPeople();
   };
 
   // ── Data fetching ──────────────────────────────────────────────────
@@ -900,23 +933,69 @@ export default function SocialScreen() {
           accessibilityLabel="Open menu"
           accessibilityRole="button"
         >
-          <Ionicons name="menu" size={26} color={colors.text} />
+          <Ionicons name="menu" size={22} color={colors.text} />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle} numberOfLines={1}>{getHeaderTitle()}</Text>
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{getHeaderTitle()}</Text>
+          {currentView === 'feed' && (
+            <Animated.View style={[styles.headerLiveDot, { opacity: livePulse }]} />
+          )}
+        </View>
 
         <View style={styles.headerRight}>
           <TouchableOpacity
+            style={styles.headerIconBtn}
             onPress={() => {}}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="notifications-outline" size={22} color={colors.text} />
+            <Ionicons name="notifications-outline" size={20} color={colors.text} />
+            <View style={styles.headerNotifPip} />
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* ── Polished segmented tabs (Feed | Communities | People) ── */}
+      {currentView !== 'community' && (
+        <View style={styles.tabsRow}>
+          {(['feed', 'communities', 'people'] as const).map((t) => {
+            const active = currentView === t;
+            const label = t === 'feed' ? 'Feed' : t === 'communities' ? 'Communities' : 'People';
+            const inner = (
+              <Text style={[styles.tabBtnText, active && styles.tabBtnTextActive]}>{label}</Text>
+            );
+            return active ? (
+              <TouchableOpacity
+                key={t}
+                onPress={() => handleTabPress(t)}
+                style={styles.tabBtnActiveWrap}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={['#FDE047', '#EAB308']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={styles.tabBtnActiveGradient}
+                >
+                  {inner}
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                key={t}
+                onPress={() => handleTabPress(t)}
+                style={styles.tabBtn}
+                activeOpacity={0.7}
+              >
+                {inner}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
       {/* ── Search Bar (feed / community views) ────────────────────── */}
-      {currentView !== 'people' && (
+      {(currentView === 'feed' || currentView === 'community') && (
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={18} color={colors.textSecondary} />
           <TextInput
@@ -965,6 +1044,40 @@ export default function SocialScreen() {
 
       {/* ── Main Content ───────────────────────────────────────────── */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Composer card — only on the top-level Feed view (not inside a community) */}
+        {currentView === 'feed' && currentUserId && (
+          <View style={styles.composerCard}>
+            <View style={styles.composerAvatar}>
+              {currentUserAvatar ? (
+                <Image source={{ uri: currentUserAvatar }} style={styles.composerAvatarImg} />
+              ) : (
+                <Text style={styles.composerAvatarText}>{getInitials(currentUserName || 'You')}</Text>
+              )}
+            </View>
+            <TouchableOpacity
+              style={styles.composerInputBtn}
+              onPress={handleOpenCreateModal}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.composerPlaceholder}>Share a vibe with Lagos…</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.composerCameraBtn}
+              onPress={handleOpenCreateModal}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#FDE047', '#EAB308']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.composerCameraGradient}
+              >
+                <Ionicons name="camera" size={18} color="#18181B" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Feed / Community Feed View */}
         {(currentView === 'feed' || currentView === 'community') && (
           <>
@@ -1089,6 +1202,86 @@ export default function SocialScreen() {
           </>
         )}
 
+        {/* Communities View — polished gradient-emoji cards */}
+        {currentView === 'communities' && (
+          <>
+            {/* Create community CTA */}
+            <TouchableOpacity
+              style={styles.createCommunityRow}
+              onPress={handleOpenCreateCommunityModal}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#FDE047', '#EAB308']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.createCommunityIcon}
+              >
+                <Ionicons name="add" size={20} color="#18181B" />
+              </LinearGradient>
+              <Text style={styles.createCommunityText}>Start a community</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            {communities.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="people-circle-outline" size={48} color={colors.textSecondary} />
+                <Text style={styles.emptyStateTitle}>No Communities Yet</Text>
+                <Text style={styles.emptyStateText}>Be the first to start one for your part of Lagos.</Text>
+              </View>
+            ) : (
+              communities.map((comm) => {
+                const color = getCommunityColor(comm);
+                const icon = COMMUNITY_ICON_MAP[comm.name] ?? comm.icon;
+                return (
+                  <TouchableOpacity
+                    key={comm.id}
+                    style={styles.communityCard}
+                    onPress={() => handleSelectCommunity(comm)}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient
+                      colors={[color, color + '88']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.communityCardEmoji}
+                    >
+                      <Text style={styles.communityCardEmojiText}>{icon}</Text>
+                    </LinearGradient>
+                    <View style={styles.communityCardInfo}>
+                      <Text style={styles.communityCardName} numberOfLines={1}>{comm.name}</Text>
+                      <Text style={styles.communityCardMeta}>
+                        <Text style={styles.communityCardMembers}>{comm.member_count}</Text>
+                        {comm.member_count === 1 ? ' member' : ' members'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={(e) => { e.stopPropagation?.(); handleJoinCommunity(comm.id); }}
+                      activeOpacity={0.85}
+                    >
+                      {comm.is_joined ? (
+                        <View style={styles.communityCardJoinedBtn}>
+                          <Text style={styles.communityCardJoinedText}>Joined</Text>
+                        </View>
+                      ) : (
+                        <LinearGradient
+                          colors={['#FDE047', '#EAB308']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.communityCardJoinBtn}
+                        >
+                          <Text style={styles.communityCardJoinText}>Join</Text>
+                        </LinearGradient>
+                      )}
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+            <View style={{ height: 80 }} />
+          </>
+        )}
+
         {/* People View */}
         {currentView === 'people' && (
           <>
@@ -1123,43 +1316,71 @@ export default function SocialScreen() {
                   !peopleSearch.trim() ||
                   p.full_name.toLowerCase().includes(peopleSearch.toLowerCase())
                 )
-                .map(person => (
-                  <TouchableOpacity
-                    key={person.user_id}
-                    style={styles.personCard}
-                    onPress={() => openUserProfile(person.user_id)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.personAvatarWrap}>
-                      {person.avatar_url ? (
-                        <Image source={{ uri: person.avatar_url }} style={styles.personAvatarImg} />
-                      ) : (
-                        <Text style={styles.personAvatarText}>
-                          {getInitials(person.full_name)}
+                .map(person => {
+                  // "HOT" badge for people who have meaningful audience — matches the V2 polish.
+                  const isHot = person.followers_count >= 1000;
+                  return (
+                    <TouchableOpacity
+                      key={person.user_id}
+                      style={styles.personCard}
+                      onPress={() => openUserProfile(person.user_id)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.personAvatarOuter}>
+                        <View style={styles.personAvatarWrap}>
+                          {person.avatar_url ? (
+                            <Image source={{ uri: person.avatar_url }} style={styles.personAvatarImg} />
+                          ) : (
+                            <Text style={styles.personAvatarText}>
+                              {getInitials(person.full_name)}
+                            </Text>
+                          )}
+                        </View>
+                        {isHot && (
+                          <LinearGradient
+                            colors={['#FDE047', '#EAB308']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.personHotBadge}
+                          >
+                            <Text style={styles.personHotBadgeText}>HOT</Text>
+                          </LinearGradient>
+                        )}
+                      </View>
+                      <View style={styles.personInfo}>
+                        <Text style={styles.personName}>{person.full_name}</Text>
+                        {person.bio ? (
+                          <Text style={styles.personBio} numberOfLines={1}>{person.bio}</Text>
+                        ) : null}
+                        <Text style={styles.personFollowers}>
+                          <Text style={styles.personFollowersNum}>{person.followers_count.toLocaleString()}</Text>
+                          {person.followers_count === 1 ? ' follower' : ' followers'}
                         </Text>
-                      )}
-                    </View>
-                    <View style={styles.personInfo}>
-                      <Text style={styles.personName}>{person.full_name}</Text>
-                      <Text style={styles.personFollowers}>
-                        {person.followers_count} {person.followers_count === 1 ? 'follower' : 'followers'}
-                      </Text>
-                      {person.bio ? (
-                        <Text style={styles.personBio} numberOfLines={1}>{person.bio}</Text>
+                      </View>
+                      {currentUserId ? (
+                        <TouchableOpacity
+                          onPress={() => handleFollowToggle(person.user_id)}
+                          activeOpacity={0.85}
+                        >
+                          {person.is_following ? (
+                            <View style={styles.followingBtn}>
+                              <Text style={styles.followingBtnText}>Following</Text>
+                            </View>
+                          ) : (
+                            <LinearGradient
+                              colors={['#FDE047', '#EAB308']}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 0, y: 1 }}
+                              style={styles.followBtn}
+                            >
+                              <Text style={styles.followBtnText}>Follow</Text>
+                            </LinearGradient>
+                          )}
+                        </TouchableOpacity>
                       ) : null}
-                    </View>
-                    {currentUserId ? (
-                      <TouchableOpacity
-                        style={[styles.followBtn, person.is_following && styles.followingBtn]}
-                        onPress={() => handleFollowToggle(person.user_id)}
-                      >
-                        <Text style={[styles.followBtnText, person.is_following && styles.followingBtnText]}>
-                          {person.is_following ? 'Following' : 'Follow'}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </TouchableOpacity>
-                ))
+                    </TouchableOpacity>
+                  );
+                })
             )}
             <View style={{ height: 80 }} />
           </>
@@ -1490,34 +1711,72 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  // ── Header ──────────────────────────────────────────────────────────
+  // ── Header — polished ──────────────────────────────────────────────
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: 12,
+    borderBottomColor: 'rgba(234,179,8,0.08)',
+    gap: 10,
   },
   hamburgerBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  headerTitleWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headerTitle: {
-    flex: 1,
-    fontSize: 20,
+    fontSize: 15,
     fontFamily: 'Orbitron_900Black',
-    color: colors.primary,
-    letterSpacing: 1,
+    color: polished.goldMid,
+    letterSpacing: 2,
+    textShadowColor: 'rgba(234,179,8,0.55)',
+    textShadowRadius: 8,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  headerLiveDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#22C55E',
+    shadowColor: '#22C55E',
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    elevation: 4,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 4,
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  headerNotifPip: {
+    position: 'absolute',
+    top: 9,
+    right: 9,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+    borderColor: colors.background,
   },
   // ── Search ──────────────────────────────────────────────────────────
   searchContainer: {
@@ -1572,20 +1831,27 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     color: colors.textSecondary,
   },
   communityJoinBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: polished.goldDeep,
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 4,
   },
   communityJoinedBtn: {
     backgroundColor: 'transparent',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   communityJoinBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#000',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#18181B',
+    letterSpacing: 0.2,
   },
   communityJoinedBtnText: {
     color: colors.textSecondary,
@@ -1596,39 +1862,42 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
   },
-  // ── Post Cards ──────────────────────────────────────────────────────
+  // ── Post Cards — polished ──────────────────────────────────────────
   postCard: {
     backgroundColor: colors.cardBackground,
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16,
+    padding: 0,
     marginBottom: 12,
+    overflow: 'hidden',
   },
   postHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    marginBottom: 12,
+    padding: 14,
   },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primary,
+    backgroundColor: '#27272A',
+    borderWidth: 2,
+    borderColor: polished.goldDeep,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   avatarImg: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   avatarText: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: colors.background,
+    fontWeight: '900',
+    color: polished.goldMid,
   },
   postAuthorInfo: {
     flex: 1,
@@ -1669,7 +1938,8 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     backgroundColor: colors.error + '18',
   },
   postContent: {
-    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
   },
   postContentText: {
     fontSize: 14,
@@ -1678,16 +1948,18 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
   },
   postImage: {
     width: '100%',
-    height: 200,
-    borderRadius: 10,
+    height: 220,
+    borderRadius: 14,
     marginTop: 10,
   },
   postActions: {
     flexDirection: 'row',
-    gap: 20,
+    gap: 18,
+    paddingHorizontal: 14,
     paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    paddingBottom: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.06)',
   },
   actionButton: {
     flexDirection: 'row',
@@ -1778,21 +2050,252 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
   followBtn: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
+    borderRadius: 999,
   },
   followingBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
     backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.primary,
+    borderWidth: 1.5,
+    borderColor: colors.border,
   },
   followBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#18181B',
+    letterSpacing: 0.2,
   },
   followingBtnText: {
-    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
+  },
+  personAvatarOuter: {
+    position: 'relative',
+  },
+  personHotBadge: {
+    position: 'absolute',
+    bottom: -3,
+    right: -3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    shadowColor: '#EAB308',
+    shadowOpacity: 0.65,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  personHotBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#18181B',
+    letterSpacing: 0.5,
+  },
+  personFollowersNum: {
+    color: polished.goldMid,
+    fontWeight: '800',
+  },
+  // ── Tabs row (Feed | Communities | People) ──────────────────────────
+  tabsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 5,
+    backgroundColor: '#0F0F12',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  tabBtnActiveWrap: {
+    flex: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  tabBtnActiveGradient: {
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  tabBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
+  },
+  tabBtnTextActive: {
+    color: '#18181B',
+    fontWeight: '800',
+  },
+  // ── Composer card ───────────────────────────────────────────────────
+  composerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 14,
+  },
+  composerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#27272A',
+    borderWidth: 2,
+    borderColor: polished.goldDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  composerAvatarImg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  composerAvatarText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: polished.goldMid,
+  },
+  composerInputBtn: {
+    flex: 1,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#0F0F12',
+    justifyContent: 'center',
+  },
+  composerPlaceholder: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  composerCameraBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  composerCameraGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // ── Communities tab cards ───────────────────────────────────────────
+  createCommunityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 12,
+  },
+  createCommunityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createCommunityText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  communityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 14,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 10,
+  },
+  communityCardEmoji: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  communityCardEmojiText: {
+    fontSize: 26,
+  },
+  communityCardInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  communityCardName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  communityCardMeta: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 3,
+  },
+  communityCardMembers: {
+    color: polished.goldMid,
+    fontWeight: '800',
+  },
+  communityCardJoinBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  communityCardJoinText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#18181B',
+    letterSpacing: 0.2,
+  },
+  communityCardJoinedBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: 'transparent',
+  },
+  communityCardJoinedText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
   },
   // ── Empty State ─────────────────────────────────────────────────────
   emptyState: {

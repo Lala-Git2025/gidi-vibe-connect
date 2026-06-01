@@ -26,8 +26,21 @@ interface NewsItem {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const REFRESH_INTERVAL   = 60 * 60 * 1000; // auto-refresh every 1 hour
-const MAX_AGE_HOURS      = 24;              // show news from last 24 hours
+const MAX_AGE_HOURS      = 168;             // last 7 days — wider window so niche chips (tech/food/sports) have content
 const BREAKING_AGE_HOURS = 3;              // articles < 3 h old = "Breaking"
+
+/**
+ * Route news images through images.weserv.nl — a free image proxy.
+ * Two problems it solves:
+ *   1. Hotlink protection on CDNs (e.g. lindaikejisblog) that 403 direct requests.
+ *   2. Unencoded special chars in upstream URLs (e.g. `?operations=autocrop(1200:630)`
+ *      on pulse.ng's CDN — parens trip some HTTP clients).
+ */
+function proxyImage(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  const stripped = url.replace(/^https?:\/\//, '');
+  return `https://images.weserv.nl/?url=${encodeURIComponent(stripped)}&w=720&output=webp`;
+}
 
 // Map hostnames → readable source names
 const SOURCE_MAP: Record<string, string> = {
@@ -184,6 +197,15 @@ export default function NewsScreen() {
   const [refreshing, setRefreshing]     = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
+  // News image URLs that 404'd / failed hotlink checks — show placeholder instead.
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
+  const markBroken = (url: string) =>
+    setBrokenImages(prev => {
+      if (prev.has(url)) return prev;
+      const next = new Set(prev);
+      next.add(url);
+      return next;
+    });
 
   const categories = ['All', 'general', 'politics', 'crime', 'business', 'entertainment', 'sports', 'events', 'lifestyle', 'health', 'technology', 'education', 'nightlife', 'food', 'traffic'];
 
@@ -199,9 +221,9 @@ export default function NewsScreen() {
         .from('news')
         .select('id, title, summary, category, external_url, featured_image_url, publish_date, source')
         .not('external_url', 'is', null)
-        .gte('publish_date', cutoff)          // last 24 hours
+        .gte('publish_date', cutoff)          // last MAX_AGE_HOURS
         .order('publish_date', { ascending: false })
-        .limit(50);
+        .limit(200);
 
       if (error) {
         console.error('[News] fetch error:', error);
@@ -211,11 +233,13 @@ export default function NewsScreen() {
 
       const valid = (data || []).filter(item => isValidUrl(item.external_url));
       // Re-categorize every article based on actual content (fixes wrong DB categories)
+      // and route image URLs through the weserv proxy so hotlink-protected CDNs render.
       const recategorized = valid.map(item => ({
         ...item,
         category: categorizeArticle(item.title, item.summary),
+        featured_image_url: proxyImage(item.featured_image_url),
       }));
-      const deduped = deduplicateNews(recategorized).slice(0, 30);
+      const deduped = deduplicateNews(recategorized).slice(0, 80);
       setNews(deduped);
       setLastUpdated(new Date());
     } catch (err) {
@@ -336,8 +360,13 @@ export default function NewsScreen() {
                       onPress={() => openArticle(article.external_url)}
                       activeOpacity={0.85}
                     >
-                      {article.featured_image_url ? (
-                        <Image source={{ uri: article.featured_image_url }} style={styles.breakingImage} resizeMode="cover" />
+                      {article.featured_image_url && !brokenImages.has(article.featured_image_url) ? (
+                        <Image
+                          source={{ uri: article.featured_image_url }}
+                          style={styles.breakingImage}
+                          resizeMode="cover"
+                          onError={() => markBroken(article.featured_image_url!)}
+                        />
                       ) : (
                         <View style={[styles.breakingImage, styles.breakingImageFallback]}>
                           <Ionicons name="newspaper" size={40} color={colors.textSecondary} />
@@ -383,8 +412,13 @@ export default function NewsScreen() {
                     activeOpacity={0.8}
                   >
                     {/* Thumbnail */}
-                    {article.featured_image_url ? (
-                      <Image source={{ uri: article.featured_image_url }} style={styles.latestThumb} resizeMode="cover" />
+                    {article.featured_image_url && !brokenImages.has(article.featured_image_url) ? (
+                      <Image
+                        source={{ uri: article.featured_image_url }}
+                        style={styles.latestThumb}
+                        resizeMode="cover"
+                        onError={() => markBroken(article.featured_image_url!)}
+                      />
                     ) : (
                       <View style={[styles.latestThumb, styles.latestThumbFallback]}>
                         <Ionicons name="newspaper" size={32} color={colors.textSecondary} />

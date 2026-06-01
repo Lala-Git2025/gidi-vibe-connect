@@ -1,12 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Switch, Linking, Image } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Switch, Linking, Image, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../config/supabase';
 import * as ImagePicker from 'expo-image-picker';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, polished } from '../contexts/ThemeContext';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { PostGrid, GridPost } from '../components/PostGrid';
 import { CreatePostModal } from '../components/CreatePostModal';
@@ -103,7 +104,7 @@ export default function ProfileScreen() {
   const [userPosts, setUserPosts] = useState<GridPost[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const [profileTab, setProfileTab] = useState<'posts' | 'stats'>('posts');
+  const [profileTab, setProfileTab] = useState<'posts' | 'stats' | 'badges'>('posts');
   const [showCreatePost, setShowCreatePost] = useState(false);
 
   const [allBadges, setAllBadges] = useState<Array<{
@@ -738,6 +739,10 @@ export default function ProfileScreen() {
     Linking.openURL('https://gidivibeconnect.com/terms');
   };
 
+  // Slow rotating gold ring around the avatar (mirrors polished kit).
+  // 10s loop + counter-rotating inner photo so the image doesn't spin.
+  // Profile avatar is intentionally static — gold ring + photo, no rotation.
+
   if (!fontsLoaded || !authReady) {
     return null;
   }
@@ -748,30 +753,52 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
       <ScrollView style={styles.scrollView}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={{ width: 24 }} />
-          <Text style={styles.appName}>PROFILE</Text>
-          <Ionicons name="notifications-outline" size={22} color={colors.text} />
+        {/* Top chrome — settings button floats top-right */}
+        <View style={styles.topChrome}>
+          <View style={{ width: 36 }} />
+          <TouchableOpacity style={styles.heroChromeBtn} onPress={openSettings}>
+            <Ionicons name="settings-outline" size={17} color={colors.text} />
+          </TouchableOpacity>
         </View>
 
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          {/* Avatar */}
-          <TouchableOpacity style={styles.avatar} onPress={pickImage} disabled={uploadingAvatar}>
-            {uploadingAvatar ? (
-              <ActivityIndicator size="large" color={colors.primary} />
-            ) : avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
-            ) : (
-              <Ionicons name="person-outline" size={48} color={colors.textSecondary} />
-            )}
+          {/* Avatar — static gold gradient ring + still photo (no rotation) */}
+          <View style={styles.avatarRingWrap}>
+            <View style={styles.avatarRing}>
+              <LinearGradient
+                colors={polished.creatorRingStops as unknown as readonly [string, string, ...string[]]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            </View>
+            <View style={styles.avatarInnerSpin}>
+              <TouchableOpacity
+                style={styles.avatar}
+                onPress={pickImage}
+                disabled={uploadingAvatar}
+                activeOpacity={0.85}
+              >
+                {uploadingAvatar ? (
+                  <ActivityIndicator size="large" color={colors.primary} />
+                ) : avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Ionicons name="person-outline" size={48} color={polished.goldMid} />
+                )}
+              </TouchableOpacity>
+            </View>
             {!isGuest && (
-              <View style={styles.avatarEditBadge}>
-                <Ionicons name="camera-outline" size={14} color={colors.background} />
-              </View>
+              <TouchableOpacity
+                onPress={pickImage}
+                disabled={uploadingAvatar}
+                style={styles.avatarEditBadge}
+              >
+                <Ionicons name="camera-outline" size={14} color="#18181B" />
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+          </View>
 
           {/* User Info */}
           <Text style={styles.userName}>{userName}</Text>
@@ -783,88 +810,126 @@ export default function ProfileScreen() {
             <Text style={styles.userBio}>{profileBio}</Text>
           ) : null}
 
-          {/* Buttons */}
-          <View style={styles.buttonContainer}>
+          {/* Actions — guests get Sign In/Up; signed-in users get Edit Profile + New Vibe */}
+          <View style={styles.actionRow}>
             {isGuest ? (
               <>
                 <TouchableOpacity
-                  style={styles.signInButton}
+                  style={styles.actionRowGoldBtn}
                   onPress={() => openAuthModal('signin')}
+                  activeOpacity={0.85}
                 >
-                  <Text style={styles.signInButtonText}>Sign In</Text>
+                  <LinearGradient
+                    colors={['#FDE047', '#EAB308']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.actionRowGoldGradient}
+                  >
+                    <Text style={styles.actionRowGoldText}>Sign In</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.settingsButton} onPress={openSettings}>
-                  <Ionicons name="settings-outline" size={20} color={colors.text} />
+                <TouchableOpacity
+                  style={styles.actionRowOutlineBtn}
+                  onPress={() => openAuthModal('signup')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.actionRowOutlineText}>Sign Up</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
                 <TouchableOpacity
-                  style={styles.signOutButton}
-                  onPress={handleSignOut}
+                  style={styles.actionRowGoldBtn}
+                  onPress={handleEditProfile}
+                  activeOpacity={0.85}
                 >
-                  <Text style={styles.signOutButtonText}>Sign Out</Text>
+                  <LinearGradient
+                    colors={['#FDE047', '#EAB308']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.actionRowGoldGradient}
+                  >
+                    <Text style={styles.actionRowGoldText}>Edit Profile</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.settingsButton} onPress={openSettings}>
-                  <Ionicons name="settings-outline" size={20} color={colors.text} />
+                <TouchableOpacity
+                  style={styles.actionRowOutlineBtn}
+                  onPress={() => setShowCreatePost(true)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="camera-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.actionRowOutlineText}>New Vibe</Text>
                 </TouchableOpacity>
               </>
             )}
           </View>
-
-          {isGuest && (
-            <TouchableOpacity
-              style={styles.signUpButton}
-              onPress={() => openAuthModal('signup')}
-            >
-              <Text style={styles.signUpButtonText}>Sign Up</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
-        {/* Follower Stats Row */}
+        {/* Follower Stats Row — gold-tinted bordered card */}
         {!isGuest && (
-          <View style={styles.followerStatsRow}>
-            <View style={styles.followerStat}>
-              <Text style={styles.followerStatNum}>{userPosts.length}</Text>
-              <Text style={styles.followerStatLabel}>Posts</Text>
-            </View>
-            <View style={styles.followerStatDivider} />
-            <View style={styles.followerStat}>
-              <Text style={styles.followerStatNum}>{followerCount}</Text>
-              <Text style={styles.followerStatLabel}>Followers</Text>
-            </View>
-            <View style={styles.followerStatDivider} />
-            <View style={styles.followerStat}>
-              <Text style={styles.followerStatNum}>{followingCount}</Text>
-              <Text style={styles.followerStatLabel}>Following</Text>
+          <View style={styles.statsCardWrap}>
+            <View style={styles.statsCard}>
+              <View style={styles.statsCardItem}>
+                <Text style={[styles.statsCardNum, styles.statsCardNumGold]}>{userPosts.length}</Text>
+                <Text style={styles.statsCardLabel}>Vibes</Text>
+              </View>
+              <View style={styles.statsCardDivider} />
+              <View style={styles.statsCardItem}>
+                <Text style={styles.statsCardNum}>{followerCount.toLocaleString()}</Text>
+                <Text style={styles.statsCardLabel}>Followers</Text>
+              </View>
+              <View style={styles.statsCardDivider} />
+              <View style={styles.statsCardItem}>
+                <Text style={styles.statsCardNum}>{followingCount.toLocaleString()}</Text>
+                <Text style={styles.statsCardLabel}>Following</Text>
+              </View>
             </View>
           </View>
         )}
 
-        {/* Profile Tab Switcher: Posts / Stats */}
+        {/* Profile Tab Switcher: Posts / Stats / Badges */}
         {!isGuest && (
           <View style={styles.profileTabs}>
-            <TouchableOpacity
-              style={[styles.profileTab, profileTab === 'posts' && styles.profileTabActive]}
-              onPress={() => setProfileTab('posts')}
-            >
-              <Ionicons
-                name={profileTab === 'posts' ? 'grid' : 'grid-outline'}
-                size={22}
-                color={profileTab === 'posts' ? colors.primary : colors.textSecondary}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.profileTab, profileTab === 'stats' && styles.profileTabActive]}
-              onPress={() => setProfileTab('stats')}
-            >
-              <Ionicons
-                name={profileTab === 'stats' ? 'bar-chart' : 'bar-chart-outline'}
-                size={22}
-                color={profileTab === 'stats' ? colors.primary : colors.textSecondary}
-              />
-            </TouchableOpacity>
+            {(['posts', 'stats', 'badges'] as const).map((t) => {
+              const active = profileTab === t;
+              const iconName =
+                t === 'posts' ? (active ? 'grid' : 'grid-outline') :
+                t === 'stats' ? (active ? 'bar-chart' : 'bar-chart-outline') :
+                                (active ? 'medal' : 'medal-outline');
+              const inner = (
+                <Ionicons
+                  name={iconName as any}
+                  size={20}
+                  color={active ? '#18181B' : colors.textSecondary}
+                />
+              );
+              return active ? (
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => setProfileTab(t)}
+                  style={styles.profileTabActiveWrap}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={['#FDE047', '#EAB308']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.profileTabActiveGradient}
+                  >
+                    {inner}
+                  </LinearGradient>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => setProfileTab(t)}
+                  style={styles.profileTab}
+                  activeOpacity={0.7}
+                >
+                  {inner}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
@@ -890,7 +955,7 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Your Stats, Level & Progress, Badges — shown on 'stats' tab or for guests */}
+        {/* Your Stats + Level & Progress — shown on 'stats' tab or for guests */}
         {(isGuest || profileTab === 'stats') && (
         <>
         <View style={styles.section}>
@@ -930,8 +995,11 @@ export default function ProfileScreen() {
             )}
           </View>
         </View>
+        </>
+        )}
 
-        {/* Badges Section */}
+        {/* Badges Tab content */}
+        {!isGuest && profileTab === 'badges' && (
         <View style={styles.section}>
           <View style={styles.badgesHeader}>
             <Text style={styles.sectionTitle}>Badges</Text>
@@ -982,7 +1050,6 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
-        </>
         )}
 
       </ScrollView>
@@ -1388,49 +1455,170 @@ const getStyles = (colors: any) => StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  // Follower Stats Row
+  // Follower Stats Row — polished gold-bordered card with gold-tint numbers
   followerStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    marginHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingVertical: 14,
+    marginHorizontal: 18,
+    marginTop: 4,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(234,179,8,0.18)',
+    borderRadius: 16,
+    backgroundColor: 'rgba(234,179,8,0.04)',
   },
   followerStat: {
     alignItems: 'center',
     flex: 1,
   },
   followerStatNum: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    color: polished.goldMid,
+    letterSpacing: -0.3,
   },
   followerStatLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: 4,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    fontWeight: '600',
   },
   followerStatDivider: {
     width: 1,
     height: 28,
     backgroundColor: colors.border,
   },
-  // Profile Tabs (grid / stats toggle)
+  // Profile Tabs — polished pill-style toggle
   profileTabs: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    marginHorizontal: 18,
+    marginBottom: 14,
+    padding: 4,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
   },
   profileTab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
   profileTabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
+    backgroundColor: polished.goldMid,
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  profileTabActiveWrap: {
+    flex: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  profileTabActiveGradient: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  // Stats card — gold-tinted bordered container around the 3 stats
+  statsCardWrap: {
+    marginHorizontal: 18,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  statsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(234,179,8,0.18)',
+    borderRadius: 16,
+    backgroundColor: 'rgba(234,179,8,0.04)',
+  },
+  statsCardItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statsCardNum: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.text,
+    letterSpacing: -0.3,
+  },
+  statsCardNumGold: {
+    color: polished.goldMid,
+  },
+  statsCardLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 4,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+  },
+  statsCardDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: colors.border,
+  },
+  // Polished action row — Edit Profile (gold) + New Vibe (outline)
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+    maxWidth: 420,
+    marginTop: 14,
+  },
+  actionRowGoldBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  actionRowGoldGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionRowGoldText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#18181B',
+    letterSpacing: 0.2,
+  },
+  actionRowOutlineBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F0F12',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionRowOutlineText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.2,
   },
   // New Post Button
   newPostButton: {
@@ -1462,42 +1650,94 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
   },
-  // Header
+  // Header — polished
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: 'rgba(234,179,8,0.08)',
   },
   appName: {
-    fontSize: 20,
+    fontSize: 15,
     fontFamily: 'Orbitron_900Black',
-    color: colors.primary,
+    color: polished.goldMid,
     letterSpacing: 2,
+    textShadowColor: 'rgba(234,179,8,0.55)',
+    textShadowRadius: 8,
+    textShadowOffset: { width: 0, height: 0 },
   },
   headerIcon: {
     fontSize: 20,
     fontFamily: '',
   },
+  // Top chrome — settings button row above the profile header
+  topChrome: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+  },
+  heroChromeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // Profile Header
   profileHeader: {
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 32,
+    paddingTop: 18,
+    paddingBottom: 8,
   },
-  avatar: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    backgroundColor: hexToRgba(colors.primary, 0.2),
-    borderWidth: 4,
-    borderColor: colors.primary,
+  // Outer wrap: positions ring + photo + camera badge
+  avatarRingWrap: {
+    width: 132,
+    height: 132,
+    marginBottom: 16,
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  // The rotating gold gradient ring (filled by LinearGradient inside)
+  avatarRing: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    overflow: 'hidden',
+  },
+  // Counter-rotating frame so the photo stays upright
+  avatarInnerSpin: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatar: {
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+    backgroundColor: '#18181B',
+    borderWidth: 3,
+    borderColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   avatarIcon: {
     fontSize: 64,
@@ -1506,47 +1746,54 @@ const getStyles = (colors: any) => StyleSheet.create({
   avatarImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 64,
+    borderRadius: 58,
   },
   avatarEditBadge: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: colors.primary,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    backgroundColor: polished.goldMid,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: colors.background,
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    elevation: 6,
   },
   avatarEditIcon: {
     fontSize: 16,
     fontFamily: '',
   },
   userName: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '900',
     color: colors.text,
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   userUsername: {
-    fontSize: 14,
-    color: colors.primary,
+    fontSize: 13,
+    color: polished.goldMid,
     marginBottom: 2,
+    fontWeight: '600',
   },
   userLocation: {
-    fontSize: 16,
+    fontSize: 13,
     color: colors.textSecondary,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   userBio: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    fontSize: 13,
+    color: colors.text,
     textAlign: 'center',
     maxWidth: 280,
     marginBottom: 16,
+    lineHeight: 19,
   },
   // Buttons
   buttonContainer: {
@@ -1559,16 +1806,22 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   signInButton: {
     flex: 1,
-    height: 56,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
+    height: 48,
+    backgroundColor: polished.goldMid,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   signInButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.background,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#18181B',
+    letterSpacing: 0.3,
   },
   signOutButton: {
     flex: 1,

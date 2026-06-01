@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Phone, Globe, TrendingUp, Lock } from 'lucide-react';
+import { Eye, Phone, Globe, Repeat, Lock, Download, Filter } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -16,35 +16,13 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
 import { useAnalytics, getDefaultDateRange, type DateRange } from '../hooks/useAnalytics';
 import { DateRangePicker } from '../components/analytics/DateRangePicker';
 import { formatDate } from '../lib/utils';
+import { StatCard } from '../components/ui/stat-card';
 
-interface MetricCardProps {
-  title: string;
-  value: number;
-  icon: React.ElementType;
-  color?: string;
-}
-
-function MetricCard({ title, value, icon: Icon, color = 'text-primary' }: MetricCardProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className={`h-4 w-4 ${color}`} />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value.toLocaleString()}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
-const CHART_COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899'];
+const CHART_COLORS = ['#EAB308', '#10B981', '#3B82F6', '#A855F7', '#EC4899'];
 
 export default function Analytics() {
   const navigate = useNavigate();
@@ -52,294 +30,321 @@ export default function Analytics() {
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultDateRange());
   const { data: analytics, isLoading, error } = useAnalytics(dateRange);
 
-  // Check if user has access to analytics
   if (!subscription?.can_view_analytics) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-200px)]">
-        <Card className="max-w-md">
-          <CardContent className="p-12 text-center">
-            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <Lock className="h-8 w-8 text-primary" />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">Premium Feature</h2>
-            <p className="text-muted-foreground mb-6">
-              Analytics dashboard is available on Premium and Enterprise plans.
-            </p>
-            <div className="space-y-2 text-sm text-left mb-6">
-              <p className="flex items-center">
-                <span className="text-primary mr-2">✓</span>
-                Track profile views and engagement
-              </p>
-              <p className="flex items-center">
-                <span className="text-primary mr-2">✓</span>
-                View click-through rates
-              </p>
-              <p className="flex items-center">
-                <span className="text-primary mr-2">✓</span>
-                Monitor venue performance over time
-              </p>
-              <p className="flex items-center">
-                <span className="text-primary mr-2">✓</span>
-                Compare venues side-by-side
-              </p>
-            </div>
-            <Button onClick={() => navigate('/subscription')}>
-              Upgrade to Premium
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
+        <div className="bp2-card-hero" style={{ maxWidth: 480, padding: 32, textAlign: 'center' }}>
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg,#FDE047,#EAB308)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              boxShadow: '0 0 16px rgba(234,179,8,0.5)',
+            }}
+          >
+            <Lock className="h-7 w-7" color="#18181B" />
+          </div>
+          <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 6 }}>Premium feature</h2>
+          <p style={{ color: '#6B7280', fontSize: 14, marginBottom: 18 }}>
+            Analytics dashboard is available on Premium and Enterprise plans.
+          </p>
+          <button className="bp2-btn bp2-btn-primary" onClick={() => navigate('/subscription')}>
+            Upgrade to Premium
+          </button>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">Error Loading Analytics</h2>
-          <p className="text-muted-foreground">{error instanceof Error ? error.message : 'Unknown error'}</p>
-        </div>
+      <div className="bp2-card" style={{ padding: 32, textAlign: 'center' }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>Error loading analytics</h2>
+        <p style={{ color: '#6B7280', fontSize: 13 }}>
+          {error instanceof Error ? error.message : 'Unknown error'}
+        </p>
       </div>
     );
   }
 
-  if (!analytics) {
-    return null;
-  }
-
-  // Prepare engagement breakdown data for pie chart
-  const engagementData = [
-    { name: 'Phone Calls', value: analytics.totalPhoneClicks },
-    { name: 'Website Visits', value: analytics.totalWebsiteClicks },
-    { name: 'Directions', value: analytics.totalDirectionClicks },
-    { name: 'Offer Clicks', value: analytics.totalOfferClicks },
-  ].filter((item) => item.value > 0);
+  const engagementData = analytics
+    ? [
+        { name: 'Phone Calls',    value: analytics.totalPhoneClicks },
+        { name: 'Website Visits', value: analytics.totalWebsiteClicks },
+        { name: 'Directions',     value: analytics.totalDirectionClicks },
+        { name: 'Offer Clicks',   value: analytics.totalOfferClicks },
+      ].filter((item) => item.value > 0)
+    : [];
 
   return (
-    <div className="space-y-6">
+    <div>
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
-        <p className="text-muted-foreground mt-1">
-          Track your venue performance and customer engagement
-        </p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          marginBottom: 24,
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <div className="bp2-page-eyebrow">All venues · {subscription?.tier || 'Premium'} tier</div>
+          <h1 className="bp2-page-title">Analytics</h1>
+          <p className="bp2-page-sub">
+            How your venues are performing across Lagos. Drill into a specific venue from the
+            dropdown, or export the raw data.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="bp2-card" style={{ padding: '6px 12px' }}>
+            <DateRangePicker value={dateRange} onChange={setDateRange} />
+          </div>
+          <button className="bp2-btn bp2-btn-secondary">
+            <Filter className="h-3.5 w-3.5" />
+            All venues
+          </button>
+          <button className="bp2-btn bp2-btn-primary">
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
+        </div>
       </div>
 
-      {/* Date Range Picker */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Date Range</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DateRangePicker value={dateRange} onChange={setDateRange} />
-        </CardContent>
-      </Card>
+      {isLoading ? (
+        <div className="bp2-card" style={{ padding: 48, textAlign: 'center', color: '#6B7280' }}>
+          Loading analytics…
+        </div>
+      ) : !analytics ? null : (
+        <>
+          {/* KPI row */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 16,
+              marginBottom: 20,
+            }}
+          >
+            <StatCard
+              hero
+              title="Profile views"
+              value={analytics.totalProfileViews.toLocaleString()}
+              sub="this range"
+              icon={Eye}
+              sparkline={
+                analytics.dailyData.length > 0
+                  ? analytics.dailyData.slice(-12).map((d) => d.profile_views || 0)
+                  : undefined
+              }
+            />
+            <StatCard
+              title="Phone clicks"
+              value={analytics.totalPhoneClicks.toLocaleString()}
+              sub="this range"
+              icon={Phone}
+              sparkline={
+                analytics.dailyData.length > 0
+                  ? analytics.dailyData.slice(-12).map((d) => d.phone_clicks || 0)
+                  : undefined
+              }
+            />
+            <StatCard
+              title="Website clicks"
+              value={analytics.totalWebsiteClicks.toLocaleString()}
+              sub="this range"
+              icon={Globe}
+              sparkline={
+                analytics.dailyData.length > 0
+                  ? analytics.dailyData.slice(-12).map((d) => d.website_clicks || 0)
+                  : undefined
+              }
+            />
+            <StatCard
+              title="Total engagement"
+              value={analytics.totalEngagement.toLocaleString()}
+              sub="all interactions"
+              icon={Repeat}
+            />
+          </div>
 
-      {/* Key Metrics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Profile Views"
-          value={analytics.totalProfileViews}
-          icon={Eye}
-          color="text-blue-500"
-        />
-        <MetricCard
-          title="Phone Clicks"
-          value={analytics.totalPhoneClicks}
-          icon={Phone}
-          color="text-green-500"
-        />
-        <MetricCard
-          title="Website Clicks"
-          value={analytics.totalWebsiteClicks}
-          icon={Globe}
-          color="text-purple-500"
-        />
-        <MetricCard
-          title="Total Engagement"
-          value={analytics.totalEngagement}
-          icon={TrendingUp}
-          color="text-primary"
-        />
-      </div>
+          {/* Charts row 1 */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)',
+              gap: 20,
+              marginBottom: 20,
+            }}
+          >
+            <div className="bp2-card" style={{ padding: 24 }}>
+              <div className="bp2-section-title" style={{ marginBottom: 16 }}>
+                Profile views over time
+              </div>
+              {analytics.dailyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={analytics.dailyData}>
+                    <CartesianGrid strokeDasharray="3 4" stroke="#E5E7EB" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(v) => formatDate(v, 'short')}
+                      tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                      stroke="#E5E7EB"
+                    />
+                    <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} stroke="#E5E7EB" />
+                    <Tooltip
+                      labelFormatter={(v) => formatDate(v as string)}
+                      formatter={(v: number) => [v, 'Views']}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="profile_views"
+                      stroke="#EAB308"
+                      strokeWidth={2.5}
+                      dot={false}
+                      name="Profile Views"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF' }}>
+                  No data available for this date range
+                </div>
+              )}
+            </div>
 
-      {/* Charts Row 1 */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Profile Views Over Time */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile Views Over Time</CardTitle>
-          </CardHeader>
-          <CardContent>
+            <div className="bp2-card" style={{ padding: 24 }}>
+              <div className="bp2-section-title" style={{ marginBottom: 16 }}>
+                Engagement breakdown
+              </div>
+              {engagementData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie
+                      data={engagementData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) =>
+                        `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`
+                      }
+                      outerRadius={90}
+                      dataKey="value"
+                    >
+                      {engagementData.map((_entry, idx) => (
+                        <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF' }}>
+                  No engagement data
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Engagement over time bar chart */}
+          <div className="bp2-card" style={{ padding: 24, marginBottom: 20 }}>
+            <div className="bp2-section-title" style={{ marginBottom: 16 }}>
+              Engagement over time
+            </div>
             {analytics.dailyData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={analytics.dailyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={analytics.dailyData}>
+                  <CartesianGrid strokeDasharray="3 4" stroke="#E5E7EB" />
                   <XAxis
                     dataKey="date"
-                    tickFormatter={(value) => formatDate(value, 'short')}
+                    tickFormatter={(v) => formatDate(v, 'short')}
+                    tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                    stroke="#E5E7EB"
                   />
-                  <YAxis />
-                  <Tooltip
-                    labelFormatter={(value) => formatDate(value as string)}
-                    formatter={(value: number) => [value, 'Views']}
-                  />
+                  <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} stroke="#E5E7EB" />
+                  <Tooltip labelFormatter={(v) => formatDate(v as string)} />
                   <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="profile_views"
-                    stroke="#3B82F6"
-                    strokeWidth={2}
-                    name="Profile Views"
-                  />
-                </LineChart>
+                  <Bar dataKey="phone_clicks"     fill="#10B981" name="Phone Calls" />
+                  <Bar dataKey="website_clicks"   fill="#A855F7" name="Website Visits" />
+                  <Bar dataKey="direction_clicks" fill="#3B82F6" name="Directions" />
+                </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No data available for this date range
+              <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF' }}>
+                No data available
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Engagement Breakdown */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Engagement Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {engagementData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={engagementData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) =>
-                      `${name}: ${(percent * 100).toFixed(0)}%`
-                    }
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {engagementData.map((_entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={CHART_COLORS[index % CHART_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No engagement data available
+          {/* Venue performance table */}
+          {analytics.venueBreakdown.length > 0 && (
+            <div className="bp2-card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid #F3F4F6' }}>
+                <div className="bp2-section-title">Venue performance</div>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Engagement Over Time */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Engagement Over Time</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {analytics.dailyData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={analytics.dailyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(value) => formatDate(value, 'short')}
-                />
-                <YAxis />
-                <Tooltip
-                  labelFormatter={(value) => formatDate(value as string)}
-                />
-                <Legend />
-                <Bar dataKey="phone_clicks" fill="#10B981" name="Phone Calls" />
-                <Bar dataKey="website_clicks" fill="#8B5CF6" name="Website Visits" />
-                <Bar dataKey="direction_clicks" fill="#3B82F6" name="Directions" />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-              No data available for this date range
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Venue Performance Table */}
-      {analytics.venueBreakdown.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Venue Performance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="bp2-table">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4">Venue</th>
-                    <th className="text-right py-3 px-4">Profile Views</th>
-                    <th className="text-right py-3 px-4">Total Engagement</th>
-                    <th className="text-right py-3 px-4">Conversion Rate</th>
+                  <tr>
+                    <th>Venue</th>
+                    <th style={{ textAlign: 'right' }}>Profile views</th>
+                    <th style={{ textAlign: 'right' }}>Engagement</th>
+                    <th style={{ textAlign: 'right' }}>Conversion rate</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {analytics.venueBreakdown.map((venue) => {
+                  {analytics.venueBreakdown.map((v) => {
                     const conversionRate =
-                      venue.profile_views > 0
-                        ? ((venue.total_engagement / venue.profile_views) * 100).toFixed(1)
+                      v.profile_views > 0
+                        ? ((v.total_engagement / v.profile_views) * 100).toFixed(1)
                         : '0.0';
-
                     return (
-                      <tr key={venue.venue_id} className="border-b hover:bg-muted/50">
-                        <td className="py-3 px-4 font-medium">{venue.venue_name}</td>
-                        <td className="text-right py-3 px-4">
-                          {venue.profile_views.toLocaleString()}
+                      <tr key={v.venue_id}>
+                        <td style={{ fontWeight: 700, color: '#18181B' }}>{v.venue_name}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {v.profile_views.toLocaleString()}
                         </td>
-                        <td className="text-right py-3 px-4">
-                          {venue.total_engagement.toLocaleString()}
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {v.total_engagement.toLocaleString()}
                         </td>
-                        <td className="text-right py-3 px-4">{conversionRate}%</td>
+                        <td
+                          style={{
+                            textAlign: 'right',
+                            fontWeight: 700,
+                            color: '#A16207',
+                          }}
+                        >
+                          {conversionRate}%
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
 
-      {/* No Data State */}
-      {analytics.dailyData.length === 0 && (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <Eye className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">No Analytics Data Yet</h3>
-            <p className="text-muted-foreground mb-4">
-              Analytics will appear once customers start viewing your venues.
-            </p>
-            <Button onClick={() => navigate('/venues')}>
-              View Your Venues
-            </Button>
-          </CardContent>
-        </Card>
+          {analytics.dailyData.length === 0 && (
+            <div className="bp2-card" style={{ padding: 48, textAlign: 'center' }}>
+              <Eye className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>
+                No analytics data yet
+              </h3>
+              <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+                Analytics will appear once customers start viewing your venues.
+              </p>
+              <button className="bp2-btn bp2-btn-primary" onClick={() => navigate('/venues')}>
+                View your venues
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

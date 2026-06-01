@@ -15,8 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../config/supabase';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, polished } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Event {
@@ -65,6 +66,31 @@ const CATEGORY_ICONS: Record<string, string> = {
   'Workshop': '📚',
   'Comedy': '😂',
 };
+
+// Themed Unsplash photos used as a last-resort image when DB rows have no
+// `image_url`/`featured_image_url`. Keeps cards visually grounded so they
+// don't all show the same calendar-icon placeholder.
+const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
+  'Nightlife':       'https://images.unsplash.com/photo-1571266028243-d220c6a3a93f?q=80&w=1000',
+  'Food & Dining':   'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?q=80&w=1000',
+  'Food & Drink':    'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?q=80&w=1000',
+  'Technology':      'https://images.unsplash.com/photo-1540575467063-178a50c2df87?q=80&w=1000',
+  'Arts & Culture':  'https://images.unsplash.com/photo-1531297484001-80022131f5a1?q=80&w=1000',
+  'Art & Culture':   'https://images.unsplash.com/photo-1531297484001-80022131f5a1?q=80&w=1000',
+  'Entertainment':   'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?q=80&w=1000',
+  'Concert':         'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=1000',
+  'Festival':        'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?q=80&w=1000',
+  'Sports':          'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?q=80&w=1000',
+  'Networking':      'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=1000',
+  'Workshop':        'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=1000',
+  'Comedy':          'https://images.unsplash.com/photo-1543007630-9710e4a00a20?q=80&w=1000',
+};
+
+const DEFAULT_EVENT_IMAGE =
+  'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=1000';
+
+const getCategoryFallbackImage = (category: string | null | undefined): string =>
+  (category && CATEGORY_FALLBACK_IMAGES[category]) || DEFAULT_EVENT_IMAGE;
 
 export default function EventsScreen() {
   const navigation = useNavigation();
@@ -148,49 +174,53 @@ export default function EventsScreen() {
     }
   };
 
-  // Try to sync from the edge function (fetches from external platforms),
-  // then fall back to direct DB query if it fails.
-  const loadEvents = async () => {
+  // Load events:
+  // - Skip the edge function for the initial render (it just re-queries the
+  //   same DB table with a stricter `status='upcoming'` filter that excludes
+  //   most rows, so it was returning empty/sparse results and short-circuiting
+  //   the DB fallback).
+  // - Pull a wider window (today onwards, limit 100) so users actually see
+  //   the events that exist.
+  // - On manual refresh we also hit the edge function in the background to
+  //   trigger any server-side scraping, but render whatever the DB has now.
+  const loadEvents = async (triggerSync = false) => {
     setLoading(true);
-    try {
-      setSyncing(true);
-      const { data: session } = await supabase.auth.getSession();
-      const anonKey = (supabase as any).supabaseKey as string | undefined;
-
-      // Call the edge function to sync / get events
-      const res = await fetch(
-        `${(supabase as any).supabaseUrl}/functions/v1/fetch-lagos-events`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': anonKey ?? '',
-            'Authorization': `Bearer ${session?.session?.access_token ?? anonKey ?? ''}`,
-          },
-          body: JSON.stringify({ limit: 50 }),
-        }
-      );
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data && Array.isArray(json.data)) {
-          setEvents(json.data as Event[]);
-          setLoading(false);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('[Events] edge function unavailable, falling back to DB', e);
-    } finally {
-      setSyncing(false);
-    }
-
-    // Fallback: direct DB query
     await fetchEventsFromDB();
+
+    if (triggerSync) {
+      // Fire and forget — the edge function caches into events table.
+      // We don't await it; the next pull-to-refresh will pick up new rows.
+      setSyncing(true);
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const anonKey = (supabase as any).supabaseKey as string | undefined;
+        await fetch(
+          `${(supabase as any).supabaseUrl}/functions/v1/fetch-lagos-events`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': anonKey ?? '',
+              'Authorization': `Bearer ${session?.session?.access_token ?? anonKey ?? ''}`,
+            },
+            body: JSON.stringify({ limit: 100 }),
+          }
+        );
+        // Re-fetch in case sync inserted new rows
+        await fetchEventsFromDB();
+      } catch (e) {
+        console.warn('[Events] sync fn unreachable, that\'s ok', e);
+      } finally {
+        setSyncing(false);
+      }
+    }
   };
 
   const fetchEventsFromDB = async () => {
     try {
+      // Start the window 6h in the past so events that just started still
+      // show up (someone scrolling the app at 9pm wants to see the 8pm one).
+      const windowStart = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from('events')
         .select(
@@ -200,10 +230,10 @@ export default function EventsScreen() {
           'price_info, source, organizer_name, is_featured'
         )
         .eq('is_active', true)
-        .gte('start_date', new Date().toISOString())
+        .gte('start_date', windowStart)
         .order('is_featured', { ascending: false })
         .order('start_date', { ascending: true })
-        .limit(50);
+        .limit(100);
 
       if (error) throw error;
       setEvents((data as unknown as Event[]) || []);
@@ -216,7 +246,7 @@ export default function EventsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadEvents();
+    await loadEvents(true); // pull-to-refresh triggers the background sync
     setRefreshing(false);
   };
 
@@ -224,9 +254,14 @@ export default function EventsScreen() {
     'All Events',
     'Nightlife',
     'Food & Dining',
-    'Technology',
-    'Arts & Culture',
+    'Concert',
     'Entertainment',
+    'Sports',
+    'Comedy',
+    'Arts & Culture',
+    'Technology',
+    'Networking',
+    'Workshop',
   ];
 
   const formatDate = (dateString: string) => {
@@ -279,8 +314,14 @@ export default function EventsScreen() {
     }
   };
 
-  const getEventImage = (event: Event): string | null =>
-    event.featured_image_url || event.image_url || null;
+  // Image resolution: prefer DB-provided URLs, then fall back to a
+  // category-themed Unsplash photo so the card never looks broken/empty.
+  // Picking by category keeps it visually relevant (food cards get food).
+  const getEventImage = (event: Event): string => {
+    const fromDb = event.featured_image_url || event.image_url;
+    if (fromDb && fromDb.startsWith('http')) return fromDb;
+    return getCategoryFallbackImage(event.category);
+  };
 
   const getCategoryIcon = (category: string): string =>
     CATEGORY_ICONS[category] ?? '📅';
@@ -339,11 +380,13 @@ export default function EventsScreen() {
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Page Title */}
+        {/* Page Title — polished: gold accent on "Lagos" */}
         <View style={styles.titleSection}>
-          <Text style={styles.title}>Events in Lagos</Text>
+          <Text style={styles.title}>
+            Events in <Text style={styles.titleAccent}>Lagos</Text>
+          </Text>
           <Text style={styles.subtitle}>
-            {syncing ? 'Syncing live events...' : 'Discover upcoming experiences'}
+            {syncing ? 'Syncing live events…' : 'Discover upcoming experiences'}
           </Text>
         </View>
 
@@ -386,21 +429,26 @@ export default function EventsScreen() {
                     onPress={() => handleGetTickets(event)}
                     activeOpacity={0.85}
                   >
-                    {imgUri ? (
-                      <Image
-                        source={{ uri: imgUri }}
-                        style={styles.featuredImage}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={[styles.featuredImage, styles.imageFallback]}>
-                        <Ionicons name="calendar" size={52} color={colors.textSecondary} />
-                      </View>
-                    )}
+                    <Image
+                      source={{ uri: imgUri }}
+                      style={styles.featuredImage}
+                      resizeMode="cover"
+                    />
 
-                    {/* Gradient overlay */}
-                    <View style={styles.featuredOverlay} />
+                    {/* Polished gradient — transparent at top, near-black at bottom */}
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.9)']}
+                      locations={[0, 0.4, 0.75, 1]}
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                    {/* Gold rim — signals "featured" status without burning the image */}
+                    <View style={styles.featuredRim} pointerEvents="none" />
 
+                    {/* Featured ribbon — top left */}
+                    <View style={styles.featuredRibbon}>
+                      <Ionicons name="star" size={11} color="#18181B" />
+                      <Text style={styles.featuredRibbonText}>FEATURED</Text>
+                    </View>
                     <View style={styles.featuredSourceBadge}>
                       <Text style={styles.sourceBadgeText}>{getSourceLabel(event.source)}</Text>
                     </View>
@@ -447,19 +495,13 @@ export default function EventsScreen() {
                   onPress={() => handleGetTickets(event)}
                   activeOpacity={0.85}
                 >
-                  {/* Event image / placeholder */}
+                  {/* Event image — always non-null via category fallback */}
                   <View style={styles.imageContainer}>
-                    {imgUri ? (
-                      <Image
-                        source={{ uri: imgUri }}
-                        style={styles.eventImage}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={[styles.eventImage, styles.imageFallback]}>
-                        <Ionicons name="calendar" size={52} color={colors.textSecondary} />
-                      </View>
-                    )}
+                    <Image
+                      source={{ uri: imgUri }}
+                      style={styles.eventImage}
+                      resizeMode="cover"
+                    />
 
                     {/* Category badge */}
                     <View style={styles.categoryBadge}>
@@ -545,73 +587,89 @@ const getStyles = (colors: any) =>
     },
     scrollView: { flex: 1 },
 
-    // ── Header ──
+    // ── Header — polished ──
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 16,
+      paddingHorizontal: 18,
+      paddingVertical: 14,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      borderBottomColor: 'rgba(234,179,8,0.08)',
     },
     backButtonContainer: {
       width: 40,
       height: 40,
+      borderRadius: 10,
+      backgroundColor: 'rgba(255,255,255,0.04)',
       justifyContent: 'center',
       alignItems: 'center',
     },
     backButton: {
       fontSize: 24,
-      color: colors.primary,
+      color: polished.goldMid,
       fontWeight: '600',
     },
     appName: {
-      fontSize: 20,
+      fontSize: 15,
       fontFamily: 'Orbitron_900Black',
-      color: colors.primary,
+      color: polished.goldMid,
       letterSpacing: 2,
+      textShadowColor: 'rgba(234,179,8,0.55)',
+      textShadowRadius: 8,
+      textShadowOffset: { width: 0, height: 0 },
     },
 
-    // ── Title ──
+    // ── Title — polished ──
     titleSection: {
-      paddingHorizontal: 16,
-      paddingTop: 24,
-      paddingBottom: 12,
+      paddingHorizontal: 18,
+      paddingTop: 18,
+      paddingBottom: 10,
     },
     title: {
-      fontSize: 28,
-      fontWeight: 'bold',
+      fontSize: 26,
+      fontWeight: '900',
       color: colors.text,
+      letterSpacing: -0.5,
       marginBottom: 4,
     },
+    titleAccent: {
+      color: polished.goldMid,
+    },
     subtitle: {
-      fontSize: 14,
+      fontSize: 13,
       color: colors.textSecondary,
+      fontWeight: '500',
     },
 
-    // ── Filters ──
+    // ── Filters — polished pill chips ──
     filtersSection: { marginBottom: 8 },
-    filtersScroll: { paddingHorizontal: 16 },
+    filtersScroll: { paddingHorizontal: 18 },
     filterButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
+      backgroundColor: colors.cardBackground,
       marginRight: 8,
     },
     filterButtonActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
+      backgroundColor: polished.goldMid,
+      borderColor: polished.goldMid,
+      shadowColor: polished.goldDeep,
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      elevation: 4,
     },
     filterButtonText: {
       fontSize: 12,
       color: colors.textSecondary,
-      fontWeight: '500',
+      fontWeight: '600',
     },
     filterButtonTextActive: {
-      color: colors.background,
+      color: '#18181B',
+      fontWeight: '800',
     },
 
     // ── Sections ──
@@ -627,64 +685,108 @@ const getStyles = (colors: any) =>
       letterSpacing: 0.5,
     },
 
-    // ── Featured Cards (horizontal scroll) ──
+    // ── Featured Cards — polished hero (gold rim, ribbon, glass) ──
     featuredCard: {
       width: 280,
-      height: 200,
-      borderRadius: 16,
+      height: 210,
+      borderRadius: 18,
       overflow: 'hidden',
       marginRight: 12,
       position: 'relative',
+      shadowColor: '#000',
+      shadowOpacity: 0.5,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 8,
     },
     featuredImage: {
       width: '100%',
       height: '100%',
     },
-    featuredOverlay: {
+    featuredRim: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.45)',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: 'rgba(234,179,8,0.55)',
+    },
+    featuredRibbon: {
+      position: 'absolute',
+      top: 12,
+      left: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: polished.goldMid,
+      borderWidth: 1.5,
+      borderColor: '#FEF08A',
+      shadowColor: polished.goldDeep,
+      shadowOpacity: 0.6,
+      shadowRadius: 10,
+      elevation: 4,
+    },
+    featuredRibbonText: {
+      fontSize: 9,
+      fontWeight: '900',
+      color: '#18181B',
+      letterSpacing: 1.2,
     },
     featuredSourceBadge: {
       position: 'absolute',
-      top: 10,
-      right: 10,
+      top: 12,
+      right: 12,
       backgroundColor: 'rgba(0,0,0,0.6)',
-      paddingHorizontal: 8,
-      paddingVertical: 3,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
       borderRadius: 6,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.10)',
     },
     featuredContent: {
       position: 'absolute',
       bottom: 0,
       left: 0,
       right: 0,
-      padding: 12,
+      padding: 14,
     },
     featuredTitle: {
-      fontSize: 16,
-      fontWeight: 'bold',
+      fontSize: 17,
+      fontWeight: '900',
       color: '#fff',
+      letterSpacing: -0.2,
       marginBottom: 4,
+      textShadowColor: 'rgba(0,0,0,0.8)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 4,
     },
     featuredMeta: {
       fontSize: 11,
-      color: 'rgba(255,255,255,0.8)',
-      marginBottom: 4,
+      color: 'rgba(255,255,255,0.85)',
+      marginBottom: 6,
+      fontWeight: '500',
     },
     featuredPrice: {
       fontSize: 13,
-      fontWeight: '700',
-      color: colors.primary,
+      fontWeight: '800',
+      color: polished.goldMid,
+      letterSpacing: 0.2,
     },
 
-    // ── Regular Event Cards ──
+    // ── Regular Event Cards — polished ──
     eventCard: {
       backgroundColor: colors.cardBackground,
-      borderRadius: 12,
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: colors.border,
-      marginBottom: 16,
+      marginBottom: 14,
       overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOpacity: 0.25,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
     },
     imageContainer: {
       position: 'relative',
@@ -704,32 +806,43 @@ const getStyles = (colors: any) =>
       fontSize: 52,
       fontFamily: '',
     },
+    // Gold gradient category badge — replaces flat primary fill
     categoryBadge: {
       position: 'absolute',
       top: 12,
       left: 12,
-      backgroundColor: colors.primary,
+      backgroundColor: polished.goldMid,
       paddingHorizontal: 10,
       paddingVertical: 4,
       borderRadius: 6,
+      borderWidth: 1,
+      borderColor: '#FEF08A',
+      shadowColor: polished.goldDeep,
+      shadowOpacity: 0.55,
+      shadowRadius: 8,
+      elevation: 3,
     },
     categoryBadgeText: {
-      fontSize: 11,
-      fontWeight: 'bold',
-      color: colors.background,
+      fontSize: 10,
+      fontWeight: '900',
+      color: '#18181B',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
     },
     sourceBadge: {
       position: 'absolute',
       top: 12,
       right: 12,
       backgroundColor: 'rgba(0,0,0,0.6)',
-      paddingHorizontal: 8,
+      paddingHorizontal: 9,
       paddingVertical: 4,
       borderRadius: 6,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.10)',
     },
     sourceBadgeText: {
       fontSize: 10,
-      fontWeight: '600',
+      fontWeight: '700',
       color: '#fff',
     },
     eventContent: { padding: 16 },
@@ -769,45 +882,58 @@ const getStyles = (colors: any) =>
     },
     priceLabel: {
       fontSize: 15,
-      fontWeight: 'bold',
-      color: colors.primary,
+      fontWeight: '900',
+      color: polished.goldMid,
+      letterSpacing: -0.2,
     },
     rsvpButton: {
-      paddingVertical: 10,
+      paddingVertical: 9,
       paddingHorizontal: 14,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.primary,
+      borderRadius: 999,
+      borderWidth: 1.5,
+      borderColor: polished.goldDeep,
     },
     rsvpButtonActive: {
-      backgroundColor: colors.primary,
+      backgroundColor: polished.goldMid,
+      borderColor: polished.goldMid,
+      shadowColor: polished.goldDeep,
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      elevation: 4,
     },
     rsvpButtonText: {
       fontSize: 12,
-      fontWeight: 'bold',
-      color: colors.primary,
+      fontWeight: '800',
+      color: polished.goldMid,
     },
     rsvpButtonTextActive: {
-      color: colors.background,
+      color: '#18181B',
     },
     ticketButton: {
-      backgroundColor: colors.primary,
-      paddingVertical: 10,
+      backgroundColor: polished.goldMid,
+      paddingVertical: 9,
       paddingHorizontal: 18,
-      borderRadius: 8,
+      borderRadius: 999,
+      shadowColor: polished.goldDeep,
+      shadowOpacity: 0.45,
+      shadowRadius: 10,
+      elevation: 4,
     },
     ticketButtonSecondary: {
       backgroundColor: 'transparent',
-      borderWidth: 1,
-      borderColor: colors.primary,
+      borderWidth: 1.5,
+      borderColor: polished.goldDeep,
+      shadowOpacity: 0,
+      elevation: 0,
     },
     ticketButtonText: {
-      fontSize: 13,
-      fontWeight: 'bold',
-      color: colors.background,
+      fontSize: 12,
+      fontWeight: '800',
+      color: '#18181B',
+      letterSpacing: 0.3,
     },
     ticketButtonTextSecondary: {
-      color: colors.primary,
+      color: polished.goldMid,
     },
 
     // ── Empty state ──

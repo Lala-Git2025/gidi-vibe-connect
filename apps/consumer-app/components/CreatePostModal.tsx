@@ -13,6 +13,7 @@ import {
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../config/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -144,18 +145,24 @@ export const CreatePostModal = ({
         const fileName = `${user.id}/${Date.now()}.${fileExt}`;
         const mimeType = fileExt === 'jpg' ? 'image/jpeg' : `image/${fileExt}`;
 
-        const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.onload = () => resolve(xhr.response as ArrayBuffer);
-          xhr.onerror = () => reject(new Error('Failed to read image file'));
-          xhr.responseType = 'arraybuffer';
-          xhr.open('GET', selectedImage!, true);
-          xhr.send(null);
+        // Read the image as base64 via expo-file-system and decode to bytes.
+        // XHR with responseType:'arraybuffer' returns 0-byte buffers for the
+        // photo-picker `content://` URIs that Android hands us, so we can't
+        // use that path. The base64 round-trip is the pattern StorySection
+        // already uses for the same reason.
+        const base64 = await FileSystem.readAsStringAsync(selectedImage!, {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          encoding: 'base64' as any,
         });
+        const binaryStr = atob(base64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
 
         const { error: uploadError } = await supabase.storage
           .from('social-media')
-          .upload(fileName, arrayBuffer, { contentType: mimeType, upsert: false });
+          .upload(fileName, bytes, { contentType: mimeType, upsert: false });
 
         if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 

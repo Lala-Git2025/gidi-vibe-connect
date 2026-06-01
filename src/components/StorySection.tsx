@@ -1,3 +1,5 @@
+import { Plus } from "lucide-react";
+
 interface Story {
   id: string;
   user: string;
@@ -14,44 +16,157 @@ const STORIES: Story[] = [
   { id: 's6', user: 'Linda', image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200', isCreator: false },
 ];
 
+const ringFor = (kind: 'creator' | 'peer') =>
+  kind === 'creator'
+    ? 'conic-gradient(from 0deg, #FDE047, #EAB308, #F97316, #DB2777, #EAB308, #FDE047)'
+    : 'conic-gradient(from 0deg, #A855F7, #DB2777, #F97316, #A855F7)';
+
 export const StorySection = () => {
   return (
-    <div className="bg-black py-4">
-      <div className="flex gap-4 overflow-x-auto px-4 scrollbar-hide">
-        {/* Add Your Story */}
-        <button className="flex flex-col items-center gap-2 min-w-[64px]">
-          <div className="w-16 h-16 rounded-full border-2 border-dashed border-zinc-800 bg-zinc-900 flex items-center justify-center">
-            <span className="text-2xl">➕</span>
+    <div style={{ padding: '12px 0 18px' }}>
+      <div className="gc2-rail" style={{ display: 'flex', gap: 14, padding: '0 18px' }}>
+        {/* Add My Vibe */}
+        <button
+          className="gc2-tap"
+          style={{
+            background: 'transparent',
+            border: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 6,
+            minWidth: 72,
+            cursor: 'pointer',
+          }}
+        >
+          <div
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: '50%',
+              border: '2px dashed #3F3F46',
+              boxSizing: 'border-box',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: '50%',
+                background: '#18181B',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FACC15',
+              }}
+            >
+              <Plus className="w-6 h-6" />
+            </div>
           </div>
-          <span className="text-xs font-medium text-white max-w-[64px] text-center truncate">My Vibe</span>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#fff',
+              maxWidth: 72,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            My Vibe
+          </span>
         </button>
 
-        {/* Stories */}
-        {STORIES.map((story) => (
-          <button key={story.id} className="flex flex-col items-center gap-2 min-w-[64px]">
-            <div
-              className={`w-16 h-16 rounded-full p-0.5 relative ${
-                story.isCreator ? 'bg-yellow-500' : 'bg-purple-500'
-              }`}
+        {STORIES.map((story) => {
+          const kind: 'creator' | 'peer' = story.isCreator ? 'creator' : 'peer';
+          return (
+            <button
+              key={story.id}
+              className="gc2-tap"
+              style={{
+                background: 'transparent',
+                border: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 6,
+                minWidth: 72,
+                cursor: 'pointer',
+              }}
             >
-              <div className="w-full h-full rounded-full border-2 border-black overflow-hidden">
-                <img
-                  src={story.image}
-                  alt={story.user}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              {story.isCreator && (
-                <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-yellow-500 border-2 border-black flex items-center justify-center">
-                  <span className="text-[10px]">⭐</span>
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: '50%',
+                  background: ringFor(kind),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  animation: 'gc2RingRotate 6s linear infinite',
+                  position: 'relative',
+                }}
+              >
+                <div
+                  style={{
+                    width: 60,
+                    height: 60,
+                    borderRadius: '50%',
+                    border: '3px solid #000',
+                    overflow: 'hidden',
+                    animation: 'gc2RingRotate 6s linear infinite reverse',
+                  }}
+                >
+                  <img
+                    src={story.image}
+                    alt={story.user}
+                    loading="lazy"
+                    decoding="async"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
                 </div>
-              )}
-            </div>
-            <span className="text-xs font-medium text-white max-w-[64px] text-center truncate">
-              {story.user}
-            </span>
-          </button>
-        ))}
+                {story.isCreator && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: -2,
+                      right: -2,
+                      width: 22,
+                      height: 22,
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #FDE047, #EAB308)',
+                      border: '3px solid #000',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 0 10px rgba(234,179,8,0.8)',
+                      fontSize: 10,
+                    }}
+                  >
+                    ⭐
+                  </div>
+                )}
+              </div>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: '#fff',
+                  maxWidth: 72,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {story.user}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

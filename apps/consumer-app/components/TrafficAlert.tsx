@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { useTheme } from '../contexts/ThemeContext';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Animated, Easing } from 'react-native';
+import { useTheme, polished } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../config/supabase';
 
@@ -114,9 +114,47 @@ const getSeverityIcon = (severity: string): keyof typeof Ionicons.glyphMap => {
   }
 };
 
+// Polished severity styling — three visual tiers (heavy / slow / free).
+const POLISHED_SEV: Record<
+  TrafficData['severity'],
+  { tint: string; color: string; dot: string; label: string }
+> = {
+  critical: { tint: 'rgba(239,68,68,0.18)',  color: '#FCA5A5', dot: '#EF4444', label: 'Heavy' },
+  heavy:    { tint: 'rgba(239,68,68,0.18)',  color: '#FCA5A5', dot: '#EF4444', label: 'Heavy' },
+  moderate: { tint: 'rgba(249,115,22,0.18)', color: '#FB923C', dot: '#F97316', label: 'Slow'  },
+  light:    { tint: 'rgba(16,185,129,0.18)', color: '#34D399', dot: '#10B981', label: 'Free'  },
+};
+
+// Shared blink animation — drives the severity-dot pulse on every card.
+const usePulse = () => {
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.4,
+          duration: 600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  return pulse;
+};
+
 export const TrafficAlert = () => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
+  const pulse = usePulse();
   const [trafficAlerts, setTrafficAlerts] = useState<TrafficData[]>([]);
   const [loading, setLoading]             = useState(true);
   const [lastUpdated, setLastUpdated]     = useState<Date | null>(null);
@@ -171,6 +209,7 @@ export const TrafficAlert = () => {
 
   if (trafficAlerts.length === 0) return null;
 
+  // Live indicator (matches the polished VibeCheck "Live · ..." pattern).
   const updatedText = lastUpdated
     ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
     : 'Live';
@@ -178,87 +217,132 @@ export const TrafficAlert = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Live Traffic Updates</Text>
+        <Text style={styles.headerTitle}>
+          Lagos <Text style={styles.headerAccent}>Traffic</Text> Now
+        </Text>
         <View style={styles.liveIndicator}>
-          <View style={styles.liveDot} />
+          <Animated.View style={[styles.liveDot, { opacity: pulse }]} />
           <Text style={styles.liveText}>{updatedText}</Text>
         </View>
       </View>
 
+      {/* Polished horizontal rail — shows every route, scrolls sideways. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.railContent}
       >
-        {trafficAlerts.map((traffic) => (
-          <View key={traffic.id} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={[styles.indicator, { backgroundColor: getSeverityColor(traffic.severity, colors) }]}>
-                <Ionicons name={getSeverityIcon(traffic.severity)} size={16} color="#fff" />
+        {trafficAlerts.map((traffic) => {
+          const s = POLISHED_SEV[traffic.severity];
+          return (
+            <TouchableOpacity key={traffic.id} style={styles.card} activeOpacity={0.85}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.tile, { backgroundColor: s.tint }]}>
+                  <Ionicons name={getSeverityIcon(traffic.severity)} size={18} color={s.color} />
+                  <Animated.View
+                    style={[
+                      styles.tileDot,
+                      { backgroundColor: s.dot, shadowColor: s.dot, opacity: pulse },
+                    ]}
+                  />
+                </View>
+                <View style={styles.areaPill}>
+                  <Text style={styles.areaPillText}>{traffic.area}</Text>
+                </View>
               </View>
-              <Text style={styles.areaTag}>{traffic.area}</Text>
-            </View>
-
-            <View style={styles.content}>
-              <Text style={styles.location} numberOfLines={1}>
-                {traffic.location}
-              </Text>
+              <Text style={styles.location} numberOfLines={1}>{traffic.location}</Text>
               <Text style={styles.description} numberOfLines={2}>
                 {traffic.description}
               </Text>
-              <View style={[styles.severityBadge, { backgroundColor: getSeverityColor(traffic.severity, colors) + '20' }]}>
-                <Text style={[styles.severityText, { color: getSeverityColor(traffic.severity, colors) }]}>
-                  {traffic.severity.toUpperCase()}
-                </Text>
+              <View style={[styles.severityBadge, { backgroundColor: s.tint }]}>
+                <Text style={[styles.severityLabel, { color: s.color }]}>{s.label}</Text>
               </View>
-            </View>
-          </View>
-        ))}
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
     </View>
   );
 };
 
 const getStyles = (colors: any) => StyleSheet.create({
-  container: { marginBottom: 20 },
+  container: { paddingBottom: 24 },
   loadingContainer: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 16, marginBottom: 20,
+    paddingHorizontal: 18, marginBottom: 20,
   },
   loadingText: { fontSize: 13, color: colors.textSecondary },
   header: {
     flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 16, marginBottom: 12,
+    alignItems: 'center', marginBottom: 14,
+    paddingHorizontal: 18,
   },
-  headerTitle: { fontSize: 16, fontWeight: 'bold', color: colors.text },
-  scrollContent: { paddingHorizontal: 16, gap: 12 },
+  headerTitle: {
+    fontSize: 22, fontWeight: '900', color: colors.text, letterSpacing: -0.3,
+  },
+  headerAccent: { color: polished.goldMid },
+  liveIndicator: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  liveDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: '#22C55E',
+    shadowColor: '#22C55E', shadowOpacity: 0.9, shadowRadius: 4,
+    elevation: 3,
+  },
+  liveText: {
+    fontSize: 11, fontWeight: '700',
+    color: colors.textSecondary, letterSpacing: 0.3,
+  },
+  // Horizontal rail
+  railContent: {
+    paddingHorizontal: 18, gap: 12,
+  },
   card: {
-    width: 200, backgroundColor: colors.cardBackground,
-    borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 12,
+    width: 220,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: 16, padding: 14,
   },
   cardHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 10,
+    alignItems: 'center', marginBottom: 12,
   },
-  indicator: {
-    width: 32, height: 32, borderRadius: 8,
+  tile: {
+    width: 38, height: 38, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
   },
-  emoji: { fontSize: 16, fontFamily: '' },
-  areaTag: {
-    fontSize: 10, fontWeight: 'bold', color: colors.primary,
-    backgroundColor: 'rgba(234, 179, 8, 0.15)',
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
+  tileDot: {
+    position: 'absolute', top: -3, right: -3,
+    width: 10, height: 10, borderRadius: 5,
+    shadowOpacity: 1, shadowRadius: 6,
+    elevation: 4,
   },
-  content: { gap: 6 },
-  location: { fontSize: 14, fontWeight: 'bold', color: colors.text },
-  description: { fontSize: 12, color: colors.textSecondary, lineHeight: 16 },
+  areaPill: {
+    paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(234,179,8,0.18)',
+  },
+  areaPillText: {
+    fontSize: 10, fontWeight: '800',
+    color: polished.goldMid,
+    letterSpacing: 0.5, textTransform: 'uppercase',
+  },
+  location: {
+    fontSize: 14, fontWeight: '800', color: colors.text,
+  },
+  description: {
+    fontSize: 12, color: colors.textSecondary,
+    marginTop: 4, lineHeight: 16,
+  },
   severityBadge: {
-    alignSelf: 'flex-start', paddingHorizontal: 8,
-    paddingVertical: 4, borderRadius: 6, marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: 6, marginTop: 10,
   },
-  severityText: { fontSize: 9, fontWeight: 'bold', letterSpacing: 0.5 },
-  liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
-  liveText: { fontSize: 11, color: colors.textSecondary, fontWeight: '600' },
+  severityLabel: {
+    fontSize: 10, fontWeight: '900',
+    letterSpacing: 1.2, textTransform: 'uppercase',
+  },
 });

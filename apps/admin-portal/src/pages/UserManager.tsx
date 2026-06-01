@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, Users, Shield, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
+import {
+  Search,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  UserPlus,
+  BadgeCheck,
+  MoreHorizontal,
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 
@@ -19,13 +26,22 @@ interface UserRow {
 const ROLE_OPTIONS: UserRole[] = ['Consumer', 'Business Owner', 'Content Creator', 'Admin'];
 const PAGE_SIZE = 25;
 
-const roleBadgeClass: Record<string, string> = {
-  'Consumer': 'bg-muted text-muted-foreground',
-  'Business Owner': 'bg-blue-100 text-blue-700',
-  'Content Creator': 'bg-purple-100 text-purple-700',
-  'Admin': 'bg-amber-100 text-amber-700',
-  'Super Admin': 'bg-red-100 text-red-700',
+const ROLE_PILL: Record<UserRole, string> = {
+  'Super Admin':     'ap-pill-super',
+  'Admin':           'ap-pill-admin',
+  'Business Owner':  'ap-pill-promo',
+  'Content Creator': 'ap-pill-info',
+  'Consumer':        'ap-pill-live',
 };
+
+const ROLE_FILTERS: Array<{ label: string; value: string }> = [
+  { label: 'All',             value: 'all' },
+  { label: 'Consumer',        value: 'Consumer' },
+  { label: 'Content Creator', value: 'Content Creator' },
+  { label: 'Business Owner',  value: 'Business Owner' },
+  { label: 'Admin',           value: 'Admin' },
+  { label: 'Super Admin',     value: 'Super Admin' },
+];
 
 export default function UserManager() {
   const { profile: currentProfile } = useAdminAuth();
@@ -36,161 +52,320 @@ export default function UserManager() {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [filterCounts, setFilterCounts] = useState<Record<string, number>>({});
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
-
     let query = supabase
       .from('profiles')
       .select('id, user_id, full_name, username, role, created_at', { count: 'exact' });
-
-    if (roleFilter !== 'all') {
-      query = query.eq('role', roleFilter);
-    }
-
+    if (roleFilter !== 'all') query = query.eq('role', roleFilter);
     if (search) {
       query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%`);
     }
-
     const { data, count } = await query
       .order('created_at', { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
     setUsers((data as UserRow[]) ?? []);
     setTotalCount(count ?? 0);
     setLoading(false);
   }, [page, search, roleFilter]);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
-  useEffect(() => { setPage(0); }, [search, roleFilter]);
+  const fetchFilterCounts = useCallback(async () => {
+    const { count: total } = await supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true });
+    const counts: Record<string, number> = { all: total ?? 0 };
+    await Promise.all(
+      ['Consumer', 'Content Creator', 'Business Owner', 'Admin', 'Super Admin'].map(async (r) => {
+        const { count } = await supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('role', r);
+        counts[r] = count ?? 0;
+      }),
+    );
+    setFilterCounts(counts);
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+  useEffect(() => {
+    fetchFilterCounts();
+  }, [fetchFilterCounts]);
+  useEffect(() => {
+    setPage(0);
+  }, [search, roleFilter]);
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     setSavingId(userId);
     await supabase.from('profiles').update({ role: newRole }).eq('user_id', userId);
-    setUsers(prev => prev.map(u => u.user_id === userId ? { ...u, role: newRole } : u));
+    setUsers((prev) =>
+      prev.map((u) => (u.user_id === userId ? { ...u, role: newRole } : u)),
+    );
+    fetchFilterCounts();
     setSavingId(null);
   };
 
-  // Super Admins can only be changed by other Super Admins
-  const canEditRole = (user: UserRow) => {
-    if (user.role === 'Super Admin') return false;
-    return true;
-  };
+  const canEditRole = (user: UserRow) =>
+    user.role !== 'Super Admin' && user.user_id !== currentProfile?.user_id;
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          marginBottom: 22,
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">User Manager</h1>
-          <p className="text-muted-foreground mt-1">View and manage user roles</p>
+          <div className="ap-page-eyebrow">
+            User manager · {(filterCounts.all ?? 0).toLocaleString()} total
+          </div>
+          <h1 className="ap-page-title">Users</h1>
+          <p className="ap-page-sub">
+            Search, filter by role, inline-edit role + status. Server-side pagination, 25 per
+            page.
+          </p>
         </div>
-        <div className="text-sm text-muted-foreground">{totalCount} total users</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="ap-btn ap-btn-secondary">
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
+          <button className="ap-btn ap-btn-primary">
+            <UserPlus className="h-3.5 w-3.5" />
+            Invite admin
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      {/* Filter chips */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        {ROLE_FILTERS.map((f) => {
+          const active = f.value === roleFilter;
+          const count =
+            f.value === 'all' ? filterCounts.all ?? 0 : filterCounts[f.value] ?? 0;
+          return (
+            <button
+              key={f.value}
+              onClick={() => setRoleFilter(f.value)}
+              className={'ap-btn ' + (active ? 'ap-btn-primary' : 'ap-btn-secondary')}
+              style={{ height: 30, padding: '0 12px', fontSize: 11, gap: 8 }}
+            >
+              {f.label}
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '1px 6px',
+                  background: active ? 'rgba(255,255,255,0.2)' : '#F3F4F6',
+                  color: active ? '#fff' : '#52525B',
+                  borderRadius: 4,
+                  fontWeight: 700,
+                }}
+              >
+                {count.toLocaleString()}
+              </span>
+            </button>
+          );
+        })}
+        <div style={{ flex: 1 }} />
+        <div className="ap-search" style={{ width: 280 }}>
+          <Search className="h-3.5 w-3.5 text-muted-foreground" />
           <input
+            placeholder="Search users by name or handle…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or username..."
-            className="w-full pl-9 pr-4 py-2 border rounded-md text-sm bg-background"
           />
         </div>
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="border rounded-md px-3 py-2 text-sm bg-background"
-        >
-          <option value="all">All roles</option>
-          {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-          <option value="Super Admin">Super Admin</option>
-        </select>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Users ({totalCount})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-          ) : users.length === 0 ? (
-            <p className="text-center py-12 text-muted-foreground">No users found</p>
-          ) : (
-            <>
-              <div className="divide-y">
-                {users.map((user) => (
-                  <div key={user.id} className="py-4 flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium truncate">{user.full_name || 'Unnamed'}</p>
-                        {(user.role === 'Admin' || user.role === 'Super Admin') && (
-                          <Shield className={`h-3.5 w-3.5 flex-shrink-0 ${user.role === 'Super Admin' ? 'text-red-500' : 'text-amber-500'}`} />
-                        )}
-                        {user.user_id === currentProfile?.user_id && (
-                          <span className="text-xs text-muted-foreground">(you)</span>
-                        )}
+      {/* Table */}
+      <div className="ap-card" style={{ overflow: 'hidden' }}>
+        {loading ? (
+          <div style={{ padding: 48, textAlign: 'center' }}>
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mx-auto" />
+          </div>
+        ) : users.length === 0 ? (
+          <div style={{ padding: 48, textAlign: 'center', color: '#6B7280' }}>
+            No users found
+          </div>
+        ) : (
+          <table className="ap-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Joined</th>
+                <th>Change role</th>
+                <th style={{ width: 40 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => {
+                const fullName = u.full_name || 'Unnamed';
+                const initials = fullName
+                  .split(' ')
+                  .map((w) => w[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase();
+                const isCurrent = u.user_id === currentProfile?.user_id;
+                return (
+                  <tr key={u.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: '50%',
+                            background:
+                              u.role === 'Super Admin'
+                                ? 'linear-gradient(135deg,#A855F7,#7C3AED)'
+                                : u.role === 'Admin'
+                                ? 'linear-gradient(135deg,#FB923C,#EA580C)'
+                                : 'linear-gradient(135deg,#FB923C,#EAB308)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#fff',
+                            fontWeight: 800,
+                            fontSize: 12,
+                          }}
+                        >
+                          {initials}
+                        </div>
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              color: '#18181B',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 5,
+                            }}
+                          >
+                            {fullName}
+                            {(u.role === 'Admin' || u.role === 'Super Admin') && (
+                              <BadgeCheck
+                                className="h-3 w-3"
+                                color={u.role === 'Super Admin' ? '#A855F7' : '#FB923C'}
+                              />
+                            )}
+                            {isCurrent && (
+                              <span style={{ fontSize: 10, color: '#6B7280' }}>(you)</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>
+                            @{u.username || 'no-username'}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground">@{user.username || '(no username)'}</p>
-                      <p className="text-xs text-muted-foreground">Joined {new Date(user.created_at).toLocaleDateString()}</p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleBadgeClass[user.role] || 'bg-muted text-muted-foreground'}`}>
-                        {user.role}
-                      </span>
+                    </td>
+                    <td>
+                      <span className={'ap-pill ' + ROLE_PILL[u.role]}>{u.role}</span>
+                    </td>
+                    <td style={{ color: '#52525B', fontSize: 12 }}>
+                      {new Date(u.created_at).toLocaleDateString()}
+                    </td>
+                    <td>
                       <select
-                        value={user.role}
-                        onChange={(e) => handleRoleChange(user.user_id, e.target.value as UserRole)}
-                        disabled={savingId === user.user_id || !canEditRole(user)}
-                        className="border rounded-md px-2 py-1 text-xs bg-background"
+                        value={u.role}
+                        onChange={(e) => handleRoleChange(u.user_id, e.target.value as UserRole)}
+                        disabled={savingId === u.user_id || !canEditRole(u)}
+                        style={{
+                          border: '1px solid #E5E7EB',
+                          borderRadius: 6,
+                          padding: '4px 8px',
+                          fontSize: 11,
+                          background: '#fff',
+                        }}
                       >
-                        {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                        {ROLE_OPTIONS.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                        {u.role === 'Super Admin' && (
+                          <option value="Super Admin">Super Admin</option>
+                        )}
                       </select>
-                      {savingId === user.user_id && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      {savingId === u.user_id && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground inline ml-2" />
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="ap-btn ap-btn-ghost ap-btn-icon">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-4 border-t mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setPage(p => p - 1)}
-                      disabled={page === 0}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                      Page {page + 1} of {totalPages}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setPage(p => p + 1)}
-                      disabled={page >= totalPages - 1}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: 14,
+          }}
+        >
+          <div style={{ fontSize: 12, color: '#6B7280' }}>
+            Showing {page * PAGE_SIZE + 1}–
+            {Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount} · page {page + 1} /{' '}
+            {totalPages}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className="ap-btn ap-btn-secondary ap-btn-icon"
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page === 0}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <span
+              style={{
+                fontSize: 12,
+                color: '#6B7280',
+                alignSelf: 'center',
+                padding: '0 10px',
+              }}
+            >
+              Page {page + 1}
+            </span>
+            <button
+              className="ap-btn ap-btn-secondary ap-btn-icon"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page >= totalPages - 1}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

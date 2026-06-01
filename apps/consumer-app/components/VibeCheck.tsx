@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Animated, Modal } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Animated, Easing, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../config/supabase';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, polished } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
 interface AreaVibe {
@@ -77,6 +78,27 @@ export const VibeCheck = () => {
     new Animated.Value(1),
   ]);
   const styles = getStyles(colors);
+
+  // Polished LIVE dot pulse + breathing gold border around the hero list.
+  const livePulse = useRef(new Animated.Value(1)).current;
+  const breathe = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const liveLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(livePulse, { toValue: 0.4, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(livePulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    const breatheLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(breathe, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+      ]),
+    );
+    liveLoop.start();
+    breatheLoop.start();
+    return () => { liveLoop.stop(); breatheLoop.stop(); };
+  }, [livePulse, breathe]);
 
   useEffect(() => {
     fetchAreaVibes();
@@ -254,11 +276,13 @@ export const VibeCheck = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header — polished: "Lagos *Vibe* Check" with gold accent + pulsing live pip */}
       <View style={styles.header}>
         <View>
           <View style={styles.titleRow}>
-            <Text style={styles.title}>Lagos Vibe Check</Text>
+            <Text style={styles.title}>
+              Lagos <Text style={styles.titleAccent}>Vibe</Text> Check
+            </Text>
             <TouchableOpacity onPress={() => setShowInfoModal(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="information-circle-outline" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -268,7 +292,7 @@ export const VibeCheck = () => {
           </Text>
         </View>
         <View style={styles.liveBadge}>
-          <View style={styles.liveDot} />
+          <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
           <Text style={styles.liveText}>LIVE</Text>
         </View>
       </View>
@@ -301,7 +325,7 @@ export const VibeCheck = () => {
         ))}
       </View>
 
-      {/* Areas List */}
+      {/* Areas List — breathing gold-tinted shadow gives the hero card feel */}
       {displayedAreas.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="search-outline" size={48} color={colors.textSecondary} style={{ opacity: 0.5, marginBottom: 12 }} />
@@ -310,7 +334,21 @@ export const VibeCheck = () => {
           </Text>
         </View>
       ) : (
-        <Animated.View style={[styles.areasList, { opacity: fadeAnim }]}>
+        // Split-driver structure: the OUTER view animates JS-driver shadow
+        // (shadowOpacity / shadowRadius can't run on the native driver). The
+        // INNER view runs the native-driver fade. Mixing them on a single
+        // <Animated.View> errors with "moved to native earlier" because RN
+        // locks an animated node to one driver on first use.
+        <Animated.View
+          style={[
+            styles.areasList,
+            {
+              shadowOpacity: breathe.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.75] }),
+              shadowRadius: breathe.interpolate({ inputRange: [0, 1], outputRange: [16, 28] }),
+            },
+          ]}
+        >
+        <Animated.View style={{ opacity: fadeAnim, gap: 12 }}>
           {displayedAreas.map((area, index) => {
             const pulseAnim = pulseAnims[index];
             const glowOpacity = pulseAnim.interpolate({
@@ -447,6 +485,7 @@ export const VibeCheck = () => {
             );
           })}
         </Animated.View>
+        </Animated.View>
       )}
 
       {/* Rotation Indicator */}
@@ -544,36 +583,45 @@ const getStyles = (colors: any) => StyleSheet.create({
     marginBottom: 4,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '900',
     color: colors.text,
+    letterSpacing: -0.3,
+  },
+  titleAccent: {
+    color: polished.goldMid,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
+    fontWeight: '500',
   },
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(234, 179, 8, 0.15)',
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
     gap: 6,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: 'rgba(34,197,94,0.35)',
+    backgroundColor: 'rgba(34,197,94,0.10)',
   },
   liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#22C55E',
+    shadowColor: '#22C55E',
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
+    elevation: 3,
   },
   liveText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: colors.primary,
-    letterSpacing: 1,
+    fontWeight: '800',
+    color: '#22C55E',
+    letterSpacing: 1.2,
   },
 
   // Filters
@@ -588,15 +636,19 @@ const getStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 7,
+    borderRadius: 999,
     backgroundColor: colors.cardBackground,
     borderWidth: 1,
     borderColor: colors.border,
   },
   filterChipActive: {
-    backgroundColor: 'rgba(234, 179, 8, 0.1)',
-    borderWidth: 2,
+    backgroundColor: 'rgba(234,179,8,0.15)',
+    borderWidth: 1.5,
+    shadowColor: polished.goldDeep,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 3,
   },
   filterIcon: {
     fontSize: 14,
@@ -608,12 +660,18 @@ const getStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
   },
 
-  // Areas List
+  // Areas List — polished: gold-tinted border with breathing shadow.
+  // Shadow opacity/radius animated inline via the `breathe` value.
   areasList: {
-    backgroundColor: colors.border,
-    borderRadius: 16,
-    padding: 16,
-    gap: 16,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 18,
+    padding: 14,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(234,179,8,0.25)',
+    shadowColor: polished.goldDeep,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
   },
   areaItemContainer: {
     marginBottom: 4,

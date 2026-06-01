@@ -39,7 +39,7 @@ interface Community {
   is_joined?: boolean;
 }
 
-export type DrawerView = 'feed' | 'community' | 'people';
+export type DrawerView = 'feed' | 'communities' | 'community' | 'people';
 
 interface SocialDrawerProps {
   visible: boolean;
