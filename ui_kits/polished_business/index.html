@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gidi Business V2 — Polished</title>
+<link rel="stylesheet" href="../../colors_and_type.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+
+<script type="text/babel" src="Icon.jsx"></script>
+<script type="text/babel" src="Charts.jsx"></script>
+<script type="text/babel" src="Sidebar.jsx"></script>
+<script type="text/babel" src="TopBar.jsx"></script>
+<script type="text/babel" src="StatCard.jsx"></script>
+<script type="text/babel" src="Dashboard.jsx"></script>
+<script type="text/babel" src="VenuesPage.jsx"></script>
+<script type="text/babel" src="AnalyticsPage.jsx"></script>
+<script type="text/babel" src="EventsPage.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+function Placeholder({ title, blurb, icon }) {
+  return (
+    <div style={{ padding: '28px 32px' }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 className="bp2-page-title">{title}</h1>
+        <p className="bp2-page-sub">{blurb}</p>
+      </div>
+      <div className="bp2-card" style={{
+        padding: 64, textAlign: 'center', color: '#9CA3AF',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+      }}>
+        <div style={{
+          width: 64, height: 64, borderRadius: 16,
+          background: 'rgba(234,179,8,0.1)', color: '#EAB308',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon name={icon} size={32} />
+        </div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: '#3F3F46' }}>Coming up in the kit</div>
+        <div style={{ fontSize: 13, maxWidth: 380 }}>Stubbed for now. The detail screen for this section lives in the real app.</div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = React.useState('dashboard');
+  const body =
+    tab === 'dashboard'    ? <Dashboard /> :
+    tab === 'venues'       ? <VenuesPage /> :
+    tab === 'events'       ? <EventsPage /> :
+    tab === 'analytics'    ? <AnalyticsPage /> :
+    tab === 'offers'       ? <Placeholder title="Offers" blurb="Run time-limited promotions, happy hours, and discounts that appear inside the consumer app." icon="tag" /> :
+    tab === 'audience'     ? <Placeholder title="Audience" blurb="Who's checking in at your venues — demographics, repeat-visit rate, top hours." icon="users" /> :
+    tab === 'subscription' ? <Placeholder title="Subscription" blurb="Free / Premium / Enterprise · upgrade to unlock analytics and offers." icon="credit-card" /> :
+                             <Placeholder title="Settings" blurb="Account, business verification, payouts, and team access." icon="settings" />;
+
+  return (
+    <div className="bp2-shell">
+      <BPSidebar active={tab} onChange={setTab} tier="Premium" />
+      <main className="bp2-main">
+        <BPTopBar />
+        <div style={{ flex: 1, overflowY: 'auto' }}>{body}</div>
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

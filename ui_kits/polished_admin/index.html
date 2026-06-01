@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gidi Admin V2 — Polished</title>
+<link rel="stylesheet" href="../../colors_and_type.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+
+<script type="text/babel" src="Icon.jsx"></script>
+<script type="text/babel" src="Charts.jsx"></script>
+<script type="text/babel" src="Sidebar.jsx"></script>
+<script type="text/babel" src="TopBar.jsx"></script>
+<script type="text/babel" src="Overview.jsx"></script>
+<script type="text/babel" src="VenueManagerPage.jsx"></script>
+<script type="text/babel" src="UserManagerPage.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+function Placeholder({ title, blurb, icon }) {
+  return (
+    <div style={{ padding: '24px 28px' }}>
+      <div style={{ marginBottom: 22 }}>
+        <h1 className="ap-page-title">{title}</h1>
+        <p className="ap-page-sub">{blurb}</p>
+      </div>
+      <div className="ap-card" style={{
+        padding: 64, textAlign: 'center',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+      }}>
+        <div style={{
+          width: 60, height: 60, borderRadius: 14,
+          background: 'rgba(249,115,22,0.12)', color: '#EA580C',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon name={icon} size={28} />
+        </div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: '#3F3F46' }}>Coming up in the kit</div>
+        <div style={{ fontSize: 13, color: '#6B7280', maxWidth: 380 }}>Stubbed for now. Detail screen lives in the real admin portal.</div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = React.useState('overview');
+  const body =
+    tab === 'overview'    ? <OverviewPage /> :
+    tab === 'venues'      ? <VenueManagerPage /> :
+    tab === 'users'       ? <UserManagerPage /> :
+    tab === 'analytics'   ? <Placeholder title="Analytics" blurb="Deep-dive charts: user growth, retention cohorts, top venues by RSVPs, area heatmap, subscription tier distribution." icon="bar-chart-3" /> :
+    tab === 'promotions'  ? <Placeholder title="Promotions tracker" blurb="Active vs expired promotion timeline with countdowns and reach metrics." icon="rocket" /> :
+    tab === 'events'      ? <Placeholder title="Events" blurb="Curate the platform-wide Events feed, feature events, ban no-show organizers." icon="calendar" /> :
+    tab === 'news'        ? <Placeholder title="News feed" blurb="Manage the Gidi News scraper sources and review automated posts." icon="newspaper" /> :
+    tab === 'reports'     ? <Placeholder title="Reports & moderation" blurb="Triage user-flagged content, harassment reports, fake listings." icon="flag" /> :
+    tab === 'communities' ? <Placeholder title="Communities" blurb="Manage seeded communities and moderate user-created groups." icon="messages-square" /> :
+    tab === 'health'      ? <Placeholder title="System health" blurb="Supabase status, edge function uptime, pg_cron jobs, materialized view refresh times." icon="activity" /> :
+    tab === 'audit'       ? <Placeholder title="Audit log" blurb="Every admin action across the platform — searchable, filterable, exportable." icon="shield" /> :
+                            <Placeholder title="Settings" blurb="Platform configuration, role permissions, feature flags." icon="settings" />;
+  return (
+    <div className="ap-shell">
+      <APSidebar active={tab} onChange={setTab} />
+      <main className="ap-main">
+        <APTopBar />
+        <div style={{ flex: 1, overflowY: 'auto' }}>{body}</div>
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

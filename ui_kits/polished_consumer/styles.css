@@ -1,0 +1,173 @@
+/* ============================================================
+   Consumer App V2 — Polished
+   Push the brand harder: bolder type, more gold glow,
+   more Lagos energy. Builds on ../../colors_and_type.css.
+   ============================================================ */
+
+html, body { margin: 0; background: #050505; color: #fff; font-family: var(--gc-font-body); -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+button { font-family: inherit; cursor: pointer; }
+input { font-family: inherit; }
+
+/* The full-screen surface inside a phone frame */
+.gc2-screen {
+  position: relative;
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(234,179,8,0.08), transparent 70%),
+    #000;
+  color: #fff;
+  font-family: var(--gc-font-body);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Horizontal rails hide their scrollbars */
+.gc2-rail { overflow-x: auto; overflow-y: hidden; -ms-overflow-style: none; scrollbar-width: none; }
+.gc2-rail::-webkit-scrollbar { display: none; }
+
+/* ============================================================
+   TYPOGRAPHY — bolder, louder, Lagos-night
+   ============================================================ */
+
+.gc2-wordmark {
+  font-family: var(--gc-font-display);
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #FDE047, #EAB308 70%, #A16207);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 8px rgba(234,179,8,0.45));
+  white-space: nowrap;
+}
+
+.gc2-section-h {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.015em;
+  color: #fff;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  line-height: 1.05;
+}
+.gc2-section-h .accent {
+  background: linear-gradient(180deg, #FDE047, #EAB308);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.gc2-section-h .seeall {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #EAB308;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+.gc2-eyebrow {
+  font-family: var(--gc-font-body);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #FACC15;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.gc2-eyebrow .live-pip {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #FACC15;
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.9);
+  animation: gc2Blink 1.2s ease-in-out infinite;
+}
+
+@keyframes gc2Blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+@keyframes gc2Pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(234,179,8, 0.6), 0 0 18px rgba(234,179,8, 0.5); }
+  60%      { box-shadow: 0 0 0 14px rgba(234,179,8, 0),   0 0 22px rgba(234,179,8, 0.3); }
+}
+@keyframes gc2Breathe {
+  0%, 100% { filter: brightness(1)    drop-shadow(0 0 12px rgba(234,179,8, 0.4)); }
+  50%      { filter: brightness(1.12) drop-shadow(0 0 22px rgba(234,179,8, 0.7)); }
+}
+@keyframes gc2RingRotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes gc2Shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ============================================================
+   CARDS / SURFACES
+   ============================================================ */
+
+.gc2-card {
+  background: linear-gradient(180deg, #1A1A1F 0%, #0F0F12 100%);
+  border: 1px solid #27272A;
+  border-radius: 18px;
+}
+.gc2-card-elev {
+  background: linear-gradient(180deg, #1A1A1F 0%, #0F0F12 100%);
+  border: 1px solid rgba(234,179,8,0.16);
+  border-radius: 18px;
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.6),
+    0 0 0 1px rgba(234,179,8,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+/* Press feedback */
+.gc2-tap { transition: transform 150ms cubic-bezier(0.4,0,0.2,1); }
+.gc2-tap:active { transform: scale(0.96); }
+
+/* Glass pill — used everywhere there's a label on imagery */
+.gc2-glass-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+/* Gold callout pill — for "live", "promoted", "hot" */
+.gc2-gold-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  background: linear-gradient(180deg, #FDE047, #EAB308);
+  color: #18181B;
+  font-weight: 800; font-size: 11px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  box-shadow: 0 0 12px rgba(234,179,8, 0.55);
+  border: 1.5px solid #FEF08A;
+}
+
+/* Stat number — large gold gradient text */
+.gc2-stat-num {
+  font-family: var(--gc-font-display);
+  font-weight: 900;
+  font-size: 28px;
+  line-height: 1;
+  background: linear-gradient(180deg, #FDE047, #FACC15, #EAB308);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

@@ -1,0 +1,292 @@
+/* ============================================================
+   Business Portal V2 — Polished
+   Light surface, charcoal sidebar, more Lagos energy.
+   Builds on ../../colors_and_type.css.
+   ============================================================ */
+
+html, body {
+  margin: 0;
+  background: #F7F6F2;     /* warm off-white — gives gold something to live on */
+  color: #18181B;
+  font-family: var(--gc-font-body);
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+button, input, select, textarea { font-family: inherit; }
+a { color: inherit; text-decoration: none; }
+
+/* ============================================================
+   SHELL
+   ============================================================ */
+
+.bp2-shell {
+  display: flex; min-height: 100vh;
+  background:
+    radial-gradient(ellipse 60% 30% at 70% 0%, rgba(234,179,8,0.10), transparent 70%),
+    #F7F6F2;
+}
+.bp2-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* ============================================================
+   SIDEBAR — charcoal w/ gold accents
+   ============================================================ */
+
+.bp2-sidebar {
+  width: 248px; flex-shrink: 0;
+  background: linear-gradient(180deg, #18181B 0%, #0F0F12 100%);
+  border-right: 1px solid #27272A;
+  padding: 0;
+  display: flex; flex-direction: column;
+  color: #E4E4E7;
+}
+
+.bp2-sidebar .brand-row {
+  height: 68px; padding: 0 20px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.bp2-sidebar .brand-logo {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: linear-gradient(135deg, #FDE047, #EAB308);
+  display: flex; align-items: center; justify-content: center;
+  color: #18181B;
+  font-family: var(--gc-font-display); font-weight: 900; font-size: 18px;
+  box-shadow: 0 0 14px rgba(234,179,8,0.45);
+}
+.bp2-sidebar .brand-text { line-height: 1.15; }
+.bp2-sidebar .brand-name {
+  font-family: var(--gc-font-display); font-weight: 800;
+  font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: #FACC15;
+}
+.bp2-sidebar .brand-sub { font-size: 11px; color: #9CA3AF; margin-top: 2px; }
+
+.bp2-nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.bp2-nav-group-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #52525B;
+  padding: 14px 12px 6px;
+}
+.bp2-nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 10px; border: 0;
+  background: transparent; color: #A1A1AA;
+  font-weight: 500; font-size: 13px;
+  text-align: left; cursor: pointer;
+  transition: background 150ms, color 150ms;
+  position: relative;
+}
+.bp2-nav-item:hover { background: rgba(255,255,255,0.04); color: #fff; }
+.bp2-nav-item.active {
+  background: linear-gradient(90deg, rgba(234,179,8,0.16) 0%, rgba(234,179,8,0.04) 100%);
+  color: #FACC15;
+  font-weight: 700;
+}
+.bp2-nav-item.active::before {
+  content: ""; position: absolute; left: 0; top: 7px; bottom: 7px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, #FDE047, #EAB308);
+  box-shadow: 0 0 8px rgba(234,179,8,0.7);
+}
+.bp2-nav-item .pro-badge {
+  margin-left: auto;
+  background: rgba(234,179,8,0.18); color: #FACC15;
+  border: 1px solid rgba(234,179,8,0.35);
+  font-size: 9px; font-weight: 800; padding: 2px 6px;
+  border-radius: 4px; letter-spacing: 0.06em; text-transform: uppercase;
+}
+
+/* tier card pinned to bottom */
+.bp2-tier-card {
+  margin: 10px; padding: 14px;
+  background: linear-gradient(135deg, rgba(234,179,8,0.16), rgba(234,179,8,0.04));
+  border: 1px solid rgba(234,179,8,0.35);
+  border-radius: 12px;
+  position: relative; overflow: hidden;
+}
+.bp2-tier-card::before {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(circle at 100% 0%, rgba(250,204,21,0.25), transparent 60%);
+  pointer-events: none;
+}
+.bp2-tier-card .label { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #FACC15; }
+.bp2-tier-card .tier  { font-family: var(--gc-font-display); font-weight: 900; font-size: 18px; color: #FACC15; margin-top: 2px; }
+.bp2-tier-card .meta  { font-size: 11px; color: #9CA3AF; margin-top: 4px; }
+.bp2-tier-card .upgrade-btn {
+  margin-top: 10px; width: 100%; padding: 8px 0;
+  background: linear-gradient(180deg, #FDE047, #EAB308);
+  color: #18181B; border: 0; border-radius: 8px;
+  font-weight: 800; font-size: 12px; letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(234,179,8,0.4);
+}
+
+/* ============================================================
+   TOP BAR
+   ============================================================ */
+
+.bp2-topbar {
+  height: 68px; padding: 0 28px;
+  background: rgba(247,246,242,0.85); backdrop-filter: blur(10px);
+  border-bottom: 1px solid #E5E7EB;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+  position: sticky; top: 0; z-index: 20;
+}
+.bp2-search {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff; border: 1px solid #E5E7EB;
+  border-radius: 10px; padding: 8px 14px; width: 360px;
+  transition: all 200ms;
+}
+.bp2-search:focus-within {
+  border-color: #FACC15; box-shadow: 0 0 0 3px rgba(250,204,21,0.18);
+}
+.bp2-search input {
+  flex: 1; border: 0; background: transparent; outline: none; font-size: 13px;
+}
+.bp2-search .kbd {
+  font-family: var(--gc-font-mono); font-size: 11px; color: #9CA3AF;
+  border: 1px solid #E5E7EB; border-radius: 4px; padding: 1px 6px;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+
+.bp2-btn {
+  height: 38px; padding: 0 16px; border-radius: 10px;
+  border: 1px solid transparent; cursor: pointer;
+  font-size: 13px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: all 150ms;
+}
+.bp2-btn-primary {
+  background: linear-gradient(180deg, #FDE047, #EAB308);
+  color: #18181B;
+  box-shadow: 0 4px 14px rgba(234,179,8,0.4);
+}
+.bp2-btn-primary:hover { box-shadow: 0 6px 18px rgba(234,179,8,0.55); transform: translateY(-1px); }
+.bp2-btn-secondary {
+  background: #fff; border-color: #E5E7EB; color: #18181B;
+}
+.bp2-btn-secondary:hover { background: #FAFAFA; border-color: #D4D4D8; }
+.bp2-btn-ghost {
+  background: transparent; color: #52525B;
+}
+.bp2-btn-ghost:hover { color: #18181B; background: rgba(0,0,0,0.04); }
+.bp2-btn-icon { width: 38px; padding: 0; justify-content: center; }
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+
+.bp2-card {
+  background: #fff; border: 1px solid #E5E7EB;
+  border-radius: 16px;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.bp2-card-hero {
+  background:
+    linear-gradient(135deg, rgba(234,179,8,0.08) 0%, transparent 50%),
+    #fff;
+  border: 1px solid rgba(234,179,8,0.25);
+  border-radius: 16px;
+  position: relative; overflow: hidden;
+}
+.bp2-card-hero::after {
+  content: ""; position: absolute; top: -40px; right: -40px;
+  width: 180px; height: 180px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(234,179,8,0.18), transparent 70%);
+  pointer-events: none;
+}
+
+/* ============================================================
+   PILLS
+   ============================================================ */
+
+.bp2-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+}
+.bp2-pill-live   { background: #DCFCE7; color: #166534; }
+.bp2-pill-warn   { background: #FEF3C7; color: #92400E; }
+.bp2-pill-info   { background: #DBEAFE; color: #1E40AF; }
+.bp2-pill-draft  { background: #F3F4F6; color: #4B5563; }
+.bp2-pill-review { background: #FEE2E2; color: #991B1B; }
+.bp2-pill-gold   {
+  background: linear-gradient(180deg, #FDE047, #EAB308);
+  color: #18181B;
+  box-shadow: 0 0 10px rgba(234,179,8,0.4);
+}
+
+/* ============================================================
+   TYPE
+   ============================================================ */
+
+.bp2-page-eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #6B7280;
+}
+.bp2-page-title {
+  font-family: var(--gc-font-display); font-weight: 900;
+  font-size: 32px; letter-spacing: -0.01em; color: #18181B;
+  margin: 6px 0 8px;
+}
+.bp2-page-sub { color: #6B7280; font-size: 14px; max-width: 560px; }
+
+.bp2-section-title {
+  font-size: 16px; font-weight: 800; color: #18181B;
+  letter-spacing: -0.005em;
+}
+
+.bp2-stat-num {
+  font-family: var(--gc-font-display); font-weight: 900;
+  font-size: 36px; letter-spacing: -0.02em; line-height: 1;
+  color: #18181B;
+}
+.bp2-stat-num.gold {
+  background: linear-gradient(180deg, #EAB308, #A16207);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.bp2-eyebrow {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #6B7280;
+}
+
+/* ============================================================
+   TABLE
+   ============================================================ */
+
+.bp2-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+}
+.bp2-table th, .bp2-table td {
+  padding: 14px 18px; text-align: left; font-size: 13px;
+}
+.bp2-table th {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase; color: #6B7280;
+  border-bottom: 1px solid #E5E7EB;
+  background: #FAFAFA;
+}
+.bp2-table th:first-child { border-top-left-radius: 16px; }
+.bp2-table th:last-child  { border-top-right-radius: 16px; }
+.bp2-table tbody tr { border-bottom: 1px solid #F3F4F6; cursor: pointer; }
+.bp2-table tbody tr:hover { background: linear-gradient(90deg, rgba(234,179,8,0.04), transparent); }
+.bp2-table tbody tr:last-child { border-bottom: 0; }
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes bp2Pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.6); }
+}
+@keyframes bp2Sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
