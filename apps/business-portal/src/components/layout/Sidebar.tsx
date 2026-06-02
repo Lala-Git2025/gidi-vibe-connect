@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -8,6 +9,7 @@ import {
   Settings,
   CreditCard,
   Users,
+  X,
 } from 'lucide-react';
 import { useBusinessAuth } from '../../contexts/BusinessAuthContext';
 
@@ -49,7 +51,12 @@ const navigation: NavGroup[] = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const location = useLocation();
   const { subscription } = useBusinessAuth();
 
@@ -61,16 +68,39 @@ export function Sidebar() {
     return subscription?.can_view_analytics || subscription?.can_create_offers;
   };
 
+  // Close drawer on route change (mobile)
+  useEffect(() => {
+    if (mobileOpen && onClose) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
   return (
-    <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bp2-sidebar">
-      {/* Brand */}
-      <div className="brand-row">
-        <div className="brand-logo">G</div>
-        <div className="brand-text">
-          <div className="brand-name">Gidi Business</div>
-          <div className="brand-sub">Venue console</div>
+    <>
+      {mobileOpen && (
+        <div
+          className="bp2-mobile-backdrop md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <div
+        className={`bp2-sidebar bp2-sidebar-mobile ${mobileOpen ? 'open' : ''} md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 md:translate-x-0`}
+      >
+        {/* Brand */}
+        <div className="brand-row">
+          <div className="brand-logo">G</div>
+          <div className="brand-text">
+            <div className="brand-name">Gidi Business</div>
+            <div className="brand-sub">Venue console</div>
+          </div>
+          <button
+            className="bp2-sidebar-close md:hidden"
+            onClick={onClose}
+            aria-label="Close menu"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
-      </div>
 
       {/* Navigation */}
       <nav style={{ flex: 1, padding: '14px 10px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
@@ -114,6 +144,7 @@ export function Sidebar() {
           </Link>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

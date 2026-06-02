@@ -289,6 +289,7 @@ export default function Analytics() {
               <div style={{ padding: '18px 20px', borderBottom: '1px solid #F3F4F6' }}>
                 <div className="bp2-section-title">Venue performance</div>
               </div>
+              <div className="bp2-table-wrap">
               <table className="bp2-table">
                 <thead>
                   <tr>
@@ -327,6 +328,7 @@ export default function Analytics() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 

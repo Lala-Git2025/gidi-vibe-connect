@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Navigate, Outlet, Link } from 'react-router-dom';
 import { useBusinessAuth } from '../../contexts/BusinessAuthContext';
 import { Sidebar } from './Sidebar';
@@ -5,6 +6,7 @@ import { Header } from './Header';
 
 export function DashboardLayout() {
   const { user, profile, loading, signOut } = useBusinessAuth();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Show loading spinner while checking auth
   if (loading) {
@@ -69,10 +71,10 @@ export function DashboardLayout() {
 
   return (
     <div className="bp2-shell">
-      <Sidebar />
+      <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="md:pl-64 flex flex-col flex-1">
-        <Header />
-        <main className="flex-1" style={{ padding: '28px 32px' }}>
+        <Header onOpenMenu={() => setMobileNavOpen(true)} />
+        <main className="flex-1 bp2-main">
           <Outlet />
         </main>
       </div>

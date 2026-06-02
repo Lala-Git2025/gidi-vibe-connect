@@ -1,8 +1,12 @@
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, Sparkles, Plus, ChevronDown, LogOut } from 'lucide-react';
+import { Bell, Search, Sparkles, Plus, ChevronDown, LogOut, Menu } from 'lucide-react';
 import { useBusinessAuth } from '../../contexts/BusinessAuthContext';
 
-export function Header() {
+interface HeaderProps {
+  onOpenMenu?: () => void;
+}
+
+export function Header({ onOpenMenu }: HeaderProps) {
   const navigate = useNavigate();
   const { user, profile, signOut } = useBusinessAuth();
 
@@ -21,15 +25,24 @@ export function Header() {
 
   return (
     <header className="bp2-topbar">
-      {/* Search */}
-      <div className="bp2-search">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <input placeholder="Search venues, events, analytics…" />
-        <span className="kbd">⌘K</span>
+      <div className="bp2-topbar-left">
+        <button
+          className="bp2-menu-toggle md:hidden"
+          onClick={onOpenMenu}
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        {/* Search */}
+        <div className="bp2-search">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <input placeholder="Search venues, events…" />
+          <span className="kbd">⌘K</span>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button className="bp2-btn bp2-btn-secondary" style={{ position: 'relative' }}>
+      <div className="bp2-topbar-right">
+        <button className="bp2-btn bp2-btn-secondary hidden lg:inline-flex" style={{ position: 'relative' }}>
           <Sparkles className="h-3.5 w-3.5" color="#EAB308" />
           What's new
           <span
@@ -49,12 +62,12 @@ export function Header() {
 
         <button className="bp2-btn bp2-btn-primary" onClick={() => navigate('/venues/new')}>
           <Plus className="h-3.5 w-3.5" />
-          Add venue
+          <span className="hidden sm:inline">Add venue</span>
         </button>
 
-        <div style={{ width: 1, height: 28, background: '#E5E7EB', margin: '0 6px' }} />
+        <div className="bp2-topbar-divider hidden md:block" />
 
-        <button className="bp2-btn bp2-btn-ghost bp2-btn-icon" style={{ position: 'relative' }} aria-label="Notifications">
+        <button className="bp2-btn bp2-btn-ghost bp2-btn-icon hidden sm:inline-flex" style={{ position: 'relative' }} aria-label="Notifications">
           <Bell className="h-4 w-4" />
           <span
             style={{
@@ -72,16 +85,7 @@ export function Header() {
 
         <button
           onClick={handleSignOut}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '4px 10px 4px 4px',
-            background: '#fff',
-            border: '1px solid #E5E7EB',
-            borderRadius: 999,
-            cursor: 'pointer',
-          }}
+          className="bp2-user-chip"
           title="Sign out"
         >
           <div
@@ -96,16 +100,17 @@ export function Header() {
               color: '#18181B',
               fontWeight: 800,
               fontSize: 12,
+              flexShrink: 0,
             }}
           >
             {initials}
           </div>
-          <div style={{ lineHeight: 1.15, textAlign: 'left' }}>
+          <div className="bp2-user-meta">
             <div style={{ fontSize: 13, fontWeight: 700 }}>{fullName}</div>
             <div style={{ fontSize: 11, color: '#6B7280' }}>{user?.email}</div>
           </div>
-          <LogOut className="h-4 w-4 text-muted-foreground" />
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          <LogOut className="h-4 w-4 text-muted-foreground bp2-user-icon" />
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground bp2-user-icon" />
         </button>
       </div>
     </header>

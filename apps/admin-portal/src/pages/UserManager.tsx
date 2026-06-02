@@ -206,6 +206,7 @@ export default function UserManager() {
             No users found
           </div>
         ) : (
+          <div className="ap-table-wrap">
           <table className="ap-table">
             <thead>
               <tr>
@@ -320,6 +321,7 @@ export default function UserManager() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

@@ -176,6 +176,7 @@ export default function Venues() {
             )}
           </div>
         ) : (
+          <div className="bp2-table-wrap">
           <table className="bp2-table">
             <thead>
               <tr>
@@ -275,6 +276,7 @@ export default function Venues() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

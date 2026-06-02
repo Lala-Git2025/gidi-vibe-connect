@@ -238,6 +238,7 @@ export default function VenueManager() {
             No venues found
           </div>
         ) : (
+          <div className="ap-table-wrap">
           <table className="ap-table">
             <thead>
               <tr>
@@ -381,6 +382,7 @@ export default function VenueManager() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

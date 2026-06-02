@@ -1,15 +1,26 @@
-import { Bell, HelpCircle, Search, Rocket, Zap } from 'lucide-react';
+import { Bell, HelpCircle, Search, Rocket, Zap, Menu } from 'lucide-react';
 
-export function AdminHeader() {
+interface AdminHeaderProps {
+  onOpenMenu?: () => void;
+}
+
+export function AdminHeader({ onOpenMenu }: AdminHeaderProps) {
   return (
     <header className="ap-topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div className="ap-topbar-left">
+        <button
+          className="ap-menu-toggle md:hidden"
+          onClick={onOpenMenu}
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         <div className="ap-search">
           <Search className="h-4 w-4 text-muted-foreground" />
-          <input placeholder="Search users, venues, events, audit log…" />
+          <input placeholder="Search users, venues, events…" />
           <span className="kbd">⌘K</span>
         </div>
-        <span className="ap-env-pill">
+        <span className="ap-env-pill hidden lg:inline-flex">
           <span
             style={{
               width: 6,
@@ -24,10 +35,10 @@ export function AdminHeader() {
         </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button className="ap-btn ap-btn-secondary">
+      <div className="ap-topbar-right">
+        <button className="ap-btn ap-btn-secondary hidden sm:inline-flex">
           <Bell className="h-3.5 w-3.5" />
-          3 reports
+          <span className="hidden md:inline">3 reports</span>
           <span
             style={{
               background: '#EF4444',
@@ -43,15 +54,15 @@ export function AdminHeader() {
         </button>
         <button className="ap-btn ap-btn-primary">
           <Rocket className="h-3.5 w-3.5" />
-          Promote venue
+          <span className="hidden sm:inline">Promote venue</span>
         </button>
 
-        <div style={{ width: 1, height: 28, background: '#E4E4E7', margin: '0 4px' }} />
+        <div className="ap-topbar-divider hidden md:block" />
 
-        <button className="ap-btn-ghost ap-btn ap-btn-icon" aria-label="Shortcuts">
+        <button className="ap-btn-ghost ap-btn ap-btn-icon hidden md:inline-flex" aria-label="Shortcuts">
           <Zap className="h-4 w-4" />
         </button>
-        <button className="ap-btn-ghost ap-btn ap-btn-icon" aria-label="Help">
+        <button className="ap-btn-ghost ap-btn ap-btn-icon hidden md:inline-flex" aria-label="Help">
           <HelpCircle className="h-4 w-4" />
         </button>
       </div>

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -13,6 +14,7 @@ import {
   Activity,
   Settings,
   LogOut,
+  X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
@@ -65,7 +67,12 @@ const NAV: NavGroup[] = [
   },
 ];
 
-export function AdminSidebar() {
+interface AdminSidebarProps {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function AdminSidebar({ mobileOpen = false, onClose }: AdminSidebarProps) {
   const location = useLocation();
   const { profile, signOut } = useAdminAuth();
 
@@ -78,15 +85,38 @@ export function AdminSidebar() {
     .join('')
     .toUpperCase();
 
+  // Close drawer on route change (mobile)
+  useEffect(() => {
+    if (mobileOpen && onClose) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
   return (
-    <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 ap-sidebar">
-      <div className="brand-row">
-        <div className="brand-logo">G</div>
-        <div className="brand-text">
-          <div className="brand-name">Gidi Admin</div>
-          <div className="brand-sub">Command center</div>
+    <>
+      {mobileOpen && (
+        <div
+          className="ap-mobile-backdrop md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <div
+        className={`ap-sidebar ap-sidebar-mobile ${mobileOpen ? 'open' : ''} md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 md:translate-x-0`}
+      >
+        <div className="brand-row">
+          <div className="brand-logo">G</div>
+          <div className="brand-text">
+            <div className="brand-name">Gidi Admin</div>
+            <div className="brand-sub">Command center</div>
+          </div>
+          <button
+            className="ap-sidebar-close md:hidden"
+            onClick={onClose}
+            aria-label="Close menu"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
-      </div>
 
       <nav
         style={{
@@ -153,6 +183,7 @@ export function AdminSidebar() {
           <LogOut className="h-3.5 w-3.5" />
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

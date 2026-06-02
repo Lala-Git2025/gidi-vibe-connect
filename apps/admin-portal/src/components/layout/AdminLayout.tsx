@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { AdminSidebar } from './AdminSidebar';
@@ -5,6 +6,7 @@ import { AdminHeader } from './AdminHeader';
 
 export function AdminLayout() {
   const { user, profile, loading, signOut } = useAdminAuth();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   if (loading) {
     return (
@@ -57,10 +59,10 @@ export function AdminLayout() {
 
   return (
     <div className="ap-shell">
-      <AdminSidebar />
+      <AdminSidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="md:pl-64 flex flex-col flex-1">
-        <AdminHeader />
-        <main className="flex-1" style={{ padding: '24px 28px' }}>
+        <AdminHeader onOpenMenu={() => setMobileNavOpen(true)} />
+        <main className="flex-1 ap-main">
           <Outlet />
         </main>
       </div>
