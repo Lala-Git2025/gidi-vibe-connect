@@ -115,7 +115,7 @@ gidi-vibe-connect/
 | Database | Supabase (PostgreSQL) |
 | Auth | Supabase Auth (email/password) |
 | Storage | Supabase Storage (avatars, social-media, venue-photos, event-images) |
-| Edge Functions | create-venue, get-traffic |
+| Edge Functions | create-venue, delete-account, get-traffic |
 | News automation | GitHub Actions (every hour) + macOS launchd (every 3h) |
 
 ---
@@ -192,6 +192,14 @@ VITE_SUPABASE_PUBLISHABLE_KEY=...
 VITE_APP_NAME=Gidi Business Portal
 VITE_CONSUMER_APP_URL=http://localhost:8080
 ```
+
+**Admin portal** (`apps/admin-portal/.env`):
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
+```
+
+In Vercel production, the same env vars are set in each project's Settings → Environment Variables.
 
 ---
 
@@ -282,6 +290,9 @@ SELECT cron.schedule('refresh-trending-venues', '*/5 * * * *', 'SELECT refresh_t
 
 - **[CONSUMER-APP-FEATURES.md](CONSUMER-APP-FEATURES.md)** — Complete feature documentation (all screens, components, schema, updates)
 - **[CLAUDE.md](CLAUDE.md)** — Project conventions and context for AI-assisted development
+- **[AUDIT.md](AUDIT.md)** — Launch-readiness audit (May 2026); canonical issue list with statuses
+- **[REMAINING-WORK.md](REMAINING-WORK.md)** — Original to-do list (kept for history; points at AUDIT.md)
+- **[AI_AGENTS_PLAN.md](AI_AGENTS_PLAN.md)** — Agentic AI roadmap with implementation sketches
 - **[NEWS-AUTO-UPDATE.md](NEWS-AUTO-UPDATE.md)** — News scraper & automation setup
 - **[NATIVE-DEPLOYMENT.md](NATIVE-DEPLOYMENT.md)** — iOS & Android deployment guide
 - **[SUPABASE-EMAIL-SETUP.md](SUPABASE-EMAIL-SETUP.md)** — SMTP / email configuration
@@ -311,28 +322,56 @@ SELECT cron.schedule('refresh-trending-venues', '*/5 * * * *', 'SELECT refresh_t
 - [x] Light/dark mode fix — trending venue cards use fixed white text over dark overlays
 - [x] Venue deduplication (by id + case-insensitive name)
 - [x] Auth context hardening — safety timeout + error handling to prevent infinite loading
+- [x] Comprehensive May 2026 audit — see [AUDIT.md](AUDIT.md) for ~60 ranked issues across all three apps
+- [x] Real account deletion — `delete-account` edge function calls `auth.admin.deleteUser` and cleans storage; wired from consumer ProfileScreen and business-portal Settings (GDPR / app-store compliance)
+- [x] Post counter triggers — `social_posts.likes_count` / `comments_count` kept in sync server-side via DB triggers
+- [x] Storage RLS hardening — `venue-photos`, `event-images`, `avatars`, `social-media` now require ownership of the path
+- [x] Production deployment — admin portal at `admin.gidiconnect.com` and business portal at `business.gidiconnect.com` (Vercel + Cloudflare DNS)
+- [x] Device-adaptable portals — sidebars slide in as drawers on `< 768px` with hamburger, adaptive topbars, horizontal-scroll table wrappers
+- [x] SPA rewrites — `vercel.json` in each portal prevents 404s on deep links / refresh
 
 ### Known Issues
 - [ ] SMTP not configured — password reset emails won't send
 - [ ] `get-traffic` Edge Function not deployed (TrafficAlert uses mock data)
 - [ ] `expo-video` requires native build — Expo Go QR not supported
 - [ ] No client-side image resolution validation on venue photo uploads (recommended: 1200×800 minimum)
+- [ ] Hardcoded localhost cross-portal links: [apps/admin-portal/src/components/layout/AdminLayout.tsx:42](apps/admin-portal/src/components/layout/AdminLayout.tsx#L42) and [apps/business-portal/src/components/layout/DashboardLayout.tsx:45](apps/business-portal/src/components/layout/DashboardLayout.tsx#L45) — should become env vars or production URLs
+- [ ] Apex `gidiconnect.com` has no landing page yet — either redirect to business portal or build a small landing page as a third Vercel project
 
 ---
 
 ## Deployment
 
-### Business Portal
-```bash
-cd apps/business-portal
-npm run build
-# Deploy dist/ to Vercel / Netlify
-# DNS: CNAME business → <hosting-provider>.app
-# Access at: business.gidiconnect.com
-```
+### Live URLs
+- **Admin portal**: [https://admin.gidiconnect.com](https://admin.gidiconnect.com)
+- **Business portal**: [https://business.gidiconnect.com](https://business.gidiconnect.com)
+- **Apex** (`gidiconnect.com`): no landing page yet
+
+### Stack
+- **Domain registrar**: Cloudflare Registrar (`gidiconnect.com`)
+- **DNS**: Cloudflare (two CNAME records — `admin` and `business` — each pointing at the matching Vercel project's per-project target like `XXXX.vercel-dns-017.com`). Both records are **DNS only** (gray cloud); Cloudflare proxy must stay OFF or Vercel SSL breaks.
+- **Hosting**: Vercel (one project per portal, both pulling from this repo's `main` branch)
+- **SPA routing**: each portal's `vercel.json` rewrites all paths to `/index.html` so React Router deep links work
+
+### CI/CD
+Push to `main` triggers auto-deploys on Vercel for both portals — no manual `npm run build` needed. Watch the Deployments tab in each Vercel project for build status.
+
+### Adding a new environment variable
+1. Add to local `.env`
+2. Add to Vercel project → Settings → Environment Variables (Production + Preview + Development)
+3. **Redeploy** the latest production deployment from Vercel (env changes don't auto-rebuild)
+
+### Supabase auth redirect URLs
+Production subdomain URLs must be registered:
+- Supabase Dashboard → **Authentication → URL Configuration**
+- **Site URL**: `https://business.gidiconnect.com` (primary, used in email templates)
+- **Redirect URLs**: `https://admin.gidiconnect.com/**`, `https://business.gidiconnect.com/**`, plus localhost entries for dev
+
+### Consumer App
+The consumer app is React Native; mobile-store deploy via EAS Build. See [NATIVE-DEPLOYMENT.md](NATIVE-DEPLOYMENT.md) for the iOS/Android deploy steps. The real EAS config lives at `apps/consumer-app/eas.json`.
 
 ---
 
 **Built for Lagos | Powered by React Native, React, and Supabase**
 
-**Last Updated**: April 3, 2026 | **Version**: 1.8.0
+**Last Updated**: June 8, 2026 | **Version**: 1.9.0
