@@ -166,6 +166,17 @@ Always use `colors.xxx` from theme context, never hardcode colors.
 
 ## Recent Decisions
 
+### June 2026
+- **Production deployment**: admin and business portals are live on Vercel at `https://admin.gidiconnect.com` and `https://business.gidiconnect.com`. Each is its own Vercel project (root directory `apps/admin-portal` / `apps/business-portal`), auto-deploys on push to `main`. Apex `gidiconnect.com` is registered but not pointed at a landing page yet.
+- **Domain + DNS**: `gidiconnect.com` registered through Cloudflare Registrar (cheapest, at-cost). Cloudflare hosts DNS with two CNAME records (`admin` and `business`) pointing at per-project Vercel targets like `XXXX.vercel-dns-017.com`. **Both records must stay "DNS only" (gray cloud)** — proxying through Cloudflare's orange cloud causes redirect loops / 525 errors with Vercel's SSL. Vercel handles SSL certs itself.
+- **SPA rewrites**: `apps/admin-portal/vercel.json` and `apps/business-portal/vercel.json` rewrite all paths to `/index.html` so React Router deep links don't 404 on Vercel.
+- **Device-adaptable portals**: admin & business sidebars now slide in as a drawer on `< 768px` with a hamburger button in the header, backdrop overlay, and auto-close on route change. Topbars flex — search shrinks instead of overflowing 380px fixed, non-essential pills hide at narrow breakpoints, business user-chip collapses to just the avatar on mobile. Data tables in UserManager, VenueManager, Venues, and Analytics are wrapped in horizontal-scroll containers (`.ap-table-wrap` / `.bp2-table-wrap`). Main-content padding is responsive via `.ap-main` / `.bp2-main`.
+- **Supabase redirect URLs**: production subdomain URLs (`https://admin.gidiconnect.com/**`, `https://business.gidiconnect.com/**`) added to Supabase Auth → URL Configuration so sign-in flows work in production. Localhost entries kept for dev.
+- **`ui_kits/` consolidation**: three design-reference kits (polished_consumer, polished_business, polished_admin) consolidated into a single `ui_kits/` at the repo root. Removed macOS-collision duplicates (`apps/ui_kits/`, `apps/ui_kits 2/`, `apps/ui_kits 3/`). These are JSX reference designs, not imported by app code.
+- **Open follow-ups** (not yet shipped):
+  - Hardcoded localhost cross-portal links: [apps/admin-portal/src/components/layout/AdminLayout.tsx:42](apps/admin-portal/src/components/layout/AdminLayout.tsx#L42) (`http://localhost:3001`) and [apps/business-portal/src/components/layout/DashboardLayout.tsx:45](apps/business-portal/src/components/layout/DashboardLayout.tsx#L45) (`http://localhost:3002`) need to become production URLs or env vars.
+  - Apex `gidiconnect.com` has no landing page yet — either redirect to business portal or build a small landing as a third Vercel project.
+
 ### May 2026
 - **Comprehensive audit shipped**: see [AUDIT.md](AUDIT.md). Identified ~60 distinct issues across the three apps (10 P0 launch blockers, 33 P1 painful gaps, 17 P2 polish items). AUDIT.md is the canonical launch-readiness checklist; REMAINING-WORK.md is the older to-do list with a status banner pointing at AUDIT.md.
 - **Real account deletion**: new `delete-account` edge function calls `auth.admin.deleteUser` and cleans up storage objects across `avatars`, `social-media`, `stories` buckets. Wired from consumer ProfileScreen and business-portal Settings, replacing the previous "Account Deleted" fake (which only signed the user out). **GDPR / app-store compliance.** Deploy: `npx supabase functions deploy delete-account`.
