@@ -163,18 +163,39 @@ async function fetchPost(url) {
   }
 }
 
-async function filterAlreadyClassified(urls) {
-  if (urls.length === 0) return [];
+async function partitionListing(urls) {
+  if (urls.length === 0) return { fresh: [], existing: [] };
   const { data, error } = await supabase
     .from('traffic_reports')
     .select('source_url')
     .in('source_url', urls);
   if (error) {
-    console.warn(`  ! Dedup query failed: ${error.message} — will pass all through.`);
-    return urls;
+    console.warn(`  ! Dedup query failed: ${error.message} — treating all as fresh.`);
+    return { fresh: urls, existing: [] };
   }
   const seen = new Set((data || []).map((r) => r.source_url));
-  return urls.filter((u) => !seen.has(u));
+  return {
+    fresh: urls.filter((u) => !seen.has(u)),
+    existing: urls.filter((u) => seen.has(u)),
+  };
+}
+
+// Bump expires_at on rows that are still on the source listing.
+// The radio station leaves posts up for many hours and rarely republishes; if
+// the URL is still listed, the state is still considered current. Without this,
+// reports vanish from the consumer app after 2h of source quiet.
+async function refreshExpiry(urls, ttlMinutes = 120) {
+  if (urls.length === 0) return 0;
+  const newExpiry = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+  const { error, count } = await supabase
+    .from('traffic_reports')
+    .update({ expires_at: newExpiry }, { count: 'exact' })
+    .in('source_url', urls);
+  if (error) {
+    console.warn(`  ! Refresh expiry failed: ${error.message}`);
+    return 0;
+  }
+  return count ?? 0;
 }
 
 // ── Gemini classify ─────────────────────────────────────────────────────
@@ -242,8 +263,11 @@ async function main() {
     return;
   }
 
-  const fresh = await filterAlreadyClassified(listing.map((p) => p.url));
-  console.log(`  ${fresh.length} new (${listing.length - fresh.length} already classified).`);
+  const { fresh, existing } = await partitionListing(listing.map((p) => p.url));
+  console.log(`  ${fresh.length} new, ${existing.length} already classified.`);
+
+  const refreshed = await refreshExpiry(existing);
+  if (refreshed > 0) console.log(`  Refreshed expiry on ${refreshed} existing report(s).`);
 
   const freshSet = new Set(fresh);
   let classified = 0;
