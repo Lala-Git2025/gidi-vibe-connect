@@ -92,21 +92,28 @@ export const CreatePostModal = ({
   };
 
   const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please grant permission to access your photos');
-      return;
-    }
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photos');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
+      // NB: `allowsEditing` + `aspect` were dropped — on Android (Samsung in
+      // particular) they open a system crop UI that lacks a visible confirm
+      // button on some phones, leaving the user stuck. Users can crop in their
+      // gallery first if they want a specific aspect.
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setSelectedImage(result.assets[0].uri);
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setSelectedImage(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.warn('Image picker failed:', err);
+      Alert.alert('Image picker error', 'Could not open the image library. Please try again.');
     }
   };
 
