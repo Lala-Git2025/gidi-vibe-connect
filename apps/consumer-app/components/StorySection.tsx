@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,15 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
   Animated,
   Easing,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../config/supabase';
 import { useTheme, polished } from '../contexts/ThemeContext';
-import { StoryEditor, StoryEditorData } from './StoryEditor';
+import { useStoryCreator } from '../contexts/StoryCreatorContext';
 import { StoryViewer } from './StoryViewer';
 
 interface StoryItem {
@@ -124,22 +122,21 @@ export const StorySection = () => {
   const styles = getStyles(colors);
   const ringRotation = useRingRotation();
 
+  const { open: openStoryCreator } = useStoryCreator();
+
   const [userGroups, setUserGroups] = useState<UserStoryGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  // Story editor state
-  const [editorData, setEditorData] = useState<{
-    uri: string;
-    mediaType: 'image' | 'video';
-    mimeType?: string;
-  } | null>(null);
 
   useEffect(() => {
     initData();
   }, []);
+
+  // Refetch when Home regains focus — picks up stories created from Profile.
+  useFocusEffect(useCallback(() => {
+    if (currentUserId !== null) fetchStories(currentUserId);
+  }, [currentUserId]));
 
   const initData = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -242,115 +239,9 @@ export const StorySection = () => {
     }
   };
 
-  // ── Pick media and open editor ──────────────────────────────────────────────
-
-  const handleCreateStory = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      Alert.alert('Sign In Required', 'Please sign in to post a story.');
-      return;
-    }
-
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Camera roll access is required to upload.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsEditing: false, // editor handles cropping
-      quality: 0.9,
-      videoMaxDuration: 60,
-    });
-
-    if (result.canceled || !result.assets?.[0]) return;
-
-    const asset = result.assets[0];
-    // Use asset.type from ImagePicker — more reliable than parsing URI extension
-    const mediaType: 'image' | 'video' = asset.type === 'video' ? 'video' : 'image';
-
-    // Open StoryEditor
-    setEditorData({ uri: asset.uri, mediaType, mimeType: asset.mimeType ?? undefined });
-  };
-
-  // ── Upload story after editor is done ──────────────────────────────────────
-
-  const handleEditorDone = async (data: StoryEditorData) => {
-    // Capture mimeType before clearing editorData (state is null by the time uploadStory reads it)
-    const mimeType = editorData?.mimeType;
-    setEditorData(null);
-    await uploadStory(data, mimeType);
-  };
-
-  const handleEditorCancel = () => {
-    setEditorData(null);
-  };
-
-  const uploadStory = async (data: StoryEditorData, mimeType?: string) => {
-    setUploading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated — please sign in again.');
-
-      const user = session.user;
-      const { uri, mediaType, caption, filter, textOverlays, stickerOverlays } = data;
-
-      // Build overlays JSON
-      const overlaysJson = [
-        ...textOverlays.map((t) => ({ type: 'text', ...t })),
-        ...stickerOverlays.map((s) => ({ type: 'sticker', ...s })),
-      ];
-
-      // Upload media to stories bucket.
-      // Use expo-file-system to read the file as base64, then decode to bytes.
-      // fetch(uri).blob() returns empty blobs for photo-picker URIs on iOS.
-      const ext = uri.split('.').pop()?.toLowerCase() || (mediaType === 'video' ? 'mp4' : 'jpg');
-      const fileName = `${user.id}/${Date.now()}.${ext}`;
-
-      const contentType = mimeType ?? (
-        mediaType === 'video'
-          ? (ext === 'mov' ? 'video/quicktime' : `video/${ext}`)
-          : `image/${ext}`
-      );
-
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64' as any,
-      });
-      const binaryStr = atob(base64);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
-
-      const { error: uploadError } = await supabase.storage
-        .from('stories')
-        .upload(fileName, bytes, { contentType, upsert: false });
-
-      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
-
-      const { data: { publicUrl } } = supabase.storage.from('stories').getPublicUrl(fileName);
-
-      // Insert story row
-      const { error: insertError } = await supabase.from('stories').insert({
-        user_id: user.id,
-        image_url: publicUrl,
-        media_type: mediaType,
-        caption: caption || null,
-        filter_effect: filter,
-        overlays: overlaysJson,
-      });
-
-      if (insertError) throw new Error(`Story save failed: ${insertError.message}`);
-
-      Alert.alert('Posted!', 'Your story is live for 24 hours.', [{ text: 'OK' }]);
-      await fetchStories(user.id);
-    } catch (error: any) {
-      console.error('[Story upload] caught error:', error);
-      Alert.alert('Upload Failed', error.message || 'An unexpected error occurred.');
-    } finally {
-      setUploading(false);
-    }
+  // Picker + upload pipeline lives in StoryCreatorContext so Profile can reuse it.
+  const handleCreateStory = () => {
+    openStoryCreator({ onCreated: () => fetchStories(currentUserId) });
   };
 
   // ── Seen tracking ───────────────────────────────────────────────────────────
@@ -391,18 +282,10 @@ export const StorySection = () => {
           contentContainerStyle={styles.scrollContent}
         >
           {/* ── My Vibe: always the "add story" button ── */}
-          <TouchableOpacity
-            style={styles.storyItem}
-            onPress={handleCreateStory}
-            disabled={uploading}
-          >
+          <TouchableOpacity style={styles.storyItem} onPress={handleCreateStory}>
             <PolishedRing kind="add" rotation={ringRotation} seen={false}>
               <View style={styles.addInner}>
-                {uploading ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Ionicons name="add" size={28} color={colors.primary} />
-                )}
+                <Ionicons name="add" size={28} color={colors.primary} />
               </View>
             </PolishedRing>
             <Text style={styles.label}>My Vibe</Text>
@@ -454,16 +337,6 @@ export const StorySection = () => {
           })}
         </ScrollView>
       </View>
-
-      {/* ── Story Editor Modal ── */}
-      {editorData && (
-        <StoryEditor
-          uri={editorData.uri}
-          mediaType={editorData.mediaType}
-          onDone={handleEditorDone}
-          onCancel={handleEditorCancel}
-        />
-      )}
 
       {/* ── Story Viewer ── */}
       {selectedGroupIndex !== null && userGroups[selectedGroupIndex] && (

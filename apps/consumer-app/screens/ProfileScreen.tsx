@@ -11,6 +11,7 @@ import { useTheme, polished } from '../contexts/ThemeContext';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { PostGrid, GridPost } from '../components/PostGrid';
 import { useCreatePostModal } from '../contexts/CreatePostModalContext';
+import { useStoryCreator } from '../contexts/StoryCreatorContext';
 
 // Helper function to convert hex color to rgba
 const hexToRgba = (hex: string, opacity: number): string => {
@@ -106,6 +107,7 @@ export default function ProfileScreen() {
   const [followingCount, setFollowingCount] = useState(0);
   const [profileTab, setProfileTab] = useState<'posts' | 'stats' | 'badges'>('posts');
   const { open: openComposer } = useCreatePostModal();
+  const { open: openStoryCreator } = useStoryCreator();
 
   // Open the app-level composer with this screen's refresh callback wired in.
   const handleOpenComposer = () =>
@@ -117,6 +119,10 @@ export default function ProfileScreen() {
         }
       },
     });
+
+  // "New Vibe" launches the story creator. The new story shows up in My Vibe
+  // on Home (StorySection refetches on focus).
+  const handleOpenVibeCreator = () => openStoryCreator();
 
   const [allBadges, setAllBadges] = useState<Array<{
     id: string;
@@ -865,7 +871,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.actionRowOutlineBtn}
-                  onPress={handleOpenComposer}
+                  onPress={handleOpenVibeCreator}
                   activeOpacity={0.85}
                 >
                   <Ionicons name="camera-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
