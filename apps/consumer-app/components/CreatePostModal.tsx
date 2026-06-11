@@ -99,13 +99,13 @@ export const CreatePostModal = ({
         return;
       }
 
-      // NB: `allowsEditing` + `aspect` were dropped — on Android (Samsung in
-      // particular) they open a system crop UI that lacks a visible confirm
-      // button on some phones, leaving the user stuck. Users can crop in their
-      // gallery first if they want a specific aspect.
+      // NB: in-app crop is iOS-only. On Android (Samsung in particular) the
+      // system crop UI lacks a visible confirm button on some phones, leaving
+      // users stuck. iOS PHPicker handles the crop sheet cleanly.
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         quality: 0.8,
+        ...(Platform.OS === 'ios' && { allowsEditing: true, aspect: [4, 3] as [number, number] }),
       });
 
       if (!result.canceled && result.assets?.[0]?.uri) {
