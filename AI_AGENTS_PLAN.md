@@ -2,7 +2,7 @@
 
 This document captures every proposed agentic AI use case across the consumer app, business portal, and admin portal, plus the shared infrastructure that makes them feasible. Each agent has a goal, trigger, tools, sketch, effort estimate, and risks.
 
-**Document owner:** Femi · **Last updated:** 2026-05-01 · **Status:** Proposal — not yet scheduled
+**Document owner:** Femi · **Last updated:** 2026-06-08 · **Status:** Foundations shipped (§2.3–2.6); first agent (Moderation Triage §5.1) staged behind feature flag
 
 ---
 
@@ -21,6 +21,17 @@ Agents close that gap by turning intent into outcomes.
 ## 2. Architecture foundations
 
 Build these *once*. Every agent below assumes they exist.
+
+> **Status — shipped 2026-06-08.** Foundations are live behind feature flags. See:
+> - Migration: [supabase/migrations/20260608000000_agent_infra.sql](supabase/migrations/20260608000000_agent_infra.sql) — adds `agent_runs`, `agent_memory`, `agent_proposals`, `feature_flags`, `agent_cost_last_24h()` helper, plus `is_hidden`/`hidden_reason`/`hidden_at` on `social_posts`.
+> - Tool registry: [supabase/functions/_shared/tools.ts](supabase/functions/_shared/tools.ts) — typed `TOOL_DEFINITIONS` + per-tool handlers with allowlist enforcement.
+> - Agent registry: [supabase/functions/_shared/agents.ts](supabase/functions/_shared/agents.ts) — system prompt, model, tool allowlist, max iterations per agent.
+> - Cost calculator: [supabase/functions/_shared/cost.ts](supabase/functions/_shared/cost.ts) — token pricing for Opus 4.7/4.6, Sonnet 4.6, Haiku 4.5 incl. cache rates.
+> - Runner: [supabase/functions/agent-runner/index.ts](supabase/functions/agent-runner/index.ts) — single entry point. Enforces kill switch → per-agent flag → 24h cost cap → loops `messages.create` ↔ tool dispatch with prompt caching, then closes the `agent_runs` row.
+>
+> Two implementation deltas vs. the sketches below:
+> 1. **Action tiering by reversibility, not by agent.** Reversible writes (e.g. `hide_post`) execute autonomously and are mirrored into `agent_proposals` with `status='applied'` so the admin queue shows everything in one place. Irreversible/high-blast actions go to `agent_proposals` with `status='pending'`. This shifts the "human-in-the-loop by default" rule in §2.6 — humans are notified-by-default, not approval-gated-by-default.
+> 2. **Kill switches via `feature_flags`.** New table seeded with `agents.master_enabled` (global), `agents.daily_cost_cap_usd` (with `{cap: 5.00}`), and one row per agent (e.g. `agents.moderation_triage`). The runner reads these on every invocation and refuses to run if any gate fails.
 
 ### 2.1 Model selection
 
@@ -477,6 +488,10 @@ proposed_edits with rationale per field.`
 
 ### 5.1 Moderation Triage
 
+> **Status — staged 2026-06-08.** Agent definition + runner are deployed; `agents.moderation_triage` feature flag is **OFF** by default. To enable: `UPDATE feature_flags SET enabled = TRUE WHERE key = 'agents.moderation_triage';`. Trigger (which event invokes the agent on a new flagged post) is not yet wired — depends on the still-to-be-built `post_reports` table or consumer-app report flow.
+>
+> Model: `claude-haiku-4-5`. Tools: `get_post`, `get_user_history`, `hide_post`, `queue_proposal`, `remember`. Auto-hide rule encoded in the system prompt: `bucket=spam AND confidence>=0.9 AND user.account_age_days>=1`. Everything else queues to `agent_proposals`.
+
 **Goal:** Auto-resolve tier-1 reports (spam, obvious ToS); package tier-2 with context for human review.
 
 **Trigger:** New report submitted by a user. Or new post/story flagged by automated content classifier.
@@ -655,8 +670,9 @@ action is non-permanent (post hide, not user ban).`
 ### Phase 1 — Foundations + first wins (weeks 1-4)
 
 Build:
-- Section 2 infra: tables, runner, tool layer, audit logging
-- **News Agent v2** (5.3) — easiest win, you already have the scraper
+- Section 2 infra: tables, runner, tool layer, audit logging — **shipped 2026-06-08** (see status block in §2)
+- **Moderation Triage** (5.1) — promoted from Phase 2; staged behind feature flag 2026-06-08. Picked first because it has clear binary outcomes, making it the safest way to prove the autonomous-action loop. Trigger wiring still to come.
+- **News Agent v2** (5.3) — easiest cron win, scraper already exists
 - **Auto-Storyteller** (3.4) — single-call AI feature; ships a "wow" moment
 - **Listing Optimizer** (4.1) — proposal-gated, low-risk, instant business value
 
