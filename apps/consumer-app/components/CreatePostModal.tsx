@@ -17,6 +17,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../config/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import { resolveCommunityIcon } from '../constants/communityIcons';
 
 interface Community {
   id: string;
@@ -303,7 +304,7 @@ export const CreatePostModal = ({
                         style={[styles.communityOption, selectedCommunity === c.id && styles.communityOptionSelected]}
                         onPress={() => setSelectedCommunity(c.id)}
                       >
-                        <Text style={styles.communityOptionIcon}>{c.icon}</Text>
+                        <Text style={styles.communityOptionIcon}>{resolveCommunityIcon(c.name, c.icon)}</Text>
                         <Text style={styles.communityOptionText}>{c.name}</Text>
                       </TouchableOpacity>
                     ))}

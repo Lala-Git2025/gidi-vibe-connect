@@ -13,21 +13,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import { COMMUNITY_ICON_MAP } from '../constants/communityIcons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.82;
-
-// Hardcoded icon map for seeded communities
-const COMMUNITY_ICON_MAP: Record<string, string> = {
-  'Nightlife Lagos':    '\u{1F319}',
-  'Restaurant Reviews': '\u{1F37D}',
-  'Events & Concerts':  '\u{1F3B5}',
-  'Island Vibes':       '\u{1F3DD}',
-  'Mainland Connect':   '\u{1F3D9}',
-  'Foodies United':     '\u{1F355}',
-  'Party People':       '\u{1F389}',
-  'Culture & Arts':     '\u{1F3A8}',
-};
 
 interface Community {
   id: string;

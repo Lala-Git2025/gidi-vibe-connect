@@ -17,6 +17,7 @@ import { File, Paths } from 'expo-file-system';
 import { PostGrid } from '../components/PostGrid';
 import { EditingPost } from '../components/CreatePostModal';
 import { useCreatePostModal } from '../contexts/CreatePostModalContext';
+import { COMMUNITY_ICON_MAP } from '../constants/communityIcons';
 import { SocialDrawer, DrawerView } from '../components/SocialDrawer';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -36,18 +37,6 @@ const COMMUNITY_EMOJIS = [
   // Business & Social
   '\u{1F4BC}', '\u{1F4B0}', '\u{1F4C8}', '\u{1F4A1}', '\u{1F91D}', '\u{1F465}', '\u{2764}', '\u{1F31F}',
 ];
-
-// Hardcoded icon map for seeded communities — bypasses any DB encoding issues
-const COMMUNITY_ICON_MAP: Record<string, string> = {
-  'Nightlife Lagos':    '\u{1F319}', // 🌙
-  'Restaurant Reviews': '\u{1F37D}', // 🍽️
-  'Events & Concerts':  '\u{1F3B5}', // 🎵
-  'Island Vibes':       '\u{1F3DD}', // 🏝️
-  'Mainland Connect':   '\u{1F3D9}', // 🏙️
-  'Foodies United':     '\u{1F355}', // 🍕
-  'Party People':       '\u{1F389}', // 🎉
-  'Culture & Arts':     '\u{1F3A8}', // 🎨
-};
 
 const COLOR_PALETTE = [
   { label: 'Indigo',  color: '#4338CA' },
