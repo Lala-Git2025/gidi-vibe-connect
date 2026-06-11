@@ -36,7 +36,9 @@ dotenv.config();
 
 const SOURCE_URL   = process.env.TRAFFIC_SOURCE_URL || 'https://trafficradio961.ng/news/traffic-updates/';
 const MAX_POSTS    = Number(process.env.TRAFFIC_MAX_POSTS || 10);
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+// gemini-2.5-flash is the current free-tier standard (15 RPM / 1,500 RPD).
+// gemini-2.0-flash was superseded in 2026 and is no longer reliably on the free tier.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -193,10 +195,17 @@ async function classify({ headline, body }) {
       temperature: 0.2,
     },
   };
-  const res = await axios.post(url, payload, { timeout: 60000 });
-  const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini returned no text');
-  return JSON.parse(text);
+  try {
+    const res = await axios.post(url, payload, { timeout: 60000 });
+    const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Gemini returned no text');
+    return JSON.parse(text);
+  } catch (err) {
+    // Surface Gemini's actual error so 429/403/400 are diagnosable.
+    const status = err.response?.status;
+    const detail = err.response?.data?.error?.message || err.response?.data || err.message;
+    throw new Error(status ? `Gemini ${status}: ${detail}` : detail);
+  }
 }
 
 // ── Insert ──────────────────────────────────────────────────────────────
