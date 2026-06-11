@@ -18,6 +18,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
+import { trackVenueEvent } from '../lib/analytics';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -109,6 +110,11 @@ function VenueDetailModal({
     setShowReviewForm(false);
     setReviewRating(0);
     setReviewComment('');
+
+    // Track profile view as soon as the modal mounts for a new venue.
+    // Fire-and-forget; runs for guests too (anon role can call the RPC).
+    if (venue) trackVenueEvent(venue.id, 'profile_views');
+
     if (!userId || !venue) return;
 
     (async () => {
@@ -140,16 +146,21 @@ function VenueDetailModal({
   const imgUri = venue.professional_media_urls?.[0] ?? null;
 
   const handleCall = () => {
-    if (venue.contact_phone) Linking.openURL(`tel:${venue.contact_phone}`);
+    if (!venue.contact_phone) return;
+    trackVenueEvent(venue.id, 'phone_clicks');
+    Linking.openURL(`tel:${venue.contact_phone}`);
   };
 
   const handleDirections = () => {
+    trackVenueEvent(venue.id, 'direction_clicks');
     const query = encodeURIComponent(venue.address || `${venue.name}, ${venue.location}, Lagos`);
     Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
   };
 
   const handleWebsite = () => {
-    if (venue.website_url) Linking.openURL(venue.website_url);
+    if (!venue.website_url) return;
+    trackVenueEvent(venue.id, 'website_clicks');
+    Linking.openURL(venue.website_url);
   };
 
   const handleInstagram = () => {
