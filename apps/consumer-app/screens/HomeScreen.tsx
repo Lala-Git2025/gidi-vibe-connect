@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, Image, RefreshControl, Alert, ActivityIndicator, Animated, Easing } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, RefreshControl, Alert, ActivityIndicator, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme, polished } from '../contexts/ThemeContext';
-import { supabase } from '../config/supabase';
 import { TrafficAlert } from '../components/TrafficAlert';
 import { VibeCheck } from '../components/VibeCheck';
 import { TrendingVenues } from '../components/TrendingVenues';
@@ -15,121 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 48) / 2;
-
-/**
- * Route news images through images.weserv.nl — a free image proxy.
- * Two problems it solves:
- *   1. Hotlink protection on CDNs (e.g. lindaikejisblog) that 403 direct requests.
- *   2. Unencoded special chars in upstream URLs (e.g. `?operations=autocrop(1200:630)`
- *      on pulse.ng's CDN — parens trip some HTTP clients).
- * weserv re-encodes the URL, strips referer, and re-emits a clean image stream.
- */
-function proxyImage(url?: string | null): string | undefined {
-  if (!url) return undefined;
-  const stripped = url.replace(/^https?:\/\//, '');
-  return `https://images.weserv.nl/?url=${encodeURIComponent(stripped)}&w=520&output=webp`;
-}
-
-/**
- * Deduplicate news articles based on title similarity
- */
-function deduplicateNews(articles: any[]): any[] {
-  const uniqueArticles: any[] = [];
-  const seenTitles = new Set<string>();
-
-  for (const article of articles) {
-    const normalizedTitle = normalizeTitle(article.title);
-
-    // Check if we've seen a similar title
-    let isDuplicate = false;
-    for (const seenTitle of seenTitles) {
-      if (areTitlesSimilar(normalizedTitle, seenTitle)) {
-        isDuplicate = true;
-
-        // If this article has an image and the existing one doesn't, replace it
-        const existingIndex = uniqueArticles.findIndex(
-          a => normalizeTitle(a.title) === seenTitle
-        );
-
-        if (existingIndex !== -1) {
-          const existing = uniqueArticles[existingIndex];
-          if (article.featured_image_url && !existing.featured_image_url) {
-            // Replace with article that has image
-            uniqueArticles[existingIndex] = article;
-            seenTitles.delete(seenTitle);
-            seenTitles.add(normalizedTitle);
-          }
-        }
-        break;
-      }
-    }
-
-    if (!isDuplicate) {
-      uniqueArticles.push(article);
-      seenTitles.add(normalizedTitle);
-    }
-  }
-
-  return uniqueArticles;
-}
-
-/**
- * Normalize title for comparison
- */
-function normalizeTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^\w\s]/g, ' ') // Remove punctuation
-    .replace(/\s+/g, ' ')      // Normalize spaces
-    .trim();
-}
-
-/**
- * Check if two titles are similar (70% word overlap)
- */
-function areTitlesSimilar(title1: string, title2: string): boolean {
-  const words1 = new Set(title1.split(' ').filter(w => w.length > 3));
-  const words2 = new Set(title2.split(' ').filter(w => w.length > 3));
-
-  if (words1.size === 0 || words2.size === 0) return false;
-
-  // Count common words
-  let commonWords = 0;
-  for (const word of words1) {
-    if (words2.has(word)) {
-      commonWords++;
-    }
-  }
-
-  // Calculate similarity
-  const similarity = commonWords / Math.min(words1.size, words2.size);
-
-  // Consider titles similar if they share 70% or more words
-  return similarity >= 0.7;
-}
-
-/**
- * Categorize a news article based on its title + summary content.
- */
-function categorizeArticle(title: string, summary: string = ''): string {
-  const text = `${title} ${summary}`.toLowerCase();
-
-  if (/\b(politic|govt|government|governor|senator|president|minister|election|campaign|vote|tribunal|inec|apc\b|pdp\b|lp\b|adc\b|senate|lawmaker|legislation|impeach|democracy|diplomacy|tariff|trump|biden|tinubu|obi\b|atiku|shettima|wike|sanwo[\s-]?olu|buhari|national\s?assembly|supreme\s?court|judiciary|aso\s?rock|presidency|opposition|political\s?party|geopolitic|ecowas|african\s?union)\b/.test(text)) return 'politics';
-  if (/\b(killed|murder|robbery|kidnap|arrest|police|shoot|gun|attack|bomb|terror|bandits?|ritual|fraud|scam|efcc|ndlea|prison|jail|suspect|crime|criminal|armed|theft|assault|victim|cult|gang|trafficking)\b/.test(text)) return 'crime';
-  if (/\b(economy|inflation|naira|dollar|exchange\s?rate|stock|market|invest|revenue|budget|tax|cbn\b|bank\b|oil\s?price|crude|opec|business|startup|funding|profit|debt|fintech|crypto|trade\s?war)\b/.test(text)) return 'business';
-  if (/\b(clubs?|nightclubs?|nightlife|night\s?life|lounges?|dj\s?set|rave|after[\s-]?party|bottle\s?service|night\s?out)\b/.test(text)) return 'nightlife';
-  if (/\b(concert|festival|exhibition|premiere|ceremony|gala|carnival|conference|summit|award\s?show|red\s?carpet|lineup|headlin|fashion\s?week)\b/.test(text)) return 'events';
-  if (/\b(football|soccer|nba|basketball|athlete|stadium|premier\s?league|champions\s?league|afcon|super\s?eagles|coach|goalkeeper|striker|fixture|olympic|wrestling|boxing|marathon|world\s?cup|fifa)\b/.test(text)) return 'sports';
-  if (/\b(restaurant|food|chef|dining|recipe|cuisine|cook|kitchen|menu|suya|jollof|amala|pepper\s?soup|eatery|bakery|cafe|brunch)\b/.test(text)) return 'food';
-  if (/\b(traffic|road\s?clos|gridlock|accident|highway|expressway|brt\b|danfo|commut|transport|third\s?mainland|congestion)\b/.test(text)) return 'traffic';
-  if (/\b(fashion|wedding|beauty|makeup|wellness|fitness|museum|gallery|theatre|design|real\s?estate|luxury|relationship|dating)\b/.test(text)) return 'lifestyle';
-  if (/\b(nollywood|movie|film|actor|actress|music|album|song|rapper|singer|wizkid|davido|burna\s?boy|asake|rema\b|tems\b|bbnaija|big\s?brother|reality\s?tv|netflix|grammy|headies|afrobeat|amapiano|comedy|comedian|viral|influencer|gossip|scandal|celebrity|celeb)\b/.test(text)) return 'entertainment';
-  if (/\b(tech|ai\b|artificial\s?intelligence|software|gadget|phone|iphone|google|apple|microsoft|spacex|elon\s?musk|robot|drone|cyber|hack|blockchain)\b/.test(text)) return 'technology';
-  if (/\b(health|hospital|doctor|disease|virus|vaccine|medicine|surgery|who\b|ncdc|medical|mental\s?health|epidemic|pandemic)\b/.test(text)) return 'health';
-  if (/\b(university|school|student|education|asuu|exam|waec|jamb|neco|scholarship|academic|admission)\b/.test(text)) return 'education';
-
-  return 'general';
-}
 
 interface Category {
   icon: string;
@@ -154,18 +38,8 @@ const categories: Category[] = [
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { colors, activeTheme } = useTheme();
-  const [liveNews, setLiveNews] = useState<Array<{
-    title: string;
-    summary: string;
-    time: string;
-    category: string;
-    featured_image_url?: string;
-    external_url?: string;
-  }>>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [venueRefreshTrigger, setVenueRefreshTrigger] = useState(0);
-  // News image URLs that 404'd / failed hotlink checks — show placeholder instead.
-  const [brokenNewsImages, setBrokenNewsImages] = useState<Set<string>>(new Set());
 
   // Load Orbitron font
   const [fontsLoaded] = useFonts({
@@ -175,112 +49,12 @@ export default function HomeScreen() {
 
   const styles = getStyles(colors);
 
-  const fetchLatestNews = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('news')
-        .select('title, summary, category, publish_date, featured_image_url, external_url')
-        .not('external_url', 'is', null)  // Only fetch articles with URLs
-        .order('publish_date', { ascending: false })
-        .limit(60);  // wider window so we can pick a diverse cross-section
-
-      if (error) {
-        console.error('Error fetching news:', error);
-        setLiveNews([]);
-        return;
-      }
-
-      if (data && data.length > 0) {
-        // Filter out articles with fake/placeholder URLs
-        const validNews = data.filter(item => {
-          if (!item.external_url) return false;
-          const urlLower = item.external_url.toLowerCase();
-          // Exclude fake URLs
-          if (urlLower.includes('example.com') ||
-              urlLower.includes('localhost') ||
-              urlLower.includes('test.com') ||
-              urlLower.includes('placeholder')) {
-            return false;
-          }
-          return item.external_url.startsWith('http');
-        });
-
-        // Remove duplicates based on title similarity
-        const deduplicatedNews = deduplicateNews(validNews);
-
-        // Re-categorize using the regex bank (DB categories are noisy).
-        const recategorized = deduplicatedNews.map(item => ({
-          ...item,
-          _cat: categorizeArticle(item.title, item.summary),
-        }));
-
-        // Pick the freshest article from each distinct category until we
-        // have N cards. Falls back to ordinary recency once we run out of
-        // unique categories.
-        const HOME_CARDS = 5;
-        const seenCats = new Set<string>();
-        const diverse: typeof recategorized = [];
-        for (const item of recategorized) {
-          if (diverse.length >= HOME_CARDS) break;
-          if (seenCats.has(item._cat)) continue;
-          seenCats.add(item._cat);
-          diverse.push(item);
-        }
-        for (const item of recategorized) {
-          if (diverse.length >= HOME_CARDS) break;
-          if (diverse.includes(item)) continue;
-          diverse.push(item);
-        }
-
-        const formattedNews = diverse.map(item => ({
-          title: item.title,
-          summary: item.summary,
-          time: formatTimeAgo(item.publish_date),
-          category: item._cat.charAt(0).toUpperCase() + item._cat.slice(1),
-          featured_image_url: proxyImage(item.featured_image_url),
-          external_url: item.external_url,
-        }));
-        setLiveNews(formattedNews);
-      } else {
-        setLiveNews([]);
-      }
-    } catch (error) {
-      console.error('Error fetching news:', error);
-      setLiveNews([]);  // Clear news on error
-    }
-  };
-
-  // Fetch latest news on every focus so the Home feed stays current after
-  // the user navigates away and comes back.
-  useFocusEffect(
-    useCallback(() => {
-      fetchLatestNews();
-    }, []),
-  );
-
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchLatestNews();
     // Trigger venues refresh by incrementing the counter
     setVenueRefreshTrigger(prev => prev + 1);
     setRefreshing(false);
   };
-
-  const formatTimeAgo = (dateString: string) => {
-    const now = new Date();
-    const publishDate = new Date(dateString);
-    const diffInMs = now.getTime() - publishDate.getTime();
-    const diffInMins = Math.floor(diffInMs / (1000 * 60));
-    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-    if (diffInMins < 60) {
-      return `${diffInMins}m ago`;
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`;
-    } else {
-      return `${diffInDays}d ago`;
-    }
   };
 
   const getCurrentTimeGreeting = () => {
@@ -320,10 +94,6 @@ export default function HomeScreen() {
     } else if (category.alert) {
       alert(category.alert);
     }
-  };
-
-  const openNews = () => {
-    navigation.navigate('News' as never);
   };
 
   if (!fontsLoaded) {
@@ -445,70 +215,6 @@ export default function HomeScreen() {
             ))}
           </View>
         </View>
-
-        {/* Live News Section — hidden when no articles loaded yet */}
-        {liveNews.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>LIVE - GIDI News</Text>
-            <TouchableOpacity onPress={openNews}>
-              <Text style={styles.seeAll}>See All →</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newsScroll}>
-            {liveNews.map((news, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.newsCard}
-                onPress={() => {
-                  if (news.external_url) {
-                    Linking.openURL(news.external_url).catch(() => {
-                      Alert.alert('Error', 'Could not open article');
-                    });
-                  }
-                }}
-              >
-                {news.featured_image_url && !brokenNewsImages.has(news.featured_image_url) ? (
-                  <View style={styles.newsImageContainer}>
-                    <Image
-                      source={{ uri: news.featured_image_url }}
-                      style={styles.newsImage}
-                      resizeMode="cover"
-                      onError={() => {
-                        const url = news.featured_image_url!;
-                        setBrokenNewsImages(prev => {
-                          if (prev.has(url)) return prev;
-                          const next = new Set(prev);
-                          next.add(url);
-                          return next;
-                        });
-                      }}
-                    />
-                    <View style={styles.newsCategoryBadge}>
-                      <Text style={styles.newsCategoryText}>{news.category}</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.newsImagePlaceholder}>
-                    <Ionicons name="newspaper" size={40} color={colors.textSecondary} />
-                    <View style={styles.newsCategoryBadge}>
-                      <Text style={styles.newsCategoryText}>{news.category}</Text>
-                    </View>
-                  </View>
-                )}
-                <View style={styles.newsContent}>
-                  <View style={styles.newsHeader}>
-                    <Text style={styles.newsTime}>{news.time}</Text>
-                  </View>
-                  <Text style={styles.newsTitle}>{news.title}</Text>
-                  <Text style={styles.newsDescription}>{news.summary}</Text>
-                  <Text style={styles.newsLink}>Read More →</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-        )}
 
         {/* Traffic Update - Dynamic (header is inside TrafficAlert component) */}
         <TrafficAlert />
@@ -757,82 +463,6 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '500',
-  },
-  // News
-  newsScroll: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  newsCard: {
-    width: 260,
-    marginRight: 12,
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  newsImagePlaceholder: {
-    width: '100%',
-    height: 100,
-    backgroundColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  newsImageContainer: {
-    width: '100%',
-    height: 100,
-    position: 'relative',
-  },
-  newsImage: {
-    width: '100%',
-    height: '100%',
-  },
-  newsIcon: {
-    fontSize: 40,
-  },
-  newsCategoryBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  newsCategoryText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: colors.background,
-  },
-  newsContent: {
-    padding: 10,
-  },
-  newsHeader: {
-    marginBottom: 8,
-  },
-  newsTime: {
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-  newsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  newsDescription: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 8,
-    lineHeight: 16,
-  },
-  newsLink: {
-    fontSize: 12,
-    color: colors.primary,
-    fontWeight: '600',
   },
   // Traffic
   trafficCard: {
