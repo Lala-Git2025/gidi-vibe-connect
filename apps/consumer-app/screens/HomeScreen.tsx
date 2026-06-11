@@ -31,7 +31,7 @@ const categories: Category[] = [
   { icon: 'sunny',          label: 'DayLife',     sub: 'Outdoor',     screen: 'Events',   c1: '#F59E0B', c2: '#92400E' },
   { icon: 'calendar',       label: 'Events',      sub: 'This week',   screen: 'Events',   c1: '#4338CA', c2: '#1E1B4B' },
   { icon: 'chatbubbles',    label: 'Social',      sub: 'Communities', screen: 'Social',   c1: '#10B981', c2: '#064E3B' },
-  { icon: 'newspaper',      label: 'News',        sub: 'Latest',      screen: 'News',     c1: '#0891B2', c2: '#0E7490' },
+  { icon: 'newspaper',      label: 'Gidi News',   sub: 'Latest',      screen: 'News',     c1: '#0891B2', c2: '#0E7490' },
   { icon: 'apps',           label: 'See More',    sub: 'Explore all', screen: 'Discover', c1: '#DC2626', c2: '#7F1D1D' },
 ];
 
