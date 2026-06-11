@@ -8,14 +8,15 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme, polished } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { PostGrid } from '../components/PostGrid';
-import { CreatePostModal, EditingPost } from '../components/CreatePostModal';
+import { EditingPost } from '../components/CreatePostModal';
+import { useCreatePostModal } from '../contexts/CreatePostModalContext';
 import { SocialDrawer, DrawerView } from '../components/SocialDrawer';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -138,14 +139,14 @@ export default function SocialScreen() {
   const [selectedCommunityName, setSelectedCommunityName] = useState<string>('');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const isFocused = useIsFocused();
+  const { open: openComposer } = useCreatePostModal();
 
   // ── Data state ──────────────────────────────────────────────────────
   const [communities, setCommunities] = useState<Community[]>([]);
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  // showCreateModal + editingPost state removed — composer is now app-level
+  // (mounted once via CreatePostModalProvider). Opened via openComposer().
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string>('');
@@ -441,8 +442,10 @@ export default function SocialScreen() {
   };
 
   const handleEditPost = (post: Post) => {
-    setEditingPost(post);
-    setShowCreateModal(true);
+    openComposer({
+      editingPost: post as unknown as EditingPost,
+      onPostCreated: fetchFeedPosts,
+    });
   };
 
   const handleDeletePost = (postId: string) => {
@@ -474,8 +477,7 @@ export default function SocialScreen() {
   };
 
   const handleOpenCreateModal = () => {
-    setEditingPost(null);
-    setShowCreateModal(true);
+    openComposer({ onPostCreated: fetchFeedPosts });
   };
 
   const handleOpenCreateCommunityModal = () => {
@@ -1416,18 +1418,8 @@ export default function SocialScreen() {
         slideAnim={slideAnim}
       />
 
-      {/* ── Create / Edit Post Modal ───────────────────────────────── */}
-      {/* Conditional mount (not just visible={false}) so the native Modal layer
-          fully unmounts when this tab is backgrounded — prevents stacking with
-          Profile's composer when both screens stay mounted in the bottom tab nav. */}
-      {isFocused && (
-        <CreatePostModal
-          visible={showCreateModal}
-          onClose={() => { setShowCreateModal(false); setEditingPost(null); }}
-          onPostCreated={fetchFeedPosts}
-          editingPost={editingPost as EditingPost | null}
-        />
-      )}
+      {/* CreatePostModal is mounted once at App.tsx via CreatePostModalProvider.
+          Open it via handleOpenCreateModal / handleEditPost above. */}
 
       {/* ── Create Community Modal ─────────────────────────────────── */}
       <Modal

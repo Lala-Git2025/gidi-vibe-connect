@@ -15,6 +15,7 @@ import SocialScreen from './screens/SocialScreen';
 import DiscoverScreen from './screens/DiscoverScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemeProvider, useTheme, polished } from './contexts/ThemeContext';
+import { CreatePostModalProvider } from './contexts/CreatePostModalContext';
 
 const Tab = createBottomTabNavigator();
 
@@ -226,7 +227,9 @@ export default function App() {
     <ErrorBoundary>
       <SafeAreaProvider>
         <ThemeProvider>
-          <AppNavigator />
+          <CreatePostModalProvider>
+            <AppNavigator />
+          </CreatePostModalProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </ErrorBoundary>

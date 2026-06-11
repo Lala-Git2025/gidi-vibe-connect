@@ -3,14 +3,14 @@ import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../config/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme, polished } from '../contexts/ThemeContext';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { PostGrid, GridPost } from '../components/PostGrid';
-import { CreatePostModal } from '../components/CreatePostModal';
+import { useCreatePostModal } from '../contexts/CreatePostModalContext';
 
 // Helper function to convert hex color to rgba
 const hexToRgba = (hex: string, opacity: number): string => {
@@ -105,8 +105,18 @@ export default function ProfileScreen() {
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [profileTab, setProfileTab] = useState<'posts' | 'stats' | 'badges'>('posts');
-  const [showCreatePost, setShowCreatePost] = useState(false);
-  const isFocused = useIsFocused();
+  const { open: openComposer } = useCreatePostModal();
+
+  // Open the app-level composer with this screen's refresh callback wired in.
+  const handleOpenComposer = () =>
+    openComposer({
+      onPostCreated: () => {
+        if (user) {
+          fetchUserPosts(user.id);
+          fetchUserStats(user.id);
+        }
+      },
+    });
 
   const [allBadges, setAllBadges] = useState<Array<{
     id: string;
@@ -855,7 +865,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.actionRowOutlineBtn}
-                  onPress={() => setShowCreatePost(true)}
+                  onPress={handleOpenComposer}
                   activeOpacity={0.85}
                 >
                   <Ionicons name="camera-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
@@ -940,7 +950,7 @@ export default function ProfileScreen() {
             {/* New Post button */}
             <TouchableOpacity
               style={styles.newPostButton}
-              onPress={() => setShowCreatePost(true)}
+              onPress={handleOpenComposer}
               activeOpacity={0.8}
             >
               <View style={styles.newPostIcon}>
@@ -1433,22 +1443,8 @@ export default function ProfileScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Create Post Modal */}
-      {/* Conditional mount (not just visible={false}) so the native Modal layer
-          fully unmounts when this tab is backgrounded — prevents stacking with
-          Social's composer when both screens stay mounted in the bottom tab nav. */}
-      {isFocused && (
-      <CreatePostModal
-        visible={showCreatePost}
-        onClose={() => setShowCreatePost(false)}
-        onPostCreated={() => {
-          if (user) {
-            fetchUserPosts(user.id);
-            fetchUserStats(user.id);
-          }
-        }}
-      />
-      )}
+      {/* CreatePostModal is mounted once at App.tsx via CreatePostModalProvider.
+          Open it via handleOpenComposer / useCreatePostModal().open(). */}
     </SafeAreaView>
   );
 }
