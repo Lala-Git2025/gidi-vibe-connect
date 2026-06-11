@@ -74,16 +74,29 @@ export const TrafficAlert = () => {
 
   const loadTraffic = useCallback(async () => {
     try {
-      const nowIso = new Date().toISOString();
+      // Pull the last 24h, ordered newest-first. Drop the strict expires_at
+      // gate — a route's most recent classification stays visible until a
+      // fresher one for the same route replaces it. Past-24h scope keeps
+      // truly stale data from lingering if the agent stops running.
+      const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from('traffic_reports')
-        .select('id, route_label, area, severity, summary, source_name, source_url, source_published_at, expires_at')
-        .gt('expires_at', nowIso)
+        .select('id, route_label, area, severity, summary, source_name, source_url, source_published_at, expires_at, scraped_at')
+        .gt('scraped_at', sinceIso)
         .order('source_published_at', { ascending: false, nullsFirst: false })
         .order('scraped_at', { ascending: false })
-        .limit(20);
+        .limit(60);
       if (!error && data) {
-        setReports(data as TrafficReport[]);
+        // Dedup client-side: keep only the newest row per route_label.
+        // Order above puts newest first, so first-seen wins.
+        const seen = new Set<string>();
+        const latestPerRoute: TrafficReport[] = [];
+        for (const row of data as TrafficReport[]) {
+          if (seen.has(row.route_label)) continue;
+          seen.add(row.route_label);
+          latestPerRoute.push(row);
+        }
+        setReports(latestPerRoute);
         setLastFetch(new Date());
       }
     } catch (err) {
