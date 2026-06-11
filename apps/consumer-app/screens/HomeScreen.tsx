@@ -55,7 +55,6 @@ export default function HomeScreen() {
     setVenueRefreshTrigger(prev => prev + 1);
     setRefreshing(false);
   };
-  };
 
   const getCurrentTimeGreeting = () => {
     const hour = new Date().getHours();
