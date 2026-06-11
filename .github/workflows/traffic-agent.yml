@@ -1,0 +1,30 @@
+name: Lagos Traffic Agent (Every Hour)
+
+on:
+  schedule:
+    # Run hourly at :15 past — staggered from news-agent (:00) to avoid spike.
+    - cron: '15 */1 * * *'
+  workflow_dispatch:
+
+jobs:
+  classify-traffic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Lagos Traffic Agent
+        run: node scripts/lagos-traffic-agent.js
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
