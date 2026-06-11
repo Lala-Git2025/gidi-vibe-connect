@@ -1417,14 +1417,17 @@ export default function SocialScreen() {
       />
 
       {/* ── Create / Edit Post Modal ───────────────────────────────── */}
-      {/* `isFocused` guard prevents the Profile tab's composer from rendering on top
-          of Social's when both screens stay mounted in the bottom tab navigator. */}
-      <CreatePostModal
-        visible={showCreateModal && isFocused}
-        onClose={() => { setShowCreateModal(false); setEditingPost(null); }}
-        onPostCreated={fetchFeedPosts}
-        editingPost={editingPost as EditingPost | null}
-      />
+      {/* Conditional mount (not just visible={false}) so the native Modal layer
+          fully unmounts when this tab is backgrounded — prevents stacking with
+          Profile's composer when both screens stay mounted in the bottom tab nav. */}
+      {isFocused && (
+        <CreatePostModal
+          visible={showCreateModal}
+          onClose={() => { setShowCreateModal(false); setEditingPost(null); }}
+          onPostCreated={fetchFeedPosts}
+          editingPost={editingPost as EditingPost | null}
+        />
+      )}
 
       {/* ── Create Community Modal ─────────────────────────────────── */}
       <Modal

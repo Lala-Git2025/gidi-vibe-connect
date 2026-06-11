@@ -1434,10 +1434,12 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* Create Post Modal */}
-      {/* `isFocused` guard prevents this from rendering on top of Social's composer
-          when both screens stay mounted in the bottom tab navigator. */}
+      {/* Conditional mount (not just visible={false}) so the native Modal layer
+          fully unmounts when this tab is backgrounded — prevents stacking with
+          Social's composer when both screens stay mounted in the bottom tab nav. */}
+      {isFocused && (
       <CreatePostModal
-        visible={showCreatePost && isFocused}
+        visible={showCreatePost}
         onClose={() => setShowCreatePost(false)}
         onPostCreated={() => {
           if (user) {
@@ -1446,6 +1448,7 @@ export default function ProfileScreen() {
           }
         }}
       />
+      )}
     </SafeAreaView>
   );
 }
