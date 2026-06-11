@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../config/supabase';
 import * as ImagePicker from 'expo-image-picker';
@@ -106,6 +106,7 @@ export default function ProfileScreen() {
   const [followingCount, setFollowingCount] = useState(0);
   const [profileTab, setProfileTab] = useState<'posts' | 'stats' | 'badges'>('posts');
   const [showCreatePost, setShowCreatePost] = useState(false);
+  const isFocused = useIsFocused();
 
   const [allBadges, setAllBadges] = useState<Array<{
     id: string;
@@ -1433,8 +1434,10 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* Create Post Modal */}
+      {/* `isFocused` guard prevents this from rendering on top of Social's composer
+          when both screens stay mounted in the bottom tab navigator. */}
       <CreatePostModal
-        visible={showCreatePost}
+        visible={showCreatePost && isFocused}
         onClose={() => setShowCreatePost(false)}
         onPostCreated={() => {
           if (user) {

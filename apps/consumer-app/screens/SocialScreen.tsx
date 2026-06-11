@@ -8,7 +8,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useTheme, polished } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -138,6 +138,7 @@ export default function SocialScreen() {
   const [selectedCommunityName, setSelectedCommunityName] = useState<string>('');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const isFocused = useIsFocused();
 
   // ── Data state ──────────────────────────────────────────────────────
   const [communities, setCommunities] = useState<Community[]>([]);
@@ -1416,8 +1417,10 @@ export default function SocialScreen() {
       />
 
       {/* ── Create / Edit Post Modal ───────────────────────────────── */}
+      {/* `isFocused` guard prevents the Profile tab's composer from rendering on top
+          of Social's when both screens stay mounted in the bottom tab navigator. */}
       <CreatePostModal
-        visible={showCreateModal}
+        visible={showCreateModal && isFocused}
         onClose={() => { setShowCreateModal(false); setEditingPost(null); }}
         onPostCreated={fetchFeedPosts}
         editingPost={editingPost as EditingPost | null}
