@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Animated, Easing, Linking } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme, polished } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../config/supabase';
@@ -71,7 +72,7 @@ export const TrafficAlert = () => {
   const [loading, setLoading]   = useState(true);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
 
-  const loadTraffic = async () => {
+  const loadTraffic = useCallback(async () => {
     try {
       const nowIso = new Date().toISOString();
       const { data, error } = await supabase
@@ -90,13 +91,16 @@ export const TrafficAlert = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadTraffic();
     const interval = setInterval(loadTraffic, REFRESH_INTERVAL);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadTraffic]);
+
+  // Refetch when Home regains focus — otherwise reports written between mount
+  // and the next 5-min interval tick stay invisible until then.
+  useFocusEffect(useCallback(() => { loadTraffic(); }, [loadTraffic]));
 
   if (loading) {
     return (
