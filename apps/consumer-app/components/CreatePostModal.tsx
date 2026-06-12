@@ -38,6 +38,9 @@ interface CreatePostModalProps {
   onClose: () => void;
   onPostCreated: () => void;
   editingPost?: EditingPost | null;
+  // When set, the composer destination is fixed — picker is replaced
+  // by a 'Posting to X' pill at the top.
+  lockedCommunity?: { id: string; name: string; icon?: string | null } | null;
 }
 
 export const CreatePostModal = ({
@@ -45,6 +48,7 @@ export const CreatePostModal = ({
   onClose,
   onPostCreated,
   editingPost = null,
+  lockedCommunity = null,
 }: CreatePostModalProps) => {
   const { colors } = useTheme();
 
@@ -62,7 +66,9 @@ export const CreatePostModal = ({
     }
   }, [visible]);
 
-  // Pre-fill form when editing
+  // Pre-fill form when editing, or pre-lock to a community when posting
+  // from inside one. Editing always wins (preserves the post's existing
+  // community); otherwise we honour lockedCommunity from the caller.
   useEffect(() => {
     if (editingPost) {
       setPostContent(editingPost.content);
@@ -71,8 +77,9 @@ export const CreatePostModal = ({
       setSelectedImage(editingPost.media_urls?.[0] || null);
     } else {
       resetForm();
+      if (lockedCommunity) setSelectedCommunity(lockedCommunity.id);
     }
-  }, [editingPost, visible]);
+  }, [editingPost, lockedCommunity, visible]);
 
   const resetForm = () => {
     setPostContent('');
@@ -293,8 +300,20 @@ export const CreatePostModal = ({
               />
             </View>
 
-            {/* Community */}
-            {communities.length > 0 && (
+            {/* Community — when locked (entered the composer from a
+                community feed), show a fixed pill instead of the picker. */}
+            {lockedCommunity ? (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Posting to</Text>
+                <View style={styles.lockedCommunityPill}>
+                  <Text style={styles.communityOptionIcon}>
+                    {resolveCommunityIcon(lockedCommunity.name, lockedCommunity.icon ?? null)}
+                  </Text>
+                  <Text style={styles.lockedCommunityName}>{lockedCommunity.name}</Text>
+                  <Ionicons name="lock-closed" size={12} color={colors.textSecondary} style={{ marginLeft: 6 }} />
+                </View>
+              </View>
+            ) : communities.length > 0 && (
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Community (Optional)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -423,6 +442,23 @@ const getStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     paddingVertical: 4,
+  },
+  lockedCommunityPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  lockedCommunityName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
   },
   communityOption: {
     flexDirection: 'row',

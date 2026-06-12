@@ -466,6 +466,18 @@ export default function SocialScreen() {
   };
 
   const handleOpenCreateModal = () => {
+    // If the user is currently inside a community feed, lock the composer
+    // destination so they can't accidentally cross-post.
+    if (currentView === 'community' && selectedCommunityId) {
+      const comm = communities.find(c => c.id === selectedCommunityId);
+      openComposer({
+        onPostCreated: fetchFeedPosts,
+        lockedCommunity: comm
+          ? { id: comm.id, name: comm.name, icon: comm.icon }
+          : { id: selectedCommunityId, name: selectedCommunityName || 'Community' },
+      });
+      return;
+    }
     openComposer({ onPostCreated: fetchFeedPosts });
   };
 
@@ -1036,8 +1048,9 @@ export default function SocialScreen() {
 
       {/* ── Main Content ───────────────────────────────────────────── */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Composer card — only on the top-level Feed view (not inside a community) */}
-        {currentView === 'feed' && currentUserId && (
+        {/* Composer card — available on Feed AND inside a community.
+            In community view the composer locks destination to that community. */}
+        {(currentView === 'feed' || currentView === 'community') && currentUserId && (
           <View style={styles.composerCard}>
             <View style={styles.composerAvatar}>
               {currentUserAvatar ? (
@@ -1051,7 +1064,11 @@ export default function SocialScreen() {
               onPress={handleOpenCreateModal}
               activeOpacity={0.85}
             >
-              <Text style={styles.composerPlaceholder}>Share a vibe with Lagos…</Text>
+              <Text style={styles.composerPlaceholder}>
+                {currentView === 'community' && selectedCommunityName
+                  ? `Share something with ${selectedCommunityName}…`
+                  : 'Share a vibe with Lagos…'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.composerCameraBtn}

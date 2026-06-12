@@ -6,9 +6,15 @@ import { CreatePostModal, EditingPost } from '../components/CreatePostModal';
 // Native's transparent <Modal>. This context mounts it exactly once at the app
 // root; any screen calls useCreatePostModal().open(...) to invoke it.
 
+export type LockedCommunity = { id: string; name: string; icon?: string | null };
+
 type OpenOptions = {
   editingPost?: EditingPost | null;
   onPostCreated?: () => void;
+  // When set, the composer destination is fixed to this community —
+  // the picker is replaced by a 'Posting to X' pill. Used when the
+  // user taps "Post" from inside a community feed.
+  lockedCommunity?: LockedCommunity | null;
 };
 
 type CreatePostModalContextValue = {
@@ -29,12 +35,14 @@ export const useCreatePostModal = (): CreatePostModalContextValue => {
 export const CreatePostModalProvider = ({ children }: { children: ReactNode }) => {
   const [visible, setVisible] = useState(false);
   const [editingPost, setEditingPost] = useState<EditingPost | null>(null);
+  const [lockedCommunity, setLockedCommunity] = useState<LockedCommunity | null>(null);
 
   // Ref so the callback is never a stale closure across renders.
   const onPostCreatedRef = useRef<(() => void) | undefined>(undefined);
 
   const open = useCallback((options?: OpenOptions) => {
     setEditingPost(options?.editingPost ?? null);
+    setLockedCommunity(options?.lockedCommunity ?? null);
     onPostCreatedRef.current = options?.onPostCreated;
     setVisible(true);
   }, []);
@@ -42,6 +50,7 @@ export const CreatePostModalProvider = ({ children }: { children: ReactNode }) =
   const close = useCallback(() => {
     setVisible(false);
     setEditingPost(null);
+    setLockedCommunity(null);
     onPostCreatedRef.current = undefined;
   }, []);
 
@@ -58,6 +67,7 @@ export const CreatePostModalProvider = ({ children }: { children: ReactNode }) =
         onClose={close}
         onPostCreated={handlePostCreated}
         editingPost={editingPost}
+        lockedCommunity={lockedCommunity}
       />
     </CreatePostModalContext.Provider>
   );
