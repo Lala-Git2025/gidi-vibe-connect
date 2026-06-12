@@ -8,21 +8,25 @@
 
 ---
 
-## 📊 Progress since audit (last updated 2026-05-11)
+## 📊 Progress since audit (last updated 2026-06-11)
 
 ### P0 — Launch blockers
 
 | # | Item | Status |
 |---|---|---|
-| 1.1 | Payments (Paystack/Flutterwave) | ⏳ Not started (3–5 days, needs provider decision) |
+| 1.1 | Payments (Paystack/Flutterwave) | 🅿️ Backlog — deprioritized for launch sprint |
 | 1.2 | Fake "Delete Account" in both apps | ✅ **FIXED** — `delete-account` edge fn + cascade |
 | 1.3 | `alert()` instead of `Alert.alert()` | ✅ **FIXED** — ExploreArea + News |
-| 1.4 | TomTom API key hardcoded in mobile bundle | ⏳ Pending edge function deploy + secret |
+| 1.4 | TomTom API key hardcoded in mobile bundle | ✅ **FIXED** — replaced with Lagos Traffic Radio + Gemini Flash classifier (free tier) |
 | 1.5 | Storage RLS gaps | ✅ **FIXED** — migration `20260511000001_storage_rls_hardening.sql` |
-| 1.6 | SMTP not configured | ⏳ Pending Supabase dashboard config |
+| 1.6 | SMTP not configured | ⏳ Pending Supabase dashboard config (external action) |
 | 1.7 | Missing DB triggers for counters | ✅ **FIXED** — migration `20260511000000_post_counter_triggers.sql` |
+| 1.8 | `trg_handle_business_role_assignment` INSERT gap (see §6) | ✅ **FIXED** — migration `20260611000000_role_assignment_insert_trigger.sql` + backfill |
+| 1.9 | pg_cron jobs only in dashboard (see §6) | ✅ **FIXED** — migration `20260611000001_codify_cron_jobs.sql` |
+| 1.10 | `venue_analytics` never populated (see §3) | ✅ **FIXED** — `track_venue_event` RPC + consumer wiring on Explore venue modal |
+| 1.11 | Verification self-fulfilling badge (see §3) | ⏳ Open (next session) |
 
-**Score: 4 of 7 P0 items shipped.** Remaining 3 each need either external input (payment provider) or dashboard / secret config (TomTom, SMTP).
+**Score: 8 of 11 P0 items shipped.** Remaining 3: payments (backlog), SMTP (you set in dashboard), verification badge (next).
 
 ### P1 — Painful gaps (selected items knocked out)
 
@@ -169,7 +173,7 @@ Documented in REMAINING-WORK #2 and CLAUDE.md. Password reset call succeeds serv
 | /login, /signup | ✅ | No forgot-password link in UI |
 | /dashboard | ✅ Mostly | Hardcoded "Active Offers: 0"; analytics widget reads empty table |
 | /venues, /venues/new, /venues/:id, /venues/:id/edit | ✅ Strong | "Verified" badge auto-true; no geocoding/coords UI |
-| /analytics | ⚠️ Decorative | Premium gate works; `venue_analytics` table never populated → all zeros |
+| /analytics | ✅ Working | Premium gate works; `track_venue_event` RPC populates `venue_analytics` from consumer venue interactions (June 2026) |
 | /events, /events/new, /events/:id | ✅ Working | Date-only inputs, no time-of-day → events stored at 00:00 UTC |
 | /offers | ✅ Working | Premium gate works; full CRUD |
 | /subscription | ❌ | Payment is `alert('Payment integration coming soon!')` |
@@ -177,7 +181,7 @@ Documented in REMAINING-WORK #2 and CLAUDE.md. Password reset call succeeds serv
 
 ### 3.2 P1 — painful gaps (business portal)
 
-1. **`venue_analytics` table is never populated** — no migration / Edge Function / client code writes to it. All premium analytics dashboards read 0 rows. Either build the counter pipeline (page views, engagement) or remove the premium feature.
+1. **~~`venue_analytics` table is never populated~~** — ✅ **FIXED 2026-06-11.** New `track_venue_event(p_venue_id, p_event_type)` RPC + UNIQUE(venue_id, date) does atomic daily counter upserts (`profile_views` / `phone_clicks` / `website_clicks` / `direction_clicks` + offer/event columns reserved). Wired into `ExploreScreen.VenueDetailModal` so the modal-open hook and the call/website/directions handlers all record. `offer_views/clicks` and `event_views` columns remain unwired pending consumer offer/event detail surfaces.
 2. **Verification is self-fulfilling** — [BusinessAuthContext.tsx:104-170](apps/business-portal/src/contexts/BusinessAuthContext.tsx#L104) auto-inserts `verification_requests` with `status='approved', reviewed_by='system'` at signup. `create-venue` edge function sets `is_verified: true`. There is no admin review queue. The "Verified" badge is meaningless.
 3. **Plan-limit numbers are inconsistent across UI**: Signup defaults `max_photos_per_venue: 10`; Subscription page says Free=5, Premium=20; Dashboard upgrade banner promises Premium=50. Pick one source of truth.
 4. **Settings notification toggles are local state only** — never persisted, no email/push system reads them ([Settings.tsx:27-28, 211-228](apps/business-portal/src/pages/Settings.tsx#L211)).
@@ -266,11 +270,11 @@ Documented in REMAINING-WORK #2 and CLAUDE.md. Password reset call succeeds serv
 - `events.views_count` / `saves_count` / `shares_count` — no triggers
 - `communities.post_count` — no trigger on community-tagged `social_posts`
 - `news_feed.views_count` — no trigger
-- `venue_analytics.*` — no instrumentation anywhere
+- ~~`venue_analytics.*` — no instrumentation anywhere~~ ✅ **FIXED 2026-06-11** — `track_venue_event` RPC, see §3.2 item 1.
 
-**Missing pg_cron jobs** (CLAUDE.md documents them but no SQL codifies them):
-- `refresh_trending_venues()` should run every 10 min — **not scheduled in any migration**
-- `cleanup_expired_stories()` should run daily — **not scheduled in any migration**
+**Missing pg_cron jobs** ~~(CLAUDE.md documents them but no SQL codifies them):~~ ✅ **FIXED 2026-06-11** — migration `20260611000001_codify_cron_jobs.sql` codifies both jobs idempotently:
+- ~~`refresh_trending_venues()` should run every 10 min — **not scheduled in any migration**~~ ✅ Codified.
+- ~~`cleanup_expired_stories()` should run daily — **not scheduled in any migration**~~ ✅ Codified.
 
 **Orphaned / duplicate tables:**
 - `user_checkins` (dead) vs `venue_check_ins` (live)
@@ -282,7 +286,7 @@ Documented in REMAINING-WORK #2 and CLAUDE.md. Password reset call succeeds serv
 - `exclusive_offers` — schema present, no app writes
 - `verification_requests` — defaults `status='approved'`, no review flow
 
-**Trigger gap:** `trg_handle_business_role_assignment` fires only on UPDATE of `profiles.role`, not INSERT. Users who sign up with `role='Business Owner'` in metadata may miss `business_profiles` creation. Only backfill migration `20260402000001` saved existing users.
+**~~Trigger gap~~:** ✅ **FIXED 2026-06-11.** Migration `20260611000000_role_assignment_insert_trigger.sql` widens the trigger to `AFTER INSERT OR UPDATE OF role` and the function derives the previous role via `TG_OP` so the INSERT path treats it as a `NULL → NEW.role` transition. Includes a backfill that creates `business_profiles` / `admin_profiles` rows for any existing user the old trigger missed (1 Business Owner was caught in prod).
 
 **Storage RLS:** see §1.5.
 
@@ -318,8 +322,8 @@ The P1 list (~33 items). Highlights:
 
 - Build a notifications system (consumer + portals) — Expo Push + Edge Function + `notifications` table.
 - Wire Discover filter params and ExploreArea venue taps end-to-end.
-- Codify pg_cron jobs into migrations (don't rely on dashboard-set crons).
-- Fix the `trg_handle_business_role_assignment` INSERT path.
+- ~~Codify pg_cron jobs into migrations (don't rely on dashboard-set crons).~~ ✅ shipped 2026-06-11.
+- ~~Fix the `trg_handle_business_role_assignment` INSERT path.~~ ✅ shipped 2026-06-11.
 - Clean up the news pipeline: pick `news` or `news_feed`, delete the other; delete `fetch-lagos-news` edge fn or repurpose.
 - Decide what to do with the 4 mock edge functions (`scrape-lagos-venues`, `search-places`, `fetch-venues`, `fetch-lagos-events`): real implementations or deletion.
 - Add `useFocusEffect` to Home / Explore / Events / Social.
@@ -369,14 +373,14 @@ P2 items:
 - No `useFocusEffect` on 4 of 8 consumer screens.
 - Notification bells stubbed on every screen.
 - Settings notification + location toggles are fake.
-- Trigger gap on `trg_handle_business_role_assignment` (INSERT vs UPDATE).
+- ~~Trigger gap on `trg_handle_business_role_assignment` (INSERT vs UPDATE).~~ ✅ shipped 2026-06-11.
 - 4 mock edge functions (`scrape-lagos-venues`, `search-places`, `fetch-venues`, `fetch-lagos-events`).
 - News pipeline schema split (`news` vs `news_feed`).
 - Missing counter triggers on `likes_count` / `comments_count` / `views_count` / etc.
-- pg_cron jobs not codified into migrations.
+- ~~pg_cron jobs not codified into migrations.~~ ✅ shipped 2026-06-11.
 - `com.gidiconnect.newsagent.plist` points to wrong path.
 - Verification badge is self-fulfilling.
-- venue_analytics never populated.
+- ~~venue_analytics never populated.~~ ✅ shipped 2026-06-11.
 - Analytics 1000-row truncation.
 - Recent Activity feed `review` type is dead code.
 - Plan-limit numbers inconsistent across UI.
