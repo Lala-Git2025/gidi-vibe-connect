@@ -749,6 +749,19 @@ export default function SocialScreen() {
     }
   };
 
+  // Resolve a @username string to a user_id and open their profile modal.
+  // Silently does nothing for handles that don't match a known profile.
+  const openMention = async (handle: string) => {
+    const username = handle.replace(/^@/, '');
+    if (!username) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('username', username)
+      .maybeSingle();
+    if (data?.user_id) openUserProfile(data.user_id);
+  };
+
   const openUserProfile = async (userId: string) => {
     if (userId === currentUserId) return;
 
@@ -1341,7 +1354,15 @@ export default function SocialScreen() {
                     <Text style={styles.postContentText}>
                       {post.content.split(/(@\w+|#\w+)/g).map((chunk, i) => {
                         if (chunk.startsWith('@')) {
-                          return <Text key={i} style={styles.mentionInline}>{chunk}</Text>;
+                          return (
+                            <Text
+                              key={i}
+                              style={styles.mentionInline}
+                              onPress={() => openMention(chunk)}
+                            >
+                              {chunk}
+                            </Text>
+                          );
                         }
                         if (chunk.startsWith('#')) {
                           return (
