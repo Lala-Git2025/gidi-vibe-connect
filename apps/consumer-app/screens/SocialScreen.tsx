@@ -1336,7 +1336,15 @@ export default function SocialScreen() {
 
                   {/* Post Content */}
                   <View style={styles.postContent}>
-                    <Text style={styles.postContentText}>{post.content}</Text>
+                    <Text style={styles.postContentText}>
+                      {post.content.split(/(@\w+)/g).map((chunk, i) =>
+                        chunk.startsWith('@') ? (
+                          <Text key={i} style={styles.mentionInline}>{chunk}</Text>
+                        ) : (
+                          <Text key={i}>{chunk}</Text>
+                        )
+                      )}
+                    </Text>
                     {post.media_urls && post.media_urls.length > 0 && (
                       <PostImage uri={post.media_urls[0]} style={styles.postImage} />
                     )}
@@ -2178,6 +2186,10 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
+  },
+  mentionInline: {
+    color: colors.primary,
+    fontWeight: '700',
   },
   postImage: {
     width: '100%',

@@ -59,6 +59,11 @@ export const CreatePostModal = ({
   const [submitting, setSubmitting] = useState(false);
   const [communities, setCommunities] = useState<Community[]>([]);
 
+  // ── @mention autocomplete state ─────────────────────────────────────────
+  const [contentSelection, setContentSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  const [mentionSuggestions, setMentionSuggestions] = useState<Array<{ username: string; full_name: string }>>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null); // null = not in mention mode
+
   // Load communities for the picker
   useEffect(() => {
     if (visible) {
@@ -86,6 +91,75 @@ export const CreatePostModal = ({
     setPostLocation('');
     setSelectedCommunity(null);
     setSelectedImage(null);
+  };
+
+  // Detect if the cursor is currently inside an @mention token. Returns the
+  // prefix string after @ (e.g. "fe" for "@fe"), or null if not in one.
+  const computeMentionPrefix = (text: string, cursor: number): string | null => {
+    if (cursor <= 0) return null;
+    // Walk backwards from cursor until whitespace or @ — stop conditions.
+    let i = cursor - 1;
+    while (i >= 0) {
+      const ch = text[i];
+      if (ch === '@') {
+        // Must be at start of string OR preceded by whitespace
+        if (i === 0 || /\s/.test(text[i - 1])) {
+          return text.slice(i + 1, cursor);
+        }
+        return null;
+      }
+      if (/\s/.test(ch)) return null;
+      i--;
+    }
+    return null;
+  };
+
+  // Query profiles when the prefix changes (debounced via the effect's
+  // dependency-driven re-run pattern).
+  useEffect(() => {
+    if (mentionQuery === null || mentionQuery.length < 1) {
+      setMentionSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('username, full_name')
+        .ilike('username', `${mentionQuery}%`)
+        .not('username', 'is', null)
+        .limit(5);
+      if (!cancelled) setMentionSuggestions((data ?? []) as any);
+    })();
+    return () => { cancelled = true; };
+  }, [mentionQuery]);
+
+  const handleContentChange = (text: string) => {
+    setPostContent(text);
+    const prefix = computeMentionPrefix(text, contentSelection.end);
+    setMentionQuery(prefix);
+  };
+
+  const handleContentSelection = (e: any) => {
+    const sel = e.nativeEvent.selection;
+    setContentSelection(sel);
+    const prefix = computeMentionPrefix(postContent, sel.end);
+    setMentionQuery(prefix);
+  };
+
+  // Replace the current @prefix with @username + space, place cursor after.
+  const insertMention = (username: string) => {
+    const cursor = contentSelection.end;
+    // Find the @ that began this token
+    let atIdx = cursor - 1;
+    while (atIdx >= 0 && postContent[atIdx] !== '@') atIdx--;
+    if (atIdx < 0) return;
+    const before = postContent.slice(0, atIdx);
+    const after = postContent.slice(cursor);
+    const next = `${before}@${username} ${after}`;
+    setPostContent(next);
+    setMentionQuery(null);
+    setMentionSuggestions([]);
   };
 
   const fetchCommunities = async () => {
@@ -277,16 +351,34 @@ export const CreatePostModal = ({
             {/* Content */}
             <TextInput
               style={styles.textArea}
-              placeholder="What's on your mind?"
+              placeholder="What's on your mind?  Type @ to mention someone."
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={4}
               value={postContent}
-              onChangeText={setPostContent}
+              onChangeText={handleContentChange}
+              onSelectionChange={handleContentSelection}
+              selection={contentSelection}
               maxLength={500}
               autoFocus={!editingPost}
             />
             <Text style={styles.charCount}>{postContent.length}/500</Text>
+
+            {/* @mention suggestions */}
+            {mentionQuery !== null && mentionSuggestions.length > 0 && (
+              <View style={styles.mentionList}>
+                {mentionSuggestions.map((s) => (
+                  <TouchableOpacity
+                    key={s.username}
+                    style={styles.mentionItem}
+                    onPress={() => insertMention(s.username)}
+                  >
+                    <Text style={styles.mentionUsername}>@{s.username}</Text>
+                    <Text style={styles.mentionFullName}>{s.full_name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             {/* Location */}
             <View style={styles.inputGroup}>
@@ -442,6 +534,30 @@ const getStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     paddingVertical: 4,
+  },
+  mentionList: {
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  mentionItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  mentionUsername: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  mentionFullName: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   lockedCommunityPill: {
     alignSelf: 'flex-start',
