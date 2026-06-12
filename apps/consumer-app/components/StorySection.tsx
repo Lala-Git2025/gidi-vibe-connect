@@ -147,6 +147,21 @@ export const StorySection = () => {
     });
   }, [subscribeUploaded, currentUserId]);
 
+  // Realtime: stream new stories from anyone (RLS-gated to active ones)
+  // so followed users' vibes appear in the rail without refresh.
+  useEffect(() => {
+    if (currentUserId === null) return;
+    const channel = supabase
+      .channel('stories-rail')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'stories' },
+        () => { fetchStories(currentUserId); },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUserId]);
+
   const initData = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     const uid = session?.user?.id ?? null;
