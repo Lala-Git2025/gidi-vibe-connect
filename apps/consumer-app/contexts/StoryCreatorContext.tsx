@@ -16,6 +16,11 @@ type OpenOptions = {
 
 type StoryCreatorContextValue = {
   open: (options?: OpenOptions) => Promise<void>;
+  // Subscribe to upload-complete events. Returns an unsubscribe fn.
+  // StorySection uses this so any new vibe — created from Home, Profile,
+  // or anywhere else — refreshes the rail without relying on focus
+  // changes (bottom-tab useFocusEffect can miss).
+  subscribeUploaded: (cb: () => void) => () => void;
 };
 
 const StoryCreatorContext = createContext<StoryCreatorContextValue | null>(null);
@@ -37,6 +42,12 @@ type EditorData = {
 export const StoryCreatorProvider = ({ children }: { children: ReactNode }) => {
   const [editorData, setEditorData] = useState<EditorData | null>(null);
   const onCreatedRef = useRef<(() => void) | undefined>(undefined);
+  const subscribersRef = useRef<Set<() => void>>(new Set());
+
+  const subscribeUploaded = useCallback((cb: () => void) => {
+    subscribersRef.current.add(cb);
+    return () => { subscribersRef.current.delete(cb); };
+  }, []);
 
   const open = useCallback(async (options?: OpenOptions) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -122,6 +133,9 @@ export const StoryCreatorProvider = ({ children }: { children: ReactNode }) => {
 
       Alert.alert('Posted!', 'Your story is live for 24 hours.');
       callback?.();
+      // Broadcast so any subscribed list (e.g. Home Stories rail) refreshes
+      // regardless of which screen triggered the upload.
+      subscribersRef.current.forEach((cb) => cb());
     } catch (error: any) {
       console.error('[Story upload] caught error:', error);
       Alert.alert('Upload Failed', error.message || 'An unexpected error occurred.');
@@ -129,7 +143,7 @@ export const StoryCreatorProvider = ({ children }: { children: ReactNode }) => {
   }, [editorData]);
 
   return (
-    <StoryCreatorContext.Provider value={{ open }}>
+    <StoryCreatorContext.Provider value={{ open, subscribeUploaded }}>
       {children}
       {editorData && (
         <StoryEditor

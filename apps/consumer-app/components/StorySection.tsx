@@ -122,7 +122,7 @@ export const StorySection = () => {
   const styles = getStyles(colors);
   const ringRotation = useRingRotation();
 
-  const { open: openStoryCreator } = useStoryCreator();
+  const { open: openStoryCreator, subscribeUploaded } = useStoryCreator();
 
   const [userGroups, setUserGroups] = useState<UserStoryGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,6 +137,15 @@ export const StorySection = () => {
   useFocusEffect(useCallback(() => {
     if (currentUserId !== null) fetchStories(currentUserId);
   }, [currentUserId]));
+
+  // Belt-and-braces: also refetch whenever any vibe upload completes,
+  // regardless of which screen kicked it off. Bottom-tab focus events
+  // are best-effort; this is the guarantee.
+  useEffect(() => {
+    return subscribeUploaded(() => {
+      fetchStories(currentUserId);
+    });
+  }, [subscribeUploaded, currentUserId]);
 
   const initData = async () => {
     const { data: { session } } = await supabase.auth.getSession();

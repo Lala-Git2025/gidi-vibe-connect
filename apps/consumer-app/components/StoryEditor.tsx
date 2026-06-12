@@ -70,8 +70,9 @@ interface Props {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-// Canvas is the area where the media lives (takes up most of the screen)
-const CANVAS_H = SCREEN_H * 0.78;
+// Canvas matches the StoryViewer dimensions (full screen) so the editor is
+// WYSIWYG. The bottom toolbar floats over the canvas as a translucent layer.
+const CANVAS_H = SCREEN_H;
 const CANVAS_W = SCREEN_W;
 
 const TEXT_COLORS = [
@@ -673,10 +674,9 @@ const getStyles = (colors: any) =>
       backgroundColor: '#000',
     },
 
-    // Canvas
+    // Canvas — full screen so WYSIWYG with the viewer. Toolbar floats on top.
     canvas: {
-      width: CANVAS_W,
-      height: CANVAS_H,
+      ...StyleSheet.absoluteFillObject,
       overflow: 'hidden',
       backgroundColor: '#111',
     },
@@ -791,9 +791,13 @@ const getStyles = (colors: any) =>
 
     // Toolbar
     toolbar: {
-      flex: 1,
-      backgroundColor: '#111',
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.55)',
       paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+      zIndex: 30,
     },
     toolRow: {
       flexDirection: 'row',
