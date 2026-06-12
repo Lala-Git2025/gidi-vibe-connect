@@ -44,7 +44,10 @@ export function DashboardLayout() {
           {(profile.role === 'Admin' || profile.role === 'Super Admin') && (
             <p className="text-sm text-muted-foreground mb-4">
               Administrators should use the{' '}
-              <a href="http://localhost:3002" className="text-primary hover:underline font-medium">
+              <a
+                href={import.meta.env.VITE_ADMIN_PORTAL_URL || 'https://admin.gidiconnect.com'}
+                className="text-primary hover:underline font-medium"
+              >
                 Admin Portal
               </a>{' '}
               instead.

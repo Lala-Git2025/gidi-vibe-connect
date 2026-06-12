@@ -41,7 +41,10 @@ export function AdminLayout() {
           <p className="text-sm text-muted-foreground mb-1">Current role: {profile.role}</p>
           <p className="text-sm text-muted-foreground mb-6">
             If you are a venue owner, use the{' '}
-            <a href="http://localhost:3001" className="text-primary hover:underline">
+            <a
+              href={import.meta.env.VITE_BUSINESS_PORTAL_URL || 'https://business.gidiconnect.com'}
+              className="text-primary hover:underline"
+            >
               Business Portal
             </a>{' '}
             instead.
