@@ -351,7 +351,7 @@ export const CreatePostModal = ({
             {/* Content */}
             <TextInput
               style={styles.textArea}
-              placeholder="What's on your mind?  Type @ to mention someone."
+              placeholder="What's on your mind?  Use @ to mention, # to tag."
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={4}

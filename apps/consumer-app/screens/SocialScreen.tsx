@@ -1337,13 +1337,23 @@ export default function SocialScreen() {
                   {/* Post Content */}
                   <View style={styles.postContent}>
                     <Text style={styles.postContentText}>
-                      {post.content.split(/(@\w+)/g).map((chunk, i) =>
-                        chunk.startsWith('@') ? (
-                          <Text key={i} style={styles.mentionInline}>{chunk}</Text>
-                        ) : (
-                          <Text key={i}>{chunk}</Text>
-                        )
-                      )}
+                      {post.content.split(/(@\w+|#\w+)/g).map((chunk, i) => {
+                        if (chunk.startsWith('@')) {
+                          return <Text key={i} style={styles.mentionInline}>{chunk}</Text>;
+                        }
+                        if (chunk.startsWith('#')) {
+                          return (
+                            <Text
+                              key={i}
+                              style={styles.hashtagInline}
+                              onPress={() => setFeedSearch(chunk)}
+                            >
+                              {chunk}
+                            </Text>
+                          );
+                        }
+                        return <Text key={i}>{chunk}</Text>;
+                      })}
                     </Text>
                     {post.media_urls && post.media_urls.length > 0 && (
                       <PostImage uri={post.media_urls[0]} style={styles.postImage} />
@@ -2189,6 +2199,10 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
   },
   mentionInline: {
     color: colors.primary,
+    fontWeight: '700',
+  },
+  hashtagInline: {
+    color: '#3B82F6',
     fontWeight: '700',
   },
   postImage: {
