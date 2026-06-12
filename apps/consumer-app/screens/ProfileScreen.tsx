@@ -103,9 +103,10 @@ export default function ProfileScreen() {
   }>>([]);
   // Posts & follower stats for profile grid
   const [userPosts, setUserPosts] = useState<GridPost[]>([]);
+  const [savedPosts, setSavedPosts] = useState<GridPost[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const [profileTab, setProfileTab] = useState<'posts' | 'stats' | 'badges'>('posts');
+  const [profileTab, setProfileTab] = useState<'posts' | 'saved' | 'stats' | 'badges'>('posts');
   const { open: openComposer } = useCreatePostModal();
   const { open: openStoryCreator } = useStoryCreator();
 
@@ -342,6 +343,24 @@ export default function ProfileScreen() {
       setUserPosts((data as GridPost[]) ?? []);
     } catch (error) {
       console.log('Error fetching user posts:', error);
+    }
+  };
+
+  const fetchSavedPosts = async (userId: string) => {
+    try {
+      // Join straight through the FK so we get the post fields without two trips.
+      const { data } = await supabase
+        .from('saved_posts')
+        .select('created_at, post:social_posts(id, content, media_urls, created_at, likes_count, comments_count, user_id)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(60);
+      const posts = (data ?? [])
+        .map((row: any) => row.post)
+        .filter(Boolean);
+      setSavedPosts(posts as GridPost[]);
+    } catch (error) {
+      console.log('Error fetching saved posts:', error);
     }
   };
 
@@ -904,13 +923,14 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Profile Tab Switcher: Posts / Stats / Badges */}
+        {/* Profile Tab Switcher: Posts / Saved / Stats / Badges */}
         {!isGuest && (
           <View style={styles.profileTabs}>
-            {(['posts', 'stats', 'badges'] as const).map((t) => {
+            {(['posts', 'saved', 'stats', 'badges'] as const).map((t) => {
               const active = profileTab === t;
               const iconName =
                 t === 'posts' ? (active ? 'grid' : 'grid-outline') :
+                t === 'saved' ? (active ? 'bookmark' : 'bookmark-outline') :
                 t === 'stats' ? (active ? 'bar-chart' : 'bar-chart-outline') :
                                 (active ? 'medal' : 'medal-outline');
               const inner = (
@@ -920,10 +940,14 @@ export default function ProfileScreen() {
                   color={active ? '#18181B' : colors.textSecondary}
                 />
               );
+              const handleTabPress = () => {
+                setProfileTab(t);
+                if (t === 'saved' && user) fetchSavedPosts(user.id);
+              };
               return active ? (
                 <TouchableOpacity
                   key={t}
-                  onPress={() => setProfileTab(t)}
+                  onPress={handleTabPress}
                   style={styles.profileTabActiveWrap}
                   activeOpacity={0.85}
                 >
@@ -939,7 +963,7 @@ export default function ProfileScreen() {
               ) : (
                 <TouchableOpacity
                   key={t}
-                  onPress={() => setProfileTab(t)}
+                  onPress={handleTabPress}
                   style={styles.profileTab}
                   activeOpacity={0.7}
                 >
@@ -968,6 +992,16 @@ export default function ProfileScreen() {
             <PostGrid
               posts={userPosts}
               emptyMessage="Share your first photo or post"
+            />
+          </View>
+        )}
+
+        {/* Saved Posts Grid */}
+        {!isGuest && profileTab === 'saved' && (
+          <View style={{ marginBottom: 24 }}>
+            <PostGrid
+              posts={savedPosts}
+              emptyMessage="Posts you bookmark from the feed will show up here."
             />
           </View>
         )}
