@@ -269,6 +269,62 @@ export default function SocialScreen() {
     }, []),
   );
 
+  // Realtime: stream new posts and likes/comments-count updates straight into
+  // the feed so users see activity without pull-to-refresh. RLS still applies —
+  // users only receive events for rows they can SELECT.
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const channel = supabase
+      .channel('social-feed')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'social_posts' },
+        async (payload) => {
+          const row = payload.new as { id?: string; user_id?: string };
+          if (!row?.id || !row?.user_id) return;
+
+          // Fetch the full row with joins; relies on RLS to filter invisible rows.
+          const [{ data: full }, { data: prof }] = await Promise.all([
+            supabase
+              .from('social_posts')
+              .select('*, communities(name)')
+              .eq('id', row.id)
+              .maybeSingle(),
+            supabase
+              .from('profiles')
+              .select('user_id, full_name, username, avatar_url')
+              .eq('user_id', row.user_id)
+              .maybeSingle(),
+          ]);
+          if (!full) return;
+
+          const merged = { ...(full as any), profiles: prof ?? null } as Post;
+          setFeedPosts(prev => {
+            if (prev.some(p => p.id === merged.id)) return prev; // dedup
+            return [merged, ...prev];
+          });
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'social_posts' },
+        (payload) => {
+          const updated = payload.new as { id: string; likes_count: number; comments_count: number };
+          setFeedPosts(prev =>
+            prev.map(p =>
+              p.id === updated.id
+                ? { ...p, likes_count: updated.likes_count, comments_count: updated.comments_count }
+                : p,
+            ),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUserId]);
+
   const fetchCurrentUser = async () => {
     const { data: { session }, error: authError } = await supabase.auth.getSession();
     const user = session?.user ?? null;
