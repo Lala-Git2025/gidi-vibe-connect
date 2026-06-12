@@ -87,6 +87,7 @@ interface Comment {
   user_id: string;
   content: string;
   created_at: string;
+  parent_comment_id: string | null;
   profiles?: {
     full_name: string;
     avatar_url?: string | null;
@@ -171,6 +172,10 @@ export default function SocialScreen() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  // When set, the input posts a reply to this comment instead of a top-level
+  // comment. Replies are 1-level deep — reply-to-reply collapses under the
+  // same parent (Twitter-style flat thread).
+  const [replyingTo, setReplyingTo] = useState<{ id: string; name: string } | null>(null);
 
   const styles = getStyles(colors, insets);
 
@@ -983,10 +988,22 @@ export default function SocialScreen() {
 
     setSubmittingComment(true);
     const content = newComment.trim();
+    // When replying-to-a-reply, attach to the same top-level parent so threads
+    // stay 1-level deep (Twitter-style). Find the root of the reply chain.
+    let parentId: string | null = null;
+    if (replyingTo) {
+      const target = comments.find(c => c.id === replyingTo.id);
+      parentId = target?.parent_comment_id ?? replyingTo.id;
+    }
     try {
       const { data: inserted, error } = await supabase
         .from('comments')
-        .insert({ post_id: commentsModalPost.id, user_id: currentUserId, content })
+        .insert({
+          post_id: commentsModalPost.id,
+          user_id: currentUserId,
+          content,
+          parent_comment_id: parentId,
+        })
         .select()
         .single();
       if (error) throw error;
@@ -998,6 +1015,7 @@ export default function SocialScreen() {
       };
       setComments(prev => [...prev, { ...(inserted as any), profiles: myProfile }]);
       setNewComment('');
+      setReplyingTo(null);
 
       // Optimistically reflect the new count locally. The authoritative
       // social_posts.comments_count is updated by the
@@ -1820,34 +1838,79 @@ export default function SocialScreen() {
                   <Text style={styles.emptyCommentsText}>Be the first to comment</Text>
                 </View>
               ) : (
-                comments.map(c => (
-                  <View key={c.id} style={styles.commentRow}>
-                    <View style={styles.commentAvatar}>
-                      {c.profiles?.avatar_url ? (
-                        <Image source={{ uri: c.profiles.avatar_url }} style={styles.commentAvatarImg} />
-                      ) : (
-                        <Text style={styles.commentAvatarText}>
-                          {getInitials(c.profiles?.full_name || 'A')}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={styles.commentBody}>
-                      <View style={styles.commentBubble}>
-                        <Text style={styles.commentName}>{c.profiles?.full_name || 'User'}</Text>
-                        <Text style={styles.commentText}>{c.content}</Text>
+                (() => {
+                  // Group: top-level comments and their replies (1-level deep).
+                  const topLevel = comments.filter(c => !c.parent_comment_id);
+                  const repliesByParent = new Map<string, Comment[]>();
+                  for (const c of comments) {
+                    if (!c.parent_comment_id) continue;
+                    const list = repliesByParent.get(c.parent_comment_id) ?? [];
+                    list.push(c);
+                    repliesByParent.set(c.parent_comment_id, list);
+                  }
+
+                  const renderRow = (c: Comment, indent: boolean) => (
+                    <View
+                      key={c.id}
+                      style={[styles.commentRow, indent && styles.commentRowReply]}
+                    >
+                      <View style={styles.commentAvatar}>
+                        {c.profiles?.avatar_url ? (
+                          <Image source={{ uri: c.profiles.avatar_url }} style={styles.commentAvatarImg} />
+                        ) : (
+                          <Text style={styles.commentAvatarText}>
+                            {getInitials(c.profiles?.full_name || 'A')}
+                          </Text>
+                        )}
                       </View>
-                      <Text style={styles.commentTime}>{formatTimeAgo(c.created_at)}</Text>
+                      <View style={styles.commentBody}>
+                        <View style={styles.commentBubble}>
+                          <Text style={styles.commentName}>{c.profiles?.full_name || 'User'}</Text>
+                          <Text style={styles.commentText}>{c.content}</Text>
+                        </View>
+                        <View style={styles.commentMetaRow}>
+                          <Text style={styles.commentTime}>{formatTimeAgo(c.created_at)}</Text>
+                          <TouchableOpacity
+                            onPress={() => setReplyingTo({ id: c.id, name: c.profiles?.full_name || 'User' })}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <Text style={styles.commentReplyBtn}>Reply</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                ))
+                  );
+
+                  return topLevel.map((parent) => (
+                    <View key={parent.id}>
+                      {renderRow(parent, false)}
+                      {(repliesByParent.get(parent.id) ?? []).map((r) => renderRow(r, true))}
+                    </View>
+                  ));
+                })()
               )}
             </ScrollView>
+
+            {/* "Replying to X" banner — visible only when a reply target is set */}
+            {replyingTo && (
+              <View style={styles.replyBanner}>
+                <Text style={styles.replyBannerText}>
+                  Replying to <Text style={styles.replyBannerName}>{replyingTo.name}</Text>
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setReplyingTo(null)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Input */}
             <View style={styles.commentInputRow}>
               <TextInput
                 style={styles.commentInput}
-                placeholder="Add a comment..."
+                placeholder={replyingTo ? `Reply to ${replyingTo.name}...` : 'Add a comment...'}
                 placeholderTextColor={colors.textSecondary}
                 value={newComment}
                 onChangeText={setNewComment}
@@ -2817,8 +2880,39 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
   commentTime: {
     fontSize: 11,
     color: colors.textSecondary,
-    marginTop: 4,
     marginLeft: 12,
+  },
+  commentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  commentReplyBtn: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  commentRowReply: {
+    paddingLeft: 40, // indent under the parent's avatar gutter
+  },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: colors.cardBackground,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  replyBannerText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  replyBannerName: {
+    color: colors.text,
+    fontWeight: '700',
   },
   commentInputRow: {
     flexDirection: 'row',
