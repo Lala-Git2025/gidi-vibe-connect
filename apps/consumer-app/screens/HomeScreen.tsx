@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, RefreshControl, Alert, ActivityIndicator, Animated, Easing } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, RefreshControl, ActivityIndicator, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme, polished } from '../contexts/ThemeContext';
 import { TrafficAlert } from '../components/TrafficAlert';
+import { NotificationsBell } from '../components/NotificationsBell';
 import { VibeCheck } from '../components/VibeCheck';
 import { TrendingVenues } from '../components/TrendingVenues';
 import { StorySection } from '../components/StorySection';
@@ -130,13 +131,7 @@ export default function HomeScreen() {
             <TouchableOpacity style={styles.headerIconBtn}>
               <Ionicons name="search" size={20} color={colors.text} />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerIconBtn}
-              onPress={() => Alert.alert('Coming Soon', 'Notifications are on the way!')}
-            >
-              <Ionicons name="notifications-outline" size={20} color={colors.text} />
-              <View style={styles.notifPip} />
-            </TouchableOpacity>
+            <NotificationsBell />
           </View>
         </View>
 
