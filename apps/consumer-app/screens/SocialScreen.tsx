@@ -133,6 +133,7 @@ export default function SocialScreen() {
   // ── Data state ──────────────────────────────────────────────────────
   const [communities, setCommunities] = useState<Community[]>([]);
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
+  const [feedSort, setFeedSort] = useState<'new' | 'hot' | 'top'>('new');
   const [loading, setLoading] = useState(true);
   // showCreateModal + editingPost state removed — composer is now app-level
   // (mounted once via CreatePostModalProvider). Opened via openComposer().
@@ -270,6 +271,9 @@ export default function SocialScreen() {
     }, []),
   );
 
+  // Refetch when the user flips Hot / New / Top.
+  useEffect(() => { fetchFeedPosts(); }, [feedSort]);
+
   // Realtime: stream new posts and likes/comments-count updates straight into
   // the feed so users see activity without pull-to-refresh. RLS still applies —
   // users only receive events for rows they can SELECT.
@@ -400,11 +404,18 @@ export default function SocialScreen() {
 
   const fetchFeedPosts = async () => {
     try {
-      const { data: posts, error } = await supabase
-        .from('social_posts')
-        .select('*, communities(name)')
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // New: pure recency. Top / Hot: pull last 7 days and sort client-side.
+      // Top = highest likes; Hot = engagement velocity (recency-weighted).
+      let q = supabase.from('social_posts').select('*, communities(name)');
+      if (feedSort === 'new') {
+        q = q.order('created_at', { ascending: false }).limit(50);
+      } else {
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        q = q.gte('created_at', weekAgo)
+             .order('created_at', { ascending: false })
+             .limit(120);
+      }
+      const { data: posts, error } = await q;
 
       if (error) throw error;
       if (!posts || posts.length === 0) { setFeedPosts([]); return; }
@@ -417,11 +428,24 @@ export default function SocialScreen() {
 
       const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
 
-      const mergedPosts = posts.map((post: any) => ({
+      let mergedPosts = posts.map((post: any) => ({
         ...post,
         profiles: profileMap.get(post.user_id) ?? null,
       }));
-      setFeedPosts(mergedPosts);
+
+      if (feedSort === 'top') {
+        mergedPosts.sort((a: any, b: any) => (b.likes_count || 0) - (a.likes_count || 0));
+      } else if (feedSort === 'hot') {
+        // Reddit-ish: weight engagement by recency. Older posts decay fast.
+        const score = (p: any) => {
+          const ageHours = (Date.now() - new Date(p.created_at).getTime()) / 3_600_000;
+          const eng = (p.likes_count || 0) + 2 * (p.comments_count || 0);
+          return eng / Math.pow(ageHours + 2, 1.5);
+        };
+        mergedPosts.sort((a: any, b: any) => score(b) - score(a));
+      }
+
+      setFeedPosts(mergedPosts.slice(0, 50));
     } catch (error) {
       console.error('Error fetching posts:', error);
     }
@@ -1185,6 +1209,36 @@ export default function SocialScreen() {
                 <Ionicons name="camera" size={18} color="#18181B" />
               </LinearGradient>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Feed sort: Hot / New / Top */}
+        {(currentView === 'feed' || currentView === 'community') && (
+          <View style={styles.sortRow}>
+            {(['new', 'hot', 'top'] as const).map((s) => {
+              const active = feedSort === s;
+              const icon =
+                s === 'new' ? 'time-outline' :
+                s === 'hot' ? 'flame-outline' :
+                              'trending-up-outline';
+              return (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.sortChip, active && styles.sortChipActive]}
+                  onPress={() => setFeedSort(s)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons
+                    name={icon as any}
+                    size={14}
+                    color={active ? '#18181B' : colors.textSecondary}
+                  />
+                  <Text style={[styles.sortChipLabel, active && styles.sortChipLabelActive]}>
+                    {s === 'new' ? 'New' : s === 'hot' ? 'Hot' : 'Top'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
@@ -2258,6 +2312,36 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     fontWeight: '800',
   },
   // ── Composer card ───────────────────────────────────────────────────
+  sortRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+  sortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sortChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sortChipLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  sortChipLabelActive: {
+    color: '#18181B',
+  },
   composerCard: {
     flexDirection: 'row',
     alignItems: 'center',
