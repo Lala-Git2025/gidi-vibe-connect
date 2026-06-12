@@ -281,22 +281,60 @@ export const StorySection = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* ── My Vibe: always the "add story" button ── */}
-          <TouchableOpacity style={styles.storyItem} onPress={handleCreateStory}>
-            <PolishedRing kind="add" rotation={ringRotation} seen={false}>
-              <View style={styles.addInner}>
-                <Ionicons name="add" size={28} color={colors.primary} />
-              </View>
-            </PolishedRing>
-            <Text style={styles.label}>My Vibe</Text>
-          </TouchableOpacity>
+          {/* ── My Vibe ──
+              If the signed-in user has an active story, the My Vibe tile
+              IS that story (avatar + story ring, tap to view, small +
+              overlay to add another). Otherwise it's the add button.
+              Either way it's always the first tile. */}
+          {(() => {
+            const ownIdx = userGroups.findIndex((g) => g.user_id === currentUserId);
+            if (ownIdx < 0) {
+              return (
+                <TouchableOpacity style={styles.storyItem} onPress={handleCreateStory}>
+                  <PolishedRing kind="add" rotation={ringRotation} seen={false}>
+                    <View style={styles.addInner}>
+                      <Ionicons name="add" size={28} color={colors.primary} />
+                    </View>
+                  </PolishedRing>
+                  <Text style={styles.label}>My Vibe</Text>
+                </TouchableOpacity>
+              );
+            }
+            const own = userGroups[ownIdx];
+            return (
+              <TouchableOpacity
+                style={styles.storyItem}
+                onPress={() => setSelectedGroupIndex(ownIdx)}
+              >
+                <View style={styles.ringWrap}>
+                  <PolishedRing kind={own.is_creator ? 'creator' : 'peer'} rotation={ringRotation} seen={false}>
+                    {own.avatar_url ? (
+                      <Image source={{ uri: own.avatar_url }} style={styles.avatar} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.avatarFallback}>
+                        <Text style={styles.avatarInitial}>
+                          {own.full_name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </PolishedRing>
+                  {/* + overlay so tapping the ring views, tapping the + adds another */}
+                  <TouchableOpacity
+                    style={styles.addAnotherBadge}
+                    onPress={handleCreateStory}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="add" size={14} color="#000" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.label} numberOfLines={1}>My Vibe</Text>
+              </TouchableOpacity>
+            );
+          })()}
 
-          {/* ── All user story groups ── */}
+          {/* ── Other users' story groups (own already rendered above) ── */}
           {userGroups.map((group, idx) => {
-            const isOwn = group.user_id === currentUserId;
-            const isUnseen = isOwn || group.has_unseen;
-            // Prefer first name on own bubble — full names truncate to nothing at 72px wide.
-            const ownLabel = group.full_name.split(' ')[0] || group.full_name;
+            if (group.user_id === currentUserId) return null;
             const kind: 'creator' | 'peer' = group.is_creator ? 'creator' : 'peer';
             return (
               <TouchableOpacity
@@ -305,7 +343,7 @@ export const StorySection = () => {
                 onPress={() => setSelectedGroupIndex(idx)}
               >
                 <View style={styles.ringWrap}>
-                  <PolishedRing kind={kind} rotation={ringRotation} seen={!isUnseen}>
+                  <PolishedRing kind={kind} rotation={ringRotation} seen={!group.has_unseen}>
                     {group.avatar_url ? (
                       <Image
                         source={{ uri: group.avatar_url }}
@@ -330,7 +368,7 @@ export const StorySection = () => {
                   )}
                 </View>
                 <Text style={styles.label} numberOfLines={1}>
-                  {isOwn ? ownLabel : group.full_name}
+                  {group.full_name}
                 </Text>
               </TouchableOpacity>
             );
@@ -456,5 +494,18 @@ const getStyles = (colors: any) =>
     },
     verifiedStar: {
       fontSize: 9,
+    },
+    addAnotherBadge: {
+      position: 'absolute',
+      bottom: -2,
+      right: -2,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: polished.goldMid,
+      borderWidth: 3,
+      borderColor: '#000',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });
