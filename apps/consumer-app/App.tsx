@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -5,6 +6,8 @@ import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { supabase } from './config/supabase';
+import { registerForPushNotifications } from './lib/pushNotifications';
 import HomeScreen from './screens/HomeScreen';
 import ExploreScreen from './screens/ExploreScreen';
 import ExploreAreaScreen from './screens/ExploreAreaScreen';
@@ -23,6 +26,21 @@ const Tab = createBottomTabNavigator();
 function AppNavigator() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+
+  // Register Expo push token whenever the user signs in. Idempotent on the DB
+  // side (UNIQUE(user_id, expo_token)) so this is safe to fire on every auth
+  // event without dedup logic here.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!cancelled && session?.user) registerForPushNotifications(session.user.id);
+    })();
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) registerForPushNotifications(session.user.id);
+    });
+    return () => { cancelled = true; sub.subscription.unsubscribe(); };
+  }, []);
 
   return (
     <NavigationContainer>
