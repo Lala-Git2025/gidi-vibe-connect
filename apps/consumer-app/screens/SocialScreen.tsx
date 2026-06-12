@@ -162,8 +162,9 @@ export default function SocialScreen() {
   const [viewingProfilePosts, setViewingProfilePosts] = useState<Post[]>([]);
   const [viewingProfileLoading, setViewingProfileLoading] = useState(false);
 
-  // Likes / Comments state
+  // Likes / Comments / Saves state
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
+  const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
   const [commentsModalPost, setCommentsModalPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -332,6 +333,7 @@ export default function SocialScreen() {
 
     setCurrentUserId(user.id);
     fetchUserLikes(user.id);
+    fetchUserSaves(user.id);
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -773,13 +775,56 @@ export default function SocialScreen() {
     }
   };
 
-  // ── Likes / Comments / Share ───────────────────────────────────────
+  // ── Likes / Comments / Saves / Share ───────────────────────────────
   const fetchUserLikes = async (uid: string) => {
     const { data } = await supabase
       .from('post_likes')
       .select('post_id')
       .eq('user_id', uid);
     if (data) setLikedPostIds(new Set(data.map((r: any) => r.post_id as string)));
+  };
+
+  const fetchUserSaves = async (uid: string) => {
+    const { data } = await supabase
+      .from('saved_posts')
+      .select('post_id')
+      .eq('user_id', uid);
+    if (data) setSavedPostIds(new Set(data.map((r: any) => r.post_id as string)));
+  };
+
+  const handleSaveToggle = async (post: Post) => {
+    if (!currentUserId) {
+      Alert.alert('Sign In Required', 'Please sign in to save posts.');
+      return;
+    }
+
+    const isSaved = savedPostIds.has(post.id);
+
+    // Optimistic
+    const next = new Set(savedPostIds);
+    if (isSaved) next.delete(post.id); else next.add(post.id);
+    setSavedPostIds(next);
+
+    try {
+      if (isSaved) {
+        const { error } = await supabase
+          .from('saved_posts')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('post_id', post.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('saved_posts')
+          .insert({ user_id: currentUserId, post_id: post.id });
+        // UNIQUE constraint → already saved is harmless; ignore
+        if (error && !/duplicate key/i.test(error.message)) throw error;
+      }
+    } catch (err) {
+      // Roll back optimistic state
+      setSavedPostIds(savedPostIds);
+      Alert.alert('Save failed', 'Could not update saved posts. Try again.');
+    }
   };
 
   const handleLikeToggle = async (post: Post) => {
@@ -1258,6 +1303,17 @@ export default function SocialScreen() {
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Ionicons name="share-outline" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionButton, { marginLeft: 'auto' }]}
+                      onPress={() => handleSaveToggle(post)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name={savedPostIds.has(post.id) ? 'bookmark' : 'bookmark-outline'}
+                        size={18}
+                        color={savedPostIds.has(post.id) ? colors.primary : colors.textSecondary}
+                      />
                     </TouchableOpacity>
                   </View>
                 </View>
