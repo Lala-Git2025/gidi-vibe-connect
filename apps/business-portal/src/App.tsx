@@ -14,6 +14,7 @@ import EventDetails from './pages/EventDetails';
 import Offers from './pages/Offers';
 import Subscription from './pages/Subscription';
 import Settings from './pages/Settings';
+import Verification from './pages/Verification';
 function App() {
   return (
     <BrowserRouter>
@@ -38,6 +39,7 @@ function App() {
             <Route path="/offers" element={<Offers />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/verification" element={<Verification />} />
           </Route>
 
           {/* Default redirect */}

@@ -7,6 +7,7 @@ import VenueManager from './pages/VenueManager';
 import PromotionsManager from './pages/PromotionsManager';
 import UserManager from './pages/UserManager';
 import Analytics from './pages/Analytics';
+import VerificationsManager from './pages/VerificationsManager';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
             <Route path="/promotions" element={<PromotionsManager />} />
             <Route path="/users" element={<UserManager />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/verifications" element={<VerificationsManager />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -9,6 +9,7 @@ import {
   Settings,
   CreditCard,
   Users,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import { useBusinessAuth } from '../../contexts/BusinessAuthContext';
@@ -45,6 +46,7 @@ const navigation: NavGroup[] = [
   {
     group: 'Account',
     items: [
+      { name: 'Verification', href: '/verification', icon: ShieldCheck },
       { name: 'Subscription', href: '/subscription', icon: CreditCard },
       { name: 'Settings',     href: '/settings',     icon: Settings },
     ],

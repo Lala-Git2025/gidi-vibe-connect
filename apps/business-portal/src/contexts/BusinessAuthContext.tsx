@@ -145,23 +145,9 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
         console.error('Failed to create subscription:', subscriptionError);
       }
 
-      // 3. Create auto-approved verification request
-      const { error: verificationError } = await supabase
-        .from('verification_requests')
-        .insert({
-          user_id: authData.user.id,
-          business_name: data.businessName,
-          business_phone: data.phone || null,
-          business_email: data.email,
-          business_address: data.address || null,
-          status: 'approved',
-          reviewed_by: 'system',
-          reviewed_at: new Date().toISOString(),
-        });
-
-      if (verificationError) {
-        console.error('Failed to create verification:', verificationError);
-      }
+      // No auto-approved verification request on signup. Owners now request
+      // verification manually via /verification; an admin reviews and approves
+      // it via the admin portal. is_verified stays FALSE until that approval.
 
       return { error: null };
     } catch (error) {

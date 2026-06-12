@@ -15,6 +15,7 @@ import {
   Settings,
   LogOut,
   X,
+  ShieldCheck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
@@ -43,10 +44,11 @@ const NAV: NavGroup[] = [
   {
     group: 'Curation',
     items: [
-      { name: 'Venues',     href: '/venues',     icon: Building2 },
-      { name: 'Promotions', href: '/promotions', icon: Rocket },
-      { name: 'Events',     href: '/events',     icon: Calendar },
-      { name: 'News feed',  href: '/news',       icon: Newspaper },
+      { name: 'Venues',        href: '/venues',        icon: Building2 },
+      { name: 'Verifications', href: '/verifications', icon: ShieldCheck, alert: true },
+      { name: 'Promotions',    href: '/promotions',    icon: Rocket },
+      { name: 'Events',        href: '/events',        icon: Calendar },
+      { name: 'News feed',     href: '/news',          icon: Newspaper },
     ],
   },
   {
