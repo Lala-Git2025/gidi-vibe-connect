@@ -64,6 +64,10 @@ export const CreatePostModal = ({
   const [mentionSuggestions, setMentionSuggestions] = useState<Array<{ username: string; full_name: string }>>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null); // null = not in mention mode
 
+  // ── Poll state ──────────────────────────────────────────────────────────
+  const [postType, setPostType] = useState<'standard' | 'poll'>('standard');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+
   // Load communities for the picker
   useEffect(() => {
     if (visible) {
@@ -91,6 +95,8 @@ export const CreatePostModal = ({
     setPostLocation('');
     setSelectedCommunity(null);
     setSelectedImage(null);
+    setPostType('standard');
+    setPollOptions(['', '']);
   };
 
   // Detect if the cursor is currently inside an @mention token. Returns the
@@ -204,6 +210,20 @@ export const CreatePostModal = ({
       return;
     }
 
+    // Polls: validate at least 2 non-empty unique options.
+    let validOptions: string[] = [];
+    if (postType === 'poll') {
+      validOptions = pollOptions.map(o => o.trim()).filter(Boolean);
+      if (validOptions.length < 2) {
+        Alert.alert('Poll needs options', 'Enter at least 2 options for your poll.');
+        return;
+      }
+      if (new Set(validOptions).size !== validOptions.length) {
+        Alert.alert('Duplicate options', 'Each poll option must be unique.');
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -277,7 +297,7 @@ export const CreatePostModal = ({
         if (error) throw error;
         Alert.alert('Success', 'Your post has been updated!');
       } else {
-        const { error } = await supabase
+        const { data: insertedPost, error } = await supabase
           .from('social_posts')
           .insert({
             user_id: user.id,
@@ -285,8 +305,23 @@ export const CreatePostModal = ({
             location: postLocation.trim() || null,
             community_id: selectedCommunity,
             media_urls: imageUrl ? [imageUrl] : null,
-          });
+            post_type: postType,
+          })
+          .select('id')
+          .single();
         if (error) throw error;
+
+        // For polls, bulk-insert the options now that we have the post id.
+        if (postType === 'poll' && insertedPost) {
+          const { error: optErr } = await supabase
+            .from('poll_options')
+            .insert(validOptions.map((label, i) => ({
+              post_id: insertedPost.id,
+              label,
+              position: i,
+            })));
+          if (optErr) throw optErr;
+        }
 
         // Track stats
         await supabase.from('user_stats').upsert(
@@ -363,6 +398,68 @@ export const CreatePostModal = ({
               autoFocus={!editingPost}
             />
             <Text style={styles.charCount}>{postContent.length}/500</Text>
+
+            {/* Post type toggle — disabled while editing an existing post */}
+            {!editingPost && (
+              <View style={styles.typeRow}>
+                {(['standard', 'poll'] as const).map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.typeChip, postType === t && styles.typeChipActive]}
+                    onPress={() => setPostType(t)}
+                  >
+                    <Ionicons
+                      name={t === 'standard' ? 'document-text-outline' : 'bar-chart-outline'}
+                      size={14}
+                      color={postType === t ? '#18181B' : colors.textSecondary}
+                    />
+                    <Text style={[styles.typeChipLabel, postType === t && styles.typeChipLabelActive]}>
+                      {t === 'standard' ? 'Post' : 'Poll'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Poll options editor */}
+            {postType === 'poll' && !editingPost && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Options</Text>
+                {pollOptions.map((opt, i) => (
+                  <View key={i} style={styles.pollOptionRow}>
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder={`Option ${i + 1}`}
+                      placeholderTextColor={colors.textSecondary}
+                      value={opt}
+                      onChangeText={(v) => {
+                        const next = [...pollOptions];
+                        next[i] = v;
+                        setPollOptions(next);
+                      }}
+                      maxLength={80}
+                    />
+                    {pollOptions.length > 2 && (
+                      <TouchableOpacity
+                        onPress={() => setPollOptions(pollOptions.filter((_, j) => j !== i))}
+                        style={styles.pollOptionRemove}
+                      >
+                        <Ionicons name="close" size={16} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+                {pollOptions.length < 4 && (
+                  <TouchableOpacity
+                    style={styles.pollAddBtn}
+                    onPress={() => setPollOptions([...pollOptions, ''])}
+                  >
+                    <Ionicons name="add" size={16} color={colors.primary} />
+                    <Text style={styles.pollAddLabel}>Add option</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
             {/* @mention suggestions */}
             {mentionQuery !== null && mentionSuggestions.length > 0 && (
@@ -534,6 +631,60 @@ const getStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     paddingVertical: 4,
+  },
+  typeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  typeChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  typeChipLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  typeChipLabelActive: {
+    color: '#18181B',
+  },
+  pollOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  pollOptionRemove: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.cardBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pollAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  pollAddLabel: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
   },
   mentionList: {
     backgroundColor: colors.cardBackground,

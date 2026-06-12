@@ -17,6 +17,7 @@ import { File, Paths } from 'expo-file-system';
 import { PostGrid } from '../components/PostGrid';
 import { EditingPost } from '../components/CreatePostModal';
 import { useCreatePostModal } from '../contexts/CreatePostModalContext';
+import { PollCard } from '../components/PollCard';
 import { COMMUNITY_ICON_MAP } from '../constants/communityIcons';
 import { SocialDrawer, DrawerView } from '../components/SocialDrawer';
 
@@ -71,6 +72,7 @@ interface Post {
   community_id: string | null;
   likes_count: number;
   comments_count: number;
+  post_type?: 'standard' | 'poll';
   profiles?: {
     full_name: string;
     username?: string | null;
@@ -1359,6 +1361,11 @@ export default function SocialScreen() {
                       <PostImage uri={post.media_urls[0]} style={styles.postImage} />
                     )}
                   </View>
+
+                  {/* Poll widget — only for post_type='poll' */}
+                  {post.post_type === 'poll' && (
+                    <PollCard postId={post.id} currentUserId={currentUserId} />
+                  )}
 
                   {/* Post Actions */}
                   <View style={styles.postActions}>
