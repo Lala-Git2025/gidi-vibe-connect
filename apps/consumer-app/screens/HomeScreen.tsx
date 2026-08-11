@@ -91,8 +91,6 @@ export default function HomeScreen() {
       Linking.openURL(category.url);
     } else if (category.screen) {
       navigation.navigate(category.screen as never);
-    } else if (category.alert) {
-      alert(category.alert);
     }
   };
 

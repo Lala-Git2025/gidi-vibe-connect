@@ -120,7 +120,7 @@ export default function DiscoverScreen() {
 
   const handleCategoryPress = (category: string) => {
     // Navigate to Explore screen with category filter
-    navigation.navigate('Explore' as never, { category } as never);
+    (navigation as any).navigate('Explore', { category });
   };
 
   return (
@@ -231,7 +231,7 @@ export default function DiscoverScreen() {
               <TouchableOpacity
                 key={index}
                 style={styles.gridItem}
-                onPress={() => navigation.navigate('ExploreArea' as never, { area: item.area } as never)}
+                onPress={() => (navigation as any).navigate('ExploreArea', { area: item.area })}
               >
                 <Text style={styles.gridEmoji}>{item.emoji}</Text>
                 <Text style={styles.gridLabel}>{item.label}</Text>

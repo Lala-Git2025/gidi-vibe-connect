@@ -5,6 +5,7 @@ import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-font
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Application from 'expo-application';
 import { supabase } from '../config/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme, polished } from '../contexts/ThemeContext';
@@ -764,15 +765,15 @@ export default function ProfileScreen() {
   };
 
   const handleContactSupport = () => {
-    Linking.openURL('mailto:support@gidivibeconnect.com?subject=Support Request');
+    Linking.openURL('mailto:support@gidiconnect.com?subject=Support Request');
   };
 
   const handlePrivacyPolicy = () => {
-    Linking.openURL('https://gidivibeconnect.com/privacy');
+    Linking.openURL('https://gidiconnect.com/privacy');
   };
 
   const handleTermsOfService = () => {
-    Linking.openURL('https://gidivibeconnect.com/terms');
+    Linking.openURL('https://gidiconnect.com/terms');
   };
 
   // Slow rotating gold ring around the avatar (mirrors polished kit).
@@ -1383,7 +1384,7 @@ export default function ProfileScreen() {
                 <View style={styles.settingsItem}>
                   <Ionicons name="phone-portrait-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
                   <Text style={styles.settingsItemText}>App Version</Text>
-                  <Text style={styles.settingsItemValue}>1.0.0</Text>
+                  <Text style={styles.settingsItemValue}>{Application.nativeApplicationVersion ?? '1.0.0'}</Text>
                 </View>
               </View>
 
