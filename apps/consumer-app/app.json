@@ -2,6 +2,7 @@
   "expo": {
     "name": "Connect",
     "slug": "consumer-app",
+    "scheme": "gidiconnect",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
