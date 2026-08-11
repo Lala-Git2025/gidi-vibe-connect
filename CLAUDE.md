@@ -166,6 +166,15 @@ Always use `colors.xxx` from theme context, never hardcode colors.
 
 ## Recent Decisions
 
+### August 2026
+- **Play Store launch sprint (2026-08-10 session)**: live audit found 5 P0 blockers (full report artifact: launch-readiness). Shipped same-session:
+  - **Report + block flows (Play UGC policy)**: migration `20260811021308_report_block.sql` adds `post_reports` (reasons spam/harassment/inappropriate/other, statuses pending/reviewed/actioned/dismissed, `UNIQUE NULLS NOT DISTINCT (post_id, comment_id, reporter_id)`) and `blocked_users` (PK blocker/blocked). Consumer UI: ellipsis menu on others' posts → Report/Block; long-press others' comments; block button on the People-tab profile modal. Blocking unfollows (own direction only, RLS) and client-filters feed/comments/People via `blockedIds` Set. `post_reports` is the trigger surface the `moderation_triage` agent has been waiting on (AI_AGENTS_PLAN §5.1).
+  - **Landing site** `apps/landing/` — static privacy/terms/delete-account pages + minimal index for apex `gidiconnect.com`; deploy as third Vercel project (root `apps/landing`). Play needs the privacy URL + web deletion page. In-app links now point at `gidiconnect.com` (was unregistered `gidivibeconnect.com`).
+  - **Migration history reconciled 67/67**: MCP-applied migrations get auto-generated versions — local files renamed to match remote, 3 July advisor-cleanup migrations recovered from `supabase_migrations.schema_migrations` into the repo. **Convention: after `apply_migration` via MCP, always export a local file named with the remote-recorded version.**
+  - **App renamed** "Connect" → "Gidi Connect" (app.json). Profile version row reads `expo-application`. Dead `alert()` branch removed from HomeScreen.
+  - **Android testing**: QR scan fails on device (custom-scheme links); use dev client → "Enter URL manually" → `http://<mac-ip>:8081`. Mac has no Android toolchain — all builds via EAS cloud.
+- **Still open for launch** (external/dashboard): SMTP config, leaked-password protection + OTP expiry, Postgres security patches, FCM V1 credentials for push (`push_tokens` empty until then), Vercel project + DNS for apex, seed content (8 users/9 posts/4 events), Play Console listing (expect Mature 17+ rating; declare UGC; reviewer test account).
+
 ### June 2026
 - **Launch-sprint P0 cleanup (2026-06-11 session)**:
   - **TomTom replaced with Lagos Traffic Radio + Gemini Flash** (free tier). `scripts/lagos-traffic-agent.js` scrapes the 96.1FM listing, classifies posts via `gemini-2.5-flash` with `responseSchema` for structured JSON, writes to `traffic_reports` via service role. `.github/workflows/traffic-agent.yml` runs hourly at `:15`. Repo secrets needed: `GEMINI_API_KEY`, `VITE_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. The TomTom client + hardcoded fallback key are gone.

@@ -169,6 +169,7 @@ export default function SocialScreen() {
   // Likes / Comments / Saves state
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
   const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
+  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const [commentsModalPost, setCommentsModalPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -345,6 +346,7 @@ export default function SocialScreen() {
     setCurrentUserId(user.id);
     fetchUserLikes(user.id);
     fetchUserSaves(user.id);
+    fetchBlockedUsers(user.id);
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -524,6 +526,119 @@ export default function SocialScreen() {
       editingPost: post as unknown as EditingPost,
       onPostCreated: fetchFeedPosts,
     });
+  };
+
+  // ── Report / Block (Play UGC policy surfaces) ──────────────────────
+  const fetchBlockedUsers = async (uid: string) => {
+    try {
+      const { data } = await supabase
+        .from('blocked_users')
+        .select('blocked_id')
+        .eq('blocker_id', uid);
+      setBlockedIds(new Set((data ?? []).map((r: any) => r.blocked_id as string)));
+    } catch (err) {
+      console.log('Error fetching blocked users:', err);
+    }
+  };
+
+  const submitReport = async (post: Post, reason: string, commentId?: string) => {
+    if (!currentUserId) {
+      Alert.alert('Sign In Required', 'Please sign in to report content.');
+      return;
+    }
+    try {
+      const { error } = await supabase.from('post_reports').insert({
+        post_id: post.id,
+        comment_id: commentId ?? null,
+        reporter_id: currentUserId,
+        reason,
+      });
+      // 23505 = already reported by this user; treat as success.
+      if (error && (error as any).code !== '23505') throw error;
+      Alert.alert('Report Submitted', 'Thanks for letting us know. Our team will review it.');
+    } catch (err) {
+      console.error('Report error:', err);
+      Alert.alert('Error', 'Could not submit the report. Please try again.');
+    }
+  };
+
+  const promptReportReason = (post: Post, commentId?: string) => {
+    Alert.alert(
+      commentId ? 'Report Comment' : 'Report Post',
+      'Why are you reporting this?',
+      [
+        { text: 'Spam', onPress: () => submitReport(post, 'spam', commentId) },
+        { text: 'Harassment', onPress: () => submitReport(post, 'harassment', commentId) },
+        { text: 'Inappropriate content', onPress: () => submitReport(post, 'inappropriate', commentId) },
+        { text: 'Other', onPress: () => submitReport(post, 'other', commentId) },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  };
+
+  const handleBlockUser = (userId: string, name: string) => {
+    if (!currentUserId) {
+      Alert.alert('Sign In Required', 'Please sign in to block users.');
+      return;
+    }
+    Alert.alert(
+      'Block User',
+      `Block ${name}? You won't see their posts or comments anymore.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.from('blocked_users').upsert(
+                { blocker_id: currentUserId, blocked_id: userId },
+                { onConflict: 'blocker_id,blocked_id' },
+              );
+              if (error) throw error;
+              // Blocking also unfollows them (RLS only lets us delete our own follow).
+              await supabase
+                .from('follows')
+                .delete()
+                .eq('follower_id', currentUserId)
+                .eq('following_id', userId);
+              setBlockedIds(prev => new Set(prev).add(userId));
+              setFollowingIds(prev => {
+                const next = new Set(prev);
+                next.delete(userId);
+                return next;
+              });
+              setViewingProfile(null);
+              Alert.alert('Blocked', `You won't see posts from ${name} anymore.`);
+            } catch (err) {
+              console.error('Block error:', err);
+              Alert.alert('Error', 'Could not block this user. Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handlePostMenu = (post: Post) => {
+    const name =
+      post.profiles?.full_name?.trim() ||
+      (post.profiles?.username ? `@${post.profiles.username}` : 'this user');
+    Alert.alert('Post Options', undefined, [
+      { text: 'Report Post', onPress: () => promptReportReason(post) },
+      { text: `Block ${name}`, style: 'destructive', onPress: () => handleBlockUser(post.user_id, name) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const handleCommentMenu = (comment: Comment) => {
+    if (!commentsModalPost || comment.user_id === currentUserId) return;
+    const name = comment.profiles?.full_name || 'this user';
+    Alert.alert('Comment Options', undefined, [
+      { text: 'Report Comment', onPress: () => promptReportReason(commentsModalPost, comment.id) },
+      { text: `Block ${name}`, style: 'destructive', onPress: () => handleBlockUser(comment.user_id, name) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const handleDeletePost = (postId: string) => {
@@ -971,13 +1086,14 @@ export default function SocialScreen() {
     setComments([]);
     setCommentsLoading(true);
     try {
-      const { data: rows, error } = await supabase
+      const { data: fetched, error } = await supabase
         .from('comments')
         .select('*')
         .eq('post_id', post.id)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      if (!rows || rows.length === 0) { setComments([]); return; }
+      const rows = (fetched ?? []).filter((r: any) => !blockedIds.has(r.user_id));
+      if (rows.length === 0) { setComments([]); return; }
 
       const userIds = [...new Set(rows.map((r: any) => r.user_id as string))];
       const { data: profs } = await supabase
@@ -1060,6 +1176,12 @@ export default function SocialScreen() {
   // Filter posts based on current view
   const getVisiblePosts = (): Post[] => {
     let posts = feedPosts;
+
+    // Never show content from blocked users (also covers realtime inserts,
+    // since this runs on every render).
+    if (blockedIds.size > 0) {
+      posts = posts.filter(p => !blockedIds.has(p.user_id));
+    }
 
     // Community-specific filter
     if (currentView === 'community' && selectedCommunityId) {
@@ -1331,7 +1453,7 @@ export default function SocialScreen() {
                         <Text style={styles.postMetaText}>{formatTimeAgo(post.created_at)}</Text>
                       </View>
                     </View>
-                    {currentUserId === post.user_id && (
+                    {currentUserId === post.user_id ? (
                       <View style={styles.postMenu}>
                         <TouchableOpacity
                           style={styles.menuButton}
@@ -1344,6 +1466,16 @@ export default function SocialScreen() {
                           onPress={() => handleDeletePost(post.id)}
                         >
                           <Ionicons name="trash-outline" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <View style={styles.postMenu}>
+                        <TouchableOpacity
+                          style={styles.menuButton}
+                          onPress={() => handlePostMenu(post)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={16} color={colors.textSecondary} />
                         </TouchableOpacity>
                       </View>
                     )}
@@ -1551,6 +1683,7 @@ export default function SocialScreen() {
               </View>
             ) : (
               people
+                .filter(p => !blockedIds.has(p.user_id))
                 .filter(p =>
                   !peopleSearch.trim() ||
                   p.full_name.toLowerCase().includes(peopleSearch.toLowerCase())
@@ -1822,7 +1955,36 @@ export default function SocialScreen() {
                   </View>
                 </View>
 
-                {currentUserId ? (
+                {currentUserId && currentUserId !== viewingProfile.user_id ? (
+                  <View style={styles.profileModalActionRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.profileModalFollowBtn,
+                        viewingProfile.is_following && styles.profileModalFollowingBtn,
+                      ]}
+                      onPress={() => handleFollowToggle(viewingProfile.user_id)}
+                    >
+                      <Text style={[
+                        styles.profileModalFollowBtnText,
+                        viewingProfile.is_following && styles.profileModalFollowingBtnText,
+                      ]}>
+                        {viewingProfile.is_following ? 'Following' : 'Follow'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.profileModalBlockBtn}
+                      onPress={() =>
+                        handleBlockUser(
+                          viewingProfile.user_id,
+                          viewingProfile.full_name?.trim() || 'this user',
+                        )
+                      }
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="ban-outline" size={18} color={colors.error} />
+                    </TouchableOpacity>
+                  </View>
+                ) : currentUserId ? (
                   <TouchableOpacity
                     style={[
                       styles.profileModalFollowBtn,
@@ -1910,10 +2072,17 @@ export default function SocialScreen() {
                         )}
                       </View>
                       <View style={styles.commentBody}>
-                        <View style={styles.commentBubble}>
-                          <Text style={styles.commentName}>{c.profiles?.full_name || 'User'}</Text>
-                          <Text style={styles.commentText}>{c.content}</Text>
-                        </View>
+                        {/* Long-press a comment (not your own) to report or block */}
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onLongPress={() => handleCommentMenu(c)}
+                          disabled={c.user_id === currentUserId}
+                        >
+                          <View style={styles.commentBubble}>
+                            <Text style={styles.commentName}>{c.profiles?.full_name || 'User'}</Text>
+                            <Text style={styles.commentText}>{c.content}</Text>
+                          </View>
+                        </TouchableOpacity>
                         <View style={styles.commentMetaRow}>
                           <Text style={styles.commentTime}>{formatTimeAgo(c.created_at)}</Text>
                           <TouchableOpacity
@@ -2844,6 +3013,20 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     width: 1,
     height: 32,
     backgroundColor: colors.border,
+  },
+  profileModalActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  profileModalBlockBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   profileModalFollowBtn: {
     paddingHorizontal: 40,
