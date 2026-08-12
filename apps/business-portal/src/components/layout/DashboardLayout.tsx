@@ -5,11 +5,12 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
 export function DashboardLayout() {
-  const { user, profile, loading, refreshProfile, signOut } = useBusinessAuth();
+  const { user, profile, loading, profileFetching, refreshProfile, signOut } = useBusinessAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // Show loading spinner while checking auth
-  if (loading) {
+  // Show loading spinner while checking auth, or while a profile fetch is
+  // still in flight (auth-state changes refetch without flipping `loading`).
+  if (loading || (!profile && profileFetching)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

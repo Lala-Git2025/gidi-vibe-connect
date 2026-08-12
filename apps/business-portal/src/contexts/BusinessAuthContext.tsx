@@ -18,6 +18,9 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoadFailed, setProfileLoadFailed] = useState(false);
+  // Distinguishes "fetch in flight" from "fetch failed" so the UI shows a
+  // spinner during the former instead of an error state.
+  const [profileFetching, setProfileFetching] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -95,6 +98,7 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchUserData = async (userId: string) => {
+    setProfileFetching(true);
     try {
       // Fetch profile. maybeSingle() so a missing row is data, not an error;
       // one retry covers trigger latency right after signup.
@@ -145,6 +149,7 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error fetching user data:', error);
     } finally {
+      setProfileFetching(false);
       setLoading(false);
     }
   };
@@ -253,6 +258,7 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
     verification,
     loading,
     profileLoadFailed,
+    profileFetching,
     refreshProfile,
     signUp,
     signIn,

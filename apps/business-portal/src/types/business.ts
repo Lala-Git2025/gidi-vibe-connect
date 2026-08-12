@@ -113,6 +113,8 @@ export interface BusinessAuthContextType {
   loading: boolean;
   /** True when we have a session but the profile row could not be loaded. */
   profileLoadFailed: boolean;
+  /** True while a profile fetch is in flight — render a spinner, not an error. */
+  profileFetching: boolean;
   /** Re-attempt the profile fetch — lets the UI offer a retry instead of hanging. */
   refreshProfile: () => Promise<void>;
   signUp: (data: BusinessSignupData) => Promise<{ error: Error | null }>;

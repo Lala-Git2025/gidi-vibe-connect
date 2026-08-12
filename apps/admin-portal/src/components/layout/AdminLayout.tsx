@@ -5,10 +5,12 @@ import { AdminSidebar } from './AdminSidebar';
 import { AdminHeader } from './AdminHeader';
 
 export function AdminLayout() {
-  const { user, profile, loading, refreshProfile, signOut } = useAdminAuth();
+  const { user, profile, loading, profileFetching, refreshProfile, signOut } = useAdminAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  if (loading) {
+  // Also wait while a profile fetch is in flight — auth-state changes refetch
+  // without flipping `loading`, and that gap must not read as a failure.
+  if (loading || (!profile && profileFetching)) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
         <p style={{ color: '#333' }}>Loading admin portal…</p>

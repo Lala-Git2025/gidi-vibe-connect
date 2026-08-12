@@ -22,6 +22,8 @@ interface AdminAuthContextType {
   loading: boolean;
   /** True when we have a session but the profile row could not be loaded. */
   profileError: boolean;
+  /** True while a profile fetch is in flight — render a spinner, not an error. */
+  profileFetching: boolean;
   /** Re-attempt the profile fetch — lets the UI offer a retry instead of hanging. */
   refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -35,6 +37,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
+  // Distinguishes "fetch in flight" from "fetch failed" so the UI shows a
+  // spinner during the former instead of an error state.
+  const [profileFetching, setProfileFetching] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -101,6 +106,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   // maybeSingle() rather than single(): a missing row is a state we render,
   // not an exception. One retry covers a cold start or a dropped connection.
   const fetchProfile = async (userId: string, attempt = 0): Promise<void> => {
+    setProfileFetching(true);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -125,6 +131,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       }
       setProfileError(true);
     } finally {
+      setProfileFetching(false);
       setLoading(false);
     }
   };
@@ -155,7 +162,16 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AdminAuthContext.Provider
-      value={{ user, profile, loading, profileError, refreshProfile, signIn, signOut }}
+      value={{
+        user,
+        profile,
+        loading,
+        profileError,
+        profileFetching,
+        refreshProfile,
+        signIn,
+        signOut,
+      }}
     >
       {children}
     </AdminAuthContext.Provider>
