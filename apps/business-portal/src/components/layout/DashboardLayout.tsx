@@ -5,7 +5,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
 export function DashboardLayout() {
-  const { user, profile, loading, signOut } = useBusinessAuth();
+  const { user, profile, loading, profileLoadFailed, refreshProfile, signOut } = useBusinessAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Show loading spinner while checking auth
@@ -20,6 +20,29 @@ export function DashboardLayout() {
   // Redirect to login if not authenticated
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Profile failed to load — offer a way out instead of spinning forever.
+  if (profileLoadFailed && !profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center max-w-sm">
+          <h1 className="text-xl font-bold mb-2">Couldn't load your profile</h1>
+          <p className="text-sm text-muted-foreground mb-6">
+            You're signed in, but we couldn't read your business profile. This is usually a
+            temporary network problem.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button className="bp2-btn bp2-btn-primary" onClick={() => refreshProfile()}>
+              Try again
+            </button>
+            <button className="bp2-btn bp2-btn-ghost" onClick={() => signOut()}>
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Wait for profile to load before checking role

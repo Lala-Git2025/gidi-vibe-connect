@@ -20,6 +20,10 @@ interface AdminAuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  /** True when we have a session but the profile row could not be loaded. */
+  profileError: boolean;
+  /** Re-attempt the profile fetch — lets the UI offer a retry instead of hanging. */
+  refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
@@ -30,6 +34,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -65,10 +70,11 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
     init();
 
-    // Safety timeout — never stay loading forever
+    // Safety timeout — never stay loading forever. Uses the functional form
+    // because the `loading` captured here would be stale from first render.
     const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        setLoading(false);
+      if (mounted) {
+        setLoading(prev => (prev ? false : prev));
       }
     }, 5000);
 
@@ -92,24 +98,42 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+  // maybeSingle() rather than single(): a missing row is a state we render,
+  // not an exception. One retry covers a cold start or a dropped connection.
+  const fetchProfile = async (userId: string, attempt = 0): Promise<void> => {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching admin profile:', error);
-      } else {
+      if (error) throw error;
+
+      if (data) {
         setProfile(data as Profile);
+        setProfileError(false);
+      } else {
+        // Authenticated but no profile row — the role gate can't be evaluated.
+        setProfileError(true);
       }
     } catch (error) {
       console.error('Error fetching admin profile:', error);
+      if (attempt < 1) {
+        await new Promise(r => setTimeout(r, 800));
+        return fetchProfile(userId, attempt + 1);
+      }
+      setProfileError(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const refreshProfile = async () => {
+    if (!user) return;
+    setProfileError(false);
+    setLoading(true);
+    await fetchProfile(user.id);
   };
 
   const signIn = async (email: string, password: string) => {
@@ -130,7 +154,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AdminAuthContext.Provider value={{ user, profile, loading, signIn, signOut }}>
+    <AdminAuthContext.Provider
+      value={{ user, profile, loading, profileError, refreshProfile, signIn, signOut }}
+    >
       {children}
     </AdminAuthContext.Provider>
   );

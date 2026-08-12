@@ -5,7 +5,7 @@ import { AdminSidebar } from './AdminSidebar';
 import { AdminHeader } from './AdminHeader';
 
 export function AdminLayout() {
-  const { user, profile, loading, signOut } = useAdminAuth();
+  const { user, profile, loading, profileError, refreshProfile, signOut } = useAdminAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   if (loading) {
@@ -18,6 +18,29 @@ export function AdminLayout() {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Profile failed to load — offer a way out instead of spinning forever.
+  if (profileError && !profile) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontFamily: 'sans-serif' }}>
+        <div style={{ textAlign: 'center', maxWidth: 380 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Couldn't load your profile</h1>
+          <p style={{ color: '#6B7280', fontSize: 14, marginBottom: 20 }}>
+            You're signed in, but we couldn't read your admin profile. This is usually a temporary
+            network problem.
+          </p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button className="ap-btn ap-btn-primary" onClick={() => refreshProfile()}>
+              Try again
+            </button>
+            <button className="ap-btn ap-btn-secondary" onClick={() => signOut()}>
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Wait for profile before checking role

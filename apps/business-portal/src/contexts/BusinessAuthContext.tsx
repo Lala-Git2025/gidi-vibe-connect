@@ -17,6 +17,7 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
   const [subscription, setSubscription] = useState<BusinessSubscription | null>(null);
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoadFailed, setProfileLoadFailed] = useState(false);
 
   useEffect(() => {
     // Refresh session on mount to ensure JWT is not stale
@@ -59,18 +60,29 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserData = async (userId: string) => {
     try {
-      // Fetch profile
-      const { data: profileData, error: profileError } = await supabase
+      // Fetch profile. maybeSingle() so a missing row is data, not an error;
+      // one retry covers trigger latency right after signup.
+      let { data: profileData, error: profileErr } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
-      if (profileError) {
-        console.error('Error fetching profile:', profileError);
-        // Profile may not exist yet (trigger latency) — continue anyway
-      } else {
+      if (profileErr || !profileData) {
+        await new Promise(r => setTimeout(r, 800));
+        ({ data: profileData, error: profileErr } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle());
+      }
+
+      if (profileData) {
         setProfile(profileData);
+        setProfileLoadFailed(false);
+      } else {
+        console.error('Error fetching profile:', profileErr);
+        setProfileLoadFailed(true);
       }
 
       // Fetch subscription
@@ -191,12 +203,21 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
     setSubscription(data ?? null);
   };
 
+  const refreshProfile = async () => {
+    if (!user) return;
+    setProfileLoadFailed(false);
+    setLoading(true);
+    await fetchUserData(user.id);
+  };
+
   const value = {
     user,
     profile,
     subscription,
     verification,
     loading,
+    profileLoadFailed,
+    refreshProfile,
     signUp,
     signIn,
     signOut,

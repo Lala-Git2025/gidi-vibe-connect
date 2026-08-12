@@ -111,6 +111,10 @@ export interface BusinessAuthContextType {
   subscription: BusinessSubscription | null;
   verification: VerificationRequest | null;
   loading: boolean;
+  /** True when we have a session but the profile row could not be loaded. */
+  profileLoadFailed: boolean;
+  /** Re-attempt the profile fetch — lets the UI offer a retry instead of hanging. */
+  refreshProfile: () => Promise<void>;
   signUp: (data: BusinessSignupData) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
