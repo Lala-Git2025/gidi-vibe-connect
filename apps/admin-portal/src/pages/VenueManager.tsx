@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { logAdminAction } from '../lib/audit';
 
 const LAGOS_AREAS = ['Victoria Island', 'Lekki', 'Ikoyi', 'Ikeja', 'Yaba', 'Surulere'];
 const PAGE_SIZE = 25;
@@ -97,6 +98,10 @@ export default function VenueManager() {
         }
       : { is_promoted: false, promoted_until: null };
     await supabase.from('venues').update(update).eq('id', venue.id);
+    await logAdminAction(active ? 'promote' : 'unpromote', 'venue', venue.id, {
+      name: venue.name,
+      ...(active ? { days } : {}),
+    });
     await fetchVenues();
     await fetchAreaCounts();
     setSavingId(null);

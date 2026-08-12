@@ -387,3 +387,149 @@ export function useVenueStats() {
     enabled: !!user,
   });
 }
+
+/**
+ * 7-day daily view series for the dashboard chart, plus the preceding 7 days
+ * for the "last week" comparison line. Returns zero-filled arrays so the
+ * chart always renders a full week even on sparse days.
+ */
+export function useWeeklyViews() {
+  const { user } = useBusinessAuth();
+
+  return useQuery({
+    queryKey: ['weekly-views', user?.id],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated');
+
+      const { data: venues } = await supabase
+        .from('venues')
+        .select('id')
+        .eq('owner_id', user.id);
+
+      const venueIds = (venues ?? []).map((v: { id: string }) => v.id);
+      const empty = { current: Array(7).fill(0), previous: Array(7).fill(0), total: 0 };
+      if (venueIds.length === 0) return empty;
+
+      // 14 days back, so we get this week and the comparison week in one query.
+      const start = new Date();
+      start.setDate(start.getDate() - 13);
+      const startKey = start.toISOString().split('T')[0];
+
+      const { data, error } = await supabase
+        .from('venue_analytics')
+        .select('date, profile_views')
+        .in('venue_id', venueIds)
+        .gte('date', startKey);
+
+      if (error) throw error;
+
+      // Bucket by day offset from `start` (0..13).
+      const buckets = Array(14).fill(0);
+      for (const row of data ?? []) {
+        const offset = Math.floor(
+          (new Date((row as any).date).getTime() - start.getTime()) / 86_400_000,
+        );
+        if (offset >= 0 && offset < 14) buckets[offset] += (row as any).profile_views || 0;
+      }
+
+      const previous = buckets.slice(0, 7);
+      const current = buckets.slice(7);
+      return { current, previous, total: current.reduce((a, b) => a + b, 0) };
+    },
+    enabled: !!user,
+  });
+}
+
+/**
+ * Real activity across the owner's venues — check-ins, reviews, and RSVPs to
+ * their events — merged into one recency-sorted feed.
+ */
+export function useVenueActivity(limit = 5) {
+  const { user } = useBusinessAuth();
+
+  return useQuery({
+    queryKey: ['venue-activity', user?.id, limit],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated');
+
+      const [{ data: venues }, { data: events }] = await Promise.all([
+        supabase.from('venues').select('id, name').eq('owner_id', user.id),
+        supabase.from('events').select('id, title').eq('organizer_id', user.id),
+      ]);
+
+      const venueIds = (venues ?? []).map((v: any) => v.id);
+      const eventIds = (events ?? []).map((e: any) => e.id);
+      if (venueIds.length === 0 && eventIds.length === 0) return [];
+
+      const venueName = new Map((venues ?? []).map((v: any) => [v.id, v.name]));
+      const eventName = new Map((events ?? []).map((e: any) => [e.id, e.title]));
+
+      const [checkIns, reviews, rsvps] = await Promise.all([
+        venueIds.length
+          ? supabase
+              .from('venue_check_ins')
+              .select('user_id, venue_id, checked_in_at')
+              .in('venue_id', venueIds)
+              .order('checked_in_at', { ascending: false })
+              .limit(limit)
+          : Promise.resolve({ data: [] as any[] }),
+        venueIds.length
+          ? supabase
+              .from('venue_reviews')
+              .select('user_id, venue_id, rating, created_at')
+              .in('venue_id', venueIds)
+              .order('created_at', { ascending: false })
+              .limit(limit)
+          : Promise.resolve({ data: [] as any[] }),
+        eventIds.length
+          ? supabase
+              .from('event_rsvps')
+              .select('user_id, event_id, created_at')
+              .in('event_id', eventIds)
+              .order('created_at', { ascending: false })
+              .limit(limit)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const rows = [
+        ...(checkIns.data ?? []).map((r: any) => ({
+          user_id: r.user_id,
+          verb: 'checked in at',
+          what: venueName.get(r.venue_id) ?? 'your venue',
+          at: r.checked_in_at,
+          color: '#22C55E',
+        })),
+        ...(reviews.data ?? []).map((r: any) => ({
+          user_id: r.user_id,
+          verb: `left a ${r.rating}★ review for`,
+          what: venueName.get(r.venue_id) ?? 'your venue',
+          at: r.created_at,
+          color: '#EAB308',
+        })),
+        ...(rsvps.data ?? []).map((r: any) => ({
+          user_id: r.user_id,
+          verb: "RSVP'd to",
+          what: eventName.get(r.event_id) ?? 'your event',
+          at: r.created_at,
+          color: '#3B82F6',
+        })),
+      ]
+        .filter(r => r.at)
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+        .slice(0, limit);
+
+      if (rows.length === 0) return [];
+
+      // Resolve display names in one round-trip.
+      const userIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds);
+      const nameMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p.full_name]));
+
+      return rows.map(r => ({ ...r, who: nameMap.get(r.user_id) || 'Someone' }));
+    },
+    enabled: !!user,
+  });
+}

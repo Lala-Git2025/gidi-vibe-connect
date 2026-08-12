@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { logAdminAction } from '../lib/audit';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 
 type UserRole = 'Consumer' | 'Business Owner' | 'Content Creator' | 'Admin' | 'Super Admin';
@@ -101,6 +102,10 @@ export default function UserManager() {
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     setSavingId(userId);
     await supabase.from('profiles').update({ role: newRole }).eq('user_id', userId);
+    await logAdminAction('role_change', 'profile', userId, {
+      name: users.find((u) => u.user_id === userId)?.full_name ?? userId,
+      target: newRole,
+    });
     setUsers((prev) =>
       prev.map((u) => (u.user_id === userId ? { ...u, role: newRole } : u)),
     );

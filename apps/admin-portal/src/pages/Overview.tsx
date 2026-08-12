@@ -25,27 +25,38 @@ interface PlatformStats {
   mau: number;
 }
 
-const TOP_VENUES = [
-  { label: 'Quilox',              value: 689 },
-  { label: 'Sip & Smoke Lounge',  value: 412 },
-  { label: 'Hard Rock Lekki',     value: 238 },
-  { label: 'Cocoon Lounge',       value: 124 },
-  { label: 'Tarragon',            value: 64 },
-];
+// Maps an audit action verb to the icon/colour used in the feed. Unknown
+// actions fall back to a neutral shield rather than breaking the render.
+const AUDIT_STYLE: Record<string, { Icon: typeof Rocket; color: string }> = {
+  promote: { Icon: Rocket, color: '#FB923C' },
+  unpromote: { Icon: RefreshCw, color: '#3B82F6' },
+  ban: { Icon: Ban, color: '#DC2626' },
+  approve: { Icon: CheckCircle2, color: '#16A34A' },
+  reject: { Icon: Ban, color: '#DC2626' },
+  role_change: { Icon: Shield, color: '#A855F7' },
+};
 
-const REPORTS = [
-  { id: 'r1', who: 'Adaeze O.', type: 'Inappropriate content', what: 'Vibe post by @clubking_ng', sev: 'high', time: '12m' },
-  { id: 'r2', who: 'Kola D.',    type: 'Fake venue listing',    what: 'Cocoon Lounge (duplicate)', sev: 'med',  time: '38m' },
-  { id: 'r3', who: 'Anonymous',  type: 'Harassment',            what: '@vibechecker23',            sev: 'high', time: '1h' },
-];
+const REPORT_LABEL: Record<string, string> = {
+  spam: 'Spam',
+  harassment: 'Harassment',
+  inappropriate: 'Inappropriate content',
+  other: 'Other',
+};
 
-const AUDIT_LOG = [
-  { who: 'Eze Okafor', did: 'promoted',     what: 'Quilox',                 time: '4m',  Icon: Rocket,         color: '#FB923C' },
-  { who: 'Sade Bello', did: 'banned user',  what: '@spammer_07',            time: '22m', Icon: Ban,            color: '#DC2626' },
-  { who: 'Eze Okafor', did: 'approved',     what: 'The Library Bar',        time: '1h',  Icon: CheckCircle2,   color: '#16A34A' },
-  { who: 'Tunde A.',   did: 'changed role', what: '@new_admin_jen',         time: '2h',  Icon: Shield,         color: '#A855F7' },
-  { who: 'System',     did: 'refreshed',    what: 'trending_venues view',   time: '3h',  Icon: RefreshCw,      color: '#3B82F6' },
-];
+// Reports we treat as urgent in the "Action needed" panel.
+const HIGH_SEVERITY = new Set(['harassment', 'inappropriate']);
+
+function timeAgo(iso: string): string {
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
+  return `${Math.floor(secs / 86400)}d`;
+}
+
+interface TopVenue { label: string; value: number }
+interface ReportRow { id: string; who: string; type: string; what: string; sev: string; time: string }
+interface AuditRow { who: string; did: string; what: string; time: string; Icon: typeof Rocket; color: string }
 
 const today = new Date();
 const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
@@ -61,6 +72,11 @@ export default function Overview() {
     mau: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [topVenues, setTopVenues] = useState<TopVenue[]>([]);
+  const [reports, setReports] = useState<ReportRow[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditRow[]>([]);
+  const [roles, setRoles] = useState<{ label: string; value: number; color: string }[]>([]);
+  const [userGrowth, setUserGrowth] = useState<number[]>(Array(30).fill(0));
 
   useEffect(() => {
     async function load() {
@@ -90,21 +106,139 @@ export default function Overview() {
       });
       setLoading(false);
     }
+
+    // Everything below is independent of the metric cards, so it loads in
+    // parallel and each panel degrades to an empty state on its own.
+    async function loadPanels() {
+      const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+
+      const [growthRes, roleRes, checkInRes, reportRes, auditRes] = await Promise.all([
+        supabase.from('profiles').select('created_at').gte('created_at', monthAgo),
+        supabase.from('profiles').select('role'),
+        supabase
+          .from('venue_check_ins')
+          .select('venue_id')
+          .gte('checked_in_at', monthAgo),
+        supabase
+          .from('post_reports')
+          .select('id, reason, post_id, reporter_id, created_at')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('admin_audit_log')
+          .select('admin_id, action, resource_type, details, created_at')
+          .order('created_at', { ascending: false })
+          .limit(5),
+      ]);
+
+      // ── 30-day signup series, bucketed per day ──────────────────────
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setDate(dayStart.getDate() - 29);
+      const growth = Array(30).fill(0);
+      for (const row of growthRes.data ?? []) {
+        const offset = Math.floor(
+          (new Date((row as any).created_at).getTime() - dayStart.getTime()) / 86_400_000,
+        );
+        if (offset >= 0 && offset < 30) growth[offset] += 1;
+      }
+      // Cumulative reads better than daily spikes at low volume.
+      let running = 0;
+      setUserGrowth(growth.map(n => (running += n)));
+
+      // ── Real role breakdown ─────────────────────────────────────────
+      const roleCounts = new Map<string, number>();
+      for (const r of roleRes.data ?? []) {
+        const key = (r as any).role || 'Consumer';
+        roleCounts.set(key, (roleCounts.get(key) ?? 0) + 1);
+      }
+      const ROLE_COLORS: Record<string, string> = {
+        Consumer: '#6B7280',
+        'Business Owner': '#EAB308',
+        'Content Creator': '#06B6D4',
+        Admin: '#FB923C',
+        'Super Admin': '#A855F7',
+      };
+      setRoles(
+        [...roleCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([label, value]) => ({ label, value, color: ROLE_COLORS[label] ?? '#9CA3AF' })),
+      );
+
+      // ── Top venues by check-ins (last 30d) ──────────────────────────
+      const counts = new Map<string, number>();
+      for (const row of checkInRes.data ?? []) {
+        const id = (row as any).venue_id;
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+      const topIds = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+      if (topIds.length > 0) {
+        const { data: venueRows } = await supabase
+          .from('venues')
+          .select('id, name')
+          .in('id', topIds.map(([id]) => id));
+        const nameById = new Map((venueRows ?? []).map((v: any) => [v.id, v.name]));
+        setTopVenues(
+          topIds.map(([id, value]) => ({ label: nameById.get(id) ?? 'Unknown venue', value })),
+        );
+      } else {
+        setTopVenues([]);
+      }
+
+      // ── Pending moderation reports ──────────────────────────────────
+      const reportRows = reportRes.data ?? [];
+      if (reportRows.length > 0) {
+        const reporterIds = [...new Set(reportRows.map((r: any) => r.reporter_id))];
+        const { data: reporters } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', reporterIds);
+        const reporterName = new Map((reporters ?? []).map((p: any) => [p.user_id, p.full_name]));
+        setReports(
+          reportRows.map((r: any) => ({
+            id: r.id,
+            who: reporterName.get(r.reporter_id) || 'A user',
+            type: REPORT_LABEL[r.reason] ?? r.reason,
+            what: `Post ${String(r.post_id).slice(0, 8)}…`,
+            sev: HIGH_SEVERITY.has(r.reason) ? 'high' : 'med',
+            time: timeAgo(r.created_at),
+          })),
+        );
+      } else {
+        setReports([]);
+      }
+
+      // ── Admin audit trail ───────────────────────────────────────────
+      const auditRows = auditRes.data ?? [];
+      if (auditRows.length > 0) {
+        const adminIds = [...new Set(auditRows.map((r: any) => r.admin_id).filter(Boolean))];
+        const { data: admins } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', adminIds);
+        const adminName = new Map((admins ?? []).map((p: any) => [p.user_id, p.full_name]));
+        setAuditLog(
+          auditRows.map((r: any) => {
+            const style = AUDIT_STYLE[r.action] ?? { Icon: Shield, color: '#6B7280' };
+            return {
+              who: adminName.get(r.admin_id) || 'System',
+              did: String(r.action).replace(/_/g, ' '),
+              what: r.details?.name || r.details?.target || r.resource_type || '',
+              time: timeAgo(r.created_at),
+              Icon: style.Icon,
+              color: style.color,
+            };
+          }),
+        );
+      } else {
+        setAuditLog([]);
+      }
+    }
+
     load();
+    loadPanels();
   }, []);
-
-  // Synthetic growth chart for now (real timeseries plugs in later)
-  const sparkBase = Math.max(stats.totalUsers, 100);
-  const userGrowth = Array.from({ length: 30 }, (_, i) =>
-    Math.round(sparkBase * (0.4 + (i / 29) * 0.6))
-  );
-
-  const roles = [
-    { label: 'Users',       value: Math.max(0, stats.totalUsers - 100), color: '#6B7280' },
-    { label: 'Business',    value: 48, color: '#EAB308' },
-    { label: 'Admin',       value: 12, color: '#FB923C' },
-    { label: 'Super Admin', value: 4,  color: '#A855F7' },
-  ];
 
   return (
     <div>
@@ -265,7 +399,13 @@ export default function Overview() {
               Last 24h
             </span>
           </div>
-          <BarChart data={TOP_VENUES} color="#FB923C" />
+          {topVenues.length > 0 ? (
+            <BarChart data={topVenues} color="#FB923C" />
+          ) : (
+            <div style={{ padding: '28px 4px', fontSize: 13, color: '#9CA3AF' }}>
+              No check-ins in the last 30 days yet.
+            </div>
+          )}
         </div>
 
         {/* Reports */}
@@ -298,7 +438,12 @@ export default function Overview() {
               Action needed
             </span>
           </div>
-          {REPORTS.map((r) => (
+          {reports.length === 0 && (
+            <div style={{ padding: '20px 18px', fontSize: 13, color: '#9CA3AF' }}>
+              No pending reports. Content reported from the app appears here.
+            </div>
+          )}
+          {reports.map((r) => (
             <div
               key={r.id}
               style={{
@@ -361,7 +506,12 @@ export default function Overview() {
             </button>
           </div>
           <div style={{ padding: '4px 0' }}>
-            {AUDIT_LOG.map((e, i) => (
+            {auditLog.length === 0 && (
+              <div style={{ padding: '16px 18px', fontSize: 12, color: '#9CA3AF' }}>
+                No admin actions logged yet.
+              </div>
+            )}
+            {auditLog.map((e, i) => (
               <div
                 key={i}
                 style={{

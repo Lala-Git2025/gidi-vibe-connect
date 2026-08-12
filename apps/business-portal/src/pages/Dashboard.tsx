@@ -1,21 +1,19 @@
 import { useNavigate } from 'react-router-dom';
 import { Building2, Eye, Calendar, MapPin, Rocket, Download } from 'lucide-react';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
-import { useVenueStats } from '../hooks/useVenues';
+import { useVenueStats, useWeeklyViews, useVenueActivity } from '../hooks/useVenues';
 import { useEventStats } from '../hooks/useEvents';
 import { StatCard } from '../components/ui/stat-card';
 import { AreaChart } from '../components/ui/charts';
 
-const WEEKLY_VIEWS = [240, 280, 320, 380, 420, 580, 640];
-const WEEKLY_VIEWS_PREV = [200, 220, 260, 250, 300, 360, 420];
-
-const ACTIVITY = [
-  { who: 'Adaeze O.', verb: 'checked in at',        what: 'Cocoon Lounge',          time: '8m',  color: '#22C55E' },
-  { who: 'Tunde M.',  verb: "RSVP'd to",            what: 'Detty December Warm-up', time: '14m', color: '#3B82F6' },
-  { who: 'Bisi K.',   verb: 'posted a vibe at',     what: 'Sip & Smoke',            time: '22m', color: '#A855F7' },
-  { who: 'Femi A.',   verb: 'left a 5★ review for', what: 'Tarragon',               time: '1h',  color: '#EAB308' },
-  { who: 'Ifeoma N.', verb: 'shared',               what: 'your event link',        time: '2h',  color: '#10B981' },
-];
+// Compact relative time for the activity feed ("8m", "3h", "2d").
+function timeAgo(iso: string): string {
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
+  return `${Math.floor(secs / 86400)}d`;
+}
 
 const today = new Date();
 const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
@@ -27,6 +25,8 @@ export default function Dashboard() {
   const { profile, subscription } = useBusinessAuth();
   const { data: venueStats, isLoading: loadingVenueStats } = useVenueStats();
   const { data: eventStats, isLoading: loadingEventStats } = useEventStats();
+  const { data: weeklyViews } = useWeeklyViews();
+  const { data: activity, isLoading: loadingActivity } = useVenueActivity();
 
   const firstName = profile?.full_name?.split(' ')[0] || 'there';
   const maxVenues = subscription?.max_venues || 1;
@@ -162,7 +162,11 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-            <AreaChart data={WEEKLY_VIEWS} secondary={WEEKLY_VIEWS_PREV} color="#EAB308" />
+            <AreaChart
+              data={weeklyViews?.current ?? Array(7).fill(0)}
+              secondary={weeklyViews?.previous ?? Array(7).fill(0)}
+              color="#EAB308"
+            />
           </div>
 
           {/* Quick actions */}
@@ -259,7 +263,15 @@ export default function Dashboard() {
             </button>
           </div>
           <div style={{ padding: '6px 0' }}>
-            {ACTIVITY.map((a, i) => (
+            {loadingActivity ? (
+              <div style={{ padding: '20px', fontSize: 13, color: '#9CA3AF' }}>Loading activity…</div>
+            ) : (activity ?? []).length === 0 ? (
+              <div style={{ padding: '20px', fontSize: 13, color: '#9CA3AF' }}>
+                No activity yet. Check-ins, reviews, and RSVPs on your venues and events will show up
+                here.
+              </div>
+            ) : (
+              (activity ?? []).map((a, i) => (
               <div
                 key={i}
                 style={{
@@ -291,11 +303,12 @@ export default function Dashboard() {
                     <strong>{a.what}</strong>
                   </div>
                   <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
-                    {a.time} ago
+                    {timeAgo(a.at)} ago
                   </div>
                 </div>
               </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
