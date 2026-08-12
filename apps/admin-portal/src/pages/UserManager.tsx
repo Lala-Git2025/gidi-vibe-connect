@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   Loader2,
   ChevronLeft,
   ChevronRight,
   Download,
-  UserPlus,
   BadgeCheck,
   MoreHorizontal,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { logAdminAction } from '../lib/audit';
+import { downloadCsv } from '../lib/csv';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 
 type UserRole = 'Consumer' | 'Business Owner' | 'Content Creator' | 'Admin' | 'Super Admin';
@@ -46,9 +47,11 @@ const ROLE_FILTERS: Array<{ label: string; value: string }> = [
 
 export default function UserManager() {
   const { profile: currentProfile } = useAdminAuth();
+  const [searchParams] = useSearchParams();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  // Seeded from ?q= so the header search lands here with the term applied.
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
@@ -113,6 +116,21 @@ export default function UserManager() {
     setSavingId(null);
   };
 
+  // Exports the current filtered page — what the admin is actually looking at.
+  const handleExport = () => {
+    downloadCsv(
+      'users',
+      users.map(u => ({
+        name: u.full_name ?? '',
+        username: u.username ?? '',
+        role: u.role,
+        joined: new Date(u.created_at).toISOString().split('T')[0],
+        user_id: u.user_id,
+      })),
+      ['name', 'username', 'role', 'joined', 'user_id'],
+    );
+  };
+
   const canEditRole = (user: UserRow) =>
     user.role !== 'Super Admin' && user.user_id !== currentProfile?.user_id;
 
@@ -141,13 +159,13 @@ export default function UserManager() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="ap-btn ap-btn-secondary">
+          <button
+            className="ap-btn ap-btn-secondary"
+            onClick={handleExport}
+            disabled={users.length === 0}
+          >
             <Download className="h-3.5 w-3.5" />
             Export
-          </button>
-          <button className="ap-btn ap-btn-primary">
-            <UserPlus className="h-3.5 w-3.5" />
-            Invite admin
           </button>
         </div>
       </div>

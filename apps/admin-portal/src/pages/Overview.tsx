@@ -14,6 +14,8 @@ import {
   MapPin,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { logAdminAction } from '../lib/audit';
+import { downloadCsv } from '../lib/csv';
 import { MetricCard } from '../components/ui/metric-card';
 import { AreaChart, BarChart, DonutChart } from '../components/ui/charts';
 
@@ -54,6 +56,16 @@ function timeAgo(iso: string): string {
   return `${Math.floor(secs / 86400)}d`;
 }
 
+// Selectable windows for the growth chart, in days.
+const GROWTH_RANGES = [
+  { key: '7d', days: 7 },
+  { key: '30d', days: 30 },
+  { key: '90d', days: 90 },
+  { key: '12m', days: 365 },
+] as const;
+
+type GrowthRangeKey = (typeof GROWTH_RANGES)[number]['key'];
+
 interface TopVenue { label: string; value: number }
 interface ReportRow { id: string; who: string; type: string; what: string; sev: string; time: string }
 interface AuditRow { who: string; did: string; what: string; time: string; Icon: typeof Rocket; color: string }
@@ -77,6 +89,9 @@ export default function Overview() {
   const [auditLog, setAuditLog] = useState<AuditRow[]>([]);
   const [roles, setRoles] = useState<{ label: string; value: number; color: string }[]>([]);
   const [userGrowth, setUserGrowth] = useState<number[]>(Array(30).fill(0));
+  const [growthRange, setGrowthRange] = useState<GrowthRangeKey>('30d');
+  const [refreshing, setRefreshing] = useState(false);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -112,8 +127,7 @@ export default function Overview() {
     async function loadPanels() {
       const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
 
-      const [growthRes, roleRes, checkInRes, reportRes, auditRes] = await Promise.all([
-        supabase.from('profiles').select('created_at').gte('created_at', monthAgo),
+      const [roleRes, checkInRes, reportRes, auditRes] = await Promise.all([
         supabase.from('profiles').select('role'),
         supabase
           .from('venue_check_ins')
@@ -131,21 +145,6 @@ export default function Overview() {
           .order('created_at', { ascending: false })
           .limit(5),
       ]);
-
-      // ── 30-day signup series, bucketed per day ──────────────────────
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      dayStart.setDate(dayStart.getDate() - 29);
-      const growth = Array(30).fill(0);
-      for (const row of growthRes.data ?? []) {
-        const offset = Math.floor(
-          (new Date((row as any).created_at).getTime() - dayStart.getTime()) / 86_400_000,
-        );
-        if (offset >= 0 && offset < 30) growth[offset] += 1;
-      }
-      // Cumulative reads better than daily spikes at low volume.
-      let running = 0;
-      setUserGrowth(growth.map(n => (running += n)));
 
       // ── Real role breakdown ─────────────────────────────────────────
       const roleCounts = new Map<string, number>();
@@ -240,6 +239,92 @@ export default function Overview() {
     loadPanels();
   }, []);
 
+  // Signup series, re-queried whenever the range chips change.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadGrowth() {
+      const days = GROWTH_RANGES.find(r => r.key === growthRange)?.days ?? 30;
+      // Long ranges bucket by week so the chart stays readable.
+      const bucketDays = days > 90 ? 7 : 1;
+      const buckets = Math.ceil(days / bucketDays);
+
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - (days - 1));
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('created_at')
+          .gte('created_at', start.toISOString());
+        if (error) throw error;
+        if (cancelled) return;
+
+        const series = Array(buckets).fill(0);
+        for (const row of data ?? []) {
+          const created = new Date((row as any).created_at).getTime();
+          const offset = Math.floor((created - start.getTime()) / 86_400_000 / bucketDays);
+          if (offset >= 0 && offset < buckets) series[offset] += 1;
+        }
+        // Cumulative reads better than daily spikes at low volume.
+        let running = 0;
+        setUserGrowth(series.map(n => (running += n)));
+      } catch (err) {
+        console.error('Growth query failed:', err);
+        if (!cancelled) setUserGrowth(Array(buckets).fill(0));
+      }
+    }
+    loadGrowth();
+    return () => { cancelled = true; };
+  }, [growthRange]);
+
+  // trending_venues is a materialized view; pg_cron refreshes it every 10 min,
+  // but admins need a manual trigger after promoting a venue.
+  const handleRefreshViews = async () => {
+    setRefreshing(true);
+    try {
+      const { error } = await supabase.rpc('refresh_trending_venues');
+      if (error) throw error;
+      await logAdminAction('refresh', 'trending_venues', 'materialized_view', {
+        name: 'trending_venues',
+      });
+    } catch (err) {
+      console.error('Refresh failed:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Marks a report handled and drops it from the pending panel.
+  const handleReviewReport = async (reportId: string) => {
+    setReviewingId(reportId);
+    try {
+      const { error } = await supabase
+        .from('post_reports')
+        .update({ status: 'reviewed' })
+        .eq('id', reportId);
+      if (error) throw error;
+      await logAdminAction('approve', 'post_report', reportId, { target: 'reviewed' });
+      setReports(prev => prev.filter(r => r.id !== reportId));
+    } catch (err) {
+      console.error('Could not update report:', err);
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const handleExport = () => {
+    downloadCsv('platform-overview', [
+      { metric: 'Total users', value: stats.totalUsers },
+      { metric: 'Total venues', value: stats.totalVenues },
+      { metric: 'Active promotions', value: stats.activePromotions },
+      { metric: 'New users this week', value: stats.newUsersThisWeek },
+      { metric: 'Monthly active users', value: stats.mau },
+      ...roles.map(r => ({ metric: `Users — ${r.label}`, value: r.value })),
+      ...topVenues.map(v => ({ metric: `Check-ins (30d) — ${v.label}`, value: v.value })),
+    ], ['metric', 'value']);
+  };
+
   return (
     <div>
       <div
@@ -264,13 +349,17 @@ export default function Overview() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="ap-btn ap-btn-secondary">
+          <button className="ap-btn ap-btn-secondary" onClick={handleExport}>
             <Download className="h-3.5 w-3.5" />
             Export
           </button>
-          <button className="ap-btn ap-btn-secondary">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh views
+          <button
+            className="ap-btn ap-btn-secondary"
+            onClick={handleRefreshViews}
+            disabled={refreshing}
+          >
+            <RefreshCw className={'h-3.5 w-3.5' + (refreshing ? ' animate-spin' : '')} />
+            {refreshing ? 'Refreshing…' : 'Refresh views'}
           </button>
         </div>
       </div>
@@ -347,13 +436,14 @@ export default function Overview() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              {['7d', '30d', '90d', '12m'].map((r) => (
+              {GROWTH_RANGES.map((r) => (
                 <button
-                  key={r}
-                  className={'ap-btn ' + (r === '30d' ? 'ap-btn-primary' : 'ap-btn-ghost')}
+                  key={r.key}
+                  onClick={() => setGrowthRange(r.key)}
+                  className={'ap-btn ' + (r.key === growthRange ? 'ap-btn-primary' : 'ap-btn-ghost')}
                   style={{ height: 28, padding: '0 11px', fontSize: 11 }}
                 >
-                  {r}
+                  {r.key}
                 </button>
               ))}
             </div>
@@ -479,8 +569,10 @@ export default function Overview() {
               <button
                 className="ap-btn ap-btn-secondary"
                 style={{ height: 28, padding: '0 10px', fontSize: 11 }}
+                onClick={() => handleReviewReport(r.id)}
+                disabled={reviewingId === r.id}
               >
-                Review
+                {reviewingId === r.id ? 'Saving…' : 'Review'}
               </button>
             </div>
           ))}
@@ -498,12 +590,7 @@ export default function Overview() {
             }}
           >
             <div className="ap-section-title">Audit log</div>
-            <button
-              className="ap-btn ap-btn-ghost"
-              style={{ height: 28, padding: '0 10px', fontSize: 12 }}
-            >
-              View all →
-            </button>
+            <span style={{ fontSize: 11, color: '#9CA3AF' }}>Last {auditLog.length}</span>
           </div>
           <div style={{ padding: '4px 0' }}>
             {auditLog.length === 0 && (

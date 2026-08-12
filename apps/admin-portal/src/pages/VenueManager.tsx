@@ -7,11 +7,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  Rocket,
   MoreHorizontal,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { logAdminAction } from '../lib/audit';
+import { downloadCsv } from '../lib/csv';
 
 const LAGOS_AREAS = ['Victoria Island', 'Lekki', 'Ikoyi', 'Ikeja', 'Yaba', 'Surulere'];
 const PAGE_SIZE = 25;
@@ -107,6 +107,24 @@ export default function VenueManager() {
     setSavingId(null);
   };
 
+  // Exports the current filtered page — what the admin is actually looking at.
+  const handleExport = () => {
+    downloadCsv(
+      'venues',
+      venues.map(v => ({
+        name: v.name,
+        location: v.location,
+        category: v.category,
+        rating: v.rating,
+        promoted: v.is_promoted ? 'yes' : 'no',
+        promoted_until: v.promoted_until ?? '',
+        promotion_label: v.promotion_label ?? '',
+        venue_id: v.id,
+      })),
+      ['name', 'location', 'category', 'rating', 'promoted', 'promoted_until', 'promotion_label', 'venue_id'],
+    );
+  };
+
   const now = new Date();
   const isActivePromo = (v: VenueRow) =>
     v.is_promoted && (!v.promoted_until || new Date(v.promoted_until) > now);
@@ -137,13 +155,13 @@ export default function VenueManager() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="ap-btn ap-btn-secondary">
+          <button
+            className="ap-btn ap-btn-secondary"
+            onClick={handleExport}
+            disabled={venues.length === 0}
+          >
             <Download className="h-3.5 w-3.5" />
             Export
-          </button>
-          <button className="ap-btn ap-btn-primary">
-            <Rocket className="h-3.5 w-3.5" />
-            Bulk promote
           </button>
         </div>
       </div>
