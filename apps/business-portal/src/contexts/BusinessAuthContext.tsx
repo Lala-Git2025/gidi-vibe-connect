@@ -20,27 +20,61 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
   const [profileLoadFailed, setProfileLoadFailed] = useState(false);
 
   useEffect(() => {
-    // Refresh session on mount to ensure JWT is not stale
-    supabase.auth.refreshSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        fetchUserData(session.user.id);
-      } else {
-        // Fall back to existing session if refresh fails
-        supabase.auth.getSession().then(({ data: { session: existing } }) => {
-          setUser(existing?.user ?? null);
-          if (existing?.user) {
-            fetchUserData(existing.user.id);
-          } else {
-            setLoading(false);
+    let mounted = true;
+
+    // refreshSession() REJECTS when the stored refresh token is expired or has
+    // already been rotated (e.g. two tabs, or a long-idle tab). Without a catch
+    // the whole chain dies silently, setLoading(false) never runs, and the
+    // layout spins forever — so every branch here is wrapped.
+    async function init() {
+      try {
+        let session = null;
+        try {
+          const res = await supabase.auth.refreshSession();
+          session = res.data?.session ?? null;
+        } catch {
+          session = null;
+        }
+
+        // Refresh failed or returned nothing — fall back to whatever is stored.
+        if (!session) {
+          try {
+            const res = await supabase.auth.getSession();
+            session = res.data?.session ?? null;
+          } catch {
+            session = null;
           }
-        });
+        }
+
+        if (!mounted) return;
+
+        if (session?.user) {
+          setUser(session.user);
+          await fetchUserData(session.user.id);
+        } else {
+          setUser(null);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Business auth init failed:', error);
+        if (mounted) {
+          setUser(null);
+          setLoading(false);
+        }
       }
-    });
+    }
+
+    init();
+
+    // Safety net — never leave the portal stuck on a spinner.
+    const timeout = setTimeout(() => {
+      if (mounted) setLoading(prev => (prev ? false : prev));
+    }, 8000);
 
     // Listen for auth changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!mounted) return;
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchUserData(session.user.id);
@@ -54,6 +88,8 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => {
+      mounted = false;
+      clearTimeout(timeout);
       authSubscription.unsubscribe();
     };
   }, []);

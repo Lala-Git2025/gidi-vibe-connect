@@ -5,7 +5,7 @@ import { AdminSidebar } from './AdminSidebar';
 import { AdminHeader } from './AdminHeader';
 
 export function AdminLayout() {
-  const { user, profile, loading, profileError, refreshProfile, signOut } = useAdminAuth();
+  const { user, profile, loading, refreshProfile, signOut } = useAdminAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   if (loading) {
@@ -20,8 +20,9 @@ export function AdminLayout() {
     return <Navigate to="/login" replace />;
   }
 
-  // Profile failed to load — offer a way out instead of spinning forever.
-  if (profileError && !profile) {
+  // Past the loading gate with no profile means the fetch failed (or timed
+  // out) — always offer a way out rather than spinning forever.
+  if (!profile) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontFamily: 'sans-serif' }}>
         <div style={{ textAlign: 'center', maxWidth: 380 }}>
@@ -43,14 +44,6 @@ export function AdminLayout() {
     );
   }
 
-  // Wait for profile before checking role
-  if (!profile) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
-        <p style={{ color: '#333' }}>Loading profile…</p>
-      </div>
-    );
-  }
 
   // Admin/Super Admin only
   if (profile.role !== 'Admin' && profile.role !== 'Super Admin') {

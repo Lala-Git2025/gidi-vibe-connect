@@ -5,7 +5,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
 export function DashboardLayout() {
-  const { user, profile, loading, profileLoadFailed, refreshProfile, signOut } = useBusinessAuth();
+  const { user, profile, loading, refreshProfile, signOut } = useBusinessAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Show loading spinner while checking auth
@@ -22,8 +22,9 @@ export function DashboardLayout() {
     return <Navigate to="/login" replace />;
   }
 
-  // Profile failed to load — offer a way out instead of spinning forever.
-  if (profileLoadFailed && !profile) {
+  // Past the loading gate with no profile means the fetch failed (or timed
+  // out) — always offer a way out rather than spinning forever.
+  if (!profile) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
@@ -45,14 +46,6 @@ export function DashboardLayout() {
     );
   }
 
-  // Wait for profile to load before checking role
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
 
   // Check if user has an allowed role
   if (profile.role !== 'Business Owner') {
