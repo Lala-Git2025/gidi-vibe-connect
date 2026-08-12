@@ -4,14 +4,12 @@
   ],
   "headers": [
     {
-      "comment": "HTML must never be reused from cache: it names the hashed bundle, and a stale copy points at a build that no longer exists (blank page).",
       "source": "/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
       ]
     },
     {
-      "comment": "Asset filenames are content-hashed, so they are safe to cache forever. Listed after the catch-all so this wins for /assets/*.",
       "source": "/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
