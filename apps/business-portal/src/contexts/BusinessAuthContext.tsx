@@ -70,16 +70,15 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
 
     init();
 
-    // Safety net — never leave the portal stuck on a spinner.
-    // Last-resort guard. Every request now carries its own timeout, so this
-    // should never fire — but it clears BOTH flags in the spinner condition,
-    // because clearing only `loading` still leaves `!profile && profileFetching`
-    // true and the layout spinning.
+    // Last-resort guard, deliberately longer than REQUEST_TIMEOUT_MS so the
+    // per-request timeout wins the race and the real error path runs. It clears
+    // BOTH flags in the spinner condition — clearing only `loading` still
+    // leaves `!profile && profileFetching` true and the layout spinning.
     const timeout = setTimeout(() => {
       if (!mounted) return;
       setLoading(prev => (prev ? false : prev));
       setProfileFetching(prev => (prev ? false : prev));
-    }, 8000);
+    }, 12000);
 
     // Listen for auth changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(

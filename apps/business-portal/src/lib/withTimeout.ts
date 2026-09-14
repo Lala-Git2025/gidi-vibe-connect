@@ -6,7 +6,7 @@
  * Wrapping a request guarantees it settles: either the request wins, or the
  * timer rejects and the caller's error path takes over.
  */
-export const REQUEST_TIMEOUT_MS = 10_000;
+export const REQUEST_TIMEOUT_MS = 8_000;
 
 export class RequestTimeoutError extends Error {
   constructor(label: string, ms: number) {

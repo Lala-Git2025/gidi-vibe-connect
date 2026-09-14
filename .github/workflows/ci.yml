@@ -1,0 +1,150 @@
+name: CI
+
+# Every push and PR. The August incidents — a missing dependency that made
+# main unbuildable, a schema-invalid vercel.json, a regression that took three
+# deploys to fix — would all have been caught here before reaching production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  portals:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one portal breaking shouldn't hide the other's result
+      matrix:
+        app: [admin-portal, business-portal]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+
+      # ci, not install: fails loudly if the lockfile drifts from package.json
+      # instead of silently resolving something different from local.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Catches what typecheck cannot: bad imports, Vite config errors, and
+      # anything that only surfaces at bundle time.
+      - name: Build
+        run: npm run build
+
+  consumer-app:
+    name: consumer-app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/consumer-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/consumer-app/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Verifies every native dependency is declared and version-aligned — the
+      # exact check that would have caught expo-notifications being imported
+      # but never added to package.json.
+      - name: Expo doctor
+        run: npx expo-doctor
+
+  config:
+    name: deploy config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A vercel.json that fails Vercel's schema breaks deploys for every push
+      # that follows. Validate shape here rather than discovering it in a build.
+      - name: Validate vercel.json files
+        run: |
+          python3 - <<'PY'
+          import json, sys, pathlib
+
+          TOP = {'rewrites','headers','redirects','cleanUrls','trailingSlash','buildCommand',
+                 'outputDirectory','installCommand','framework','devCommand','regions','routes',
+                 'functions','crons','ignoreCommand','github','public','$schema'}
+          HEADER_ENTRY = {'source','headers','has','missing'}
+          KV = {'key','value'}
+          REWRITE = {'source','destination','has','missing'}
+
+          errors = []
+          files = sorted(pathlib.Path('apps').glob('*/vercel.json'))
+          if not files:
+              print('no vercel.json files found'); sys.exit(0)
+
+          for f in files:
+              try:
+                  cfg = json.loads(f.read_text())
+              except json.JSONDecodeError as e:
+                  errors.append(f'{f}: invalid JSON — {e}')
+                  continue
+              for k in cfg:
+                  if k not in TOP:
+                      errors.append(f"{f}: unknown top-level key '{k}'")
+              for i, h in enumerate(cfg.get('headers', [])):
+                  for k in h:
+                      if k not in HEADER_ENTRY:
+                          errors.append(f"{f}: headers[{i}] has invalid property '{k}'")
+                  for j, kv in enumerate(h.get('headers', [])):
+                      for k in kv:
+                          if k not in KV:
+                              errors.append(f"{f}: headers[{i}].headers[{j}] invalid key '{k}'")
+              for i, r in enumerate(cfg.get('rewrites', [])):
+                  for k in r:
+                      if k not in REWRITE:
+                          errors.append(f"{f}: rewrites[{i}] has invalid property '{k}'")
+              print(f'checked {f}')
+
+          if errors:
+              print('\nInvalid Vercel config:')
+              for e in errors:
+                  print('  -', e)
+              sys.exit(1)
+          print('\nall vercel.json files valid')
+          PY
+
+      # .env has been committed to this public repo before. Fail the build
+      # rather than let it happen again unnoticed.
+      - name: Block committed .env files
+        run: |
+          tracked=$(git ls-files | grep -E '(^|/)\.env$|(^|/)\.env\.(local|production|development)$' || true)
+          if [ -n "$tracked" ]; then
+            echo "::error::Environment files are tracked in git:"
+            echo "$tracked" | sed 's/^/  /'
+            echo "Remove with: git rm --cached <file>  (and rotate any exposed credentials)"
+            exit 1
+          fi
+          echo "no tracked .env files"

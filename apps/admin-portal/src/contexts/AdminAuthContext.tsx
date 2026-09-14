@@ -84,7 +84,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       setLoading(prev => (prev ? false : prev));
       setProfileFetching(prev => (prev ? false : prev));
-    }, 5000);
+    }, 12000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
