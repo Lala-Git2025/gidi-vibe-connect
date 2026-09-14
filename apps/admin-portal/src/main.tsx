@@ -3,7 +3,11 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { initSentry } from './lib/sentry';
 import './index.css';
+
+// Before the first render so a crash during mount is reported too.
+initSentry();
 
 const queryClient = new QueryClient({
   defaultOptions: {

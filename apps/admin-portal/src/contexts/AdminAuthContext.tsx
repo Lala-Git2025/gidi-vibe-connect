@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { withTimeout } from '../lib/withTimeout';
+import { identifyUser } from '../lib/sentry';
 
 export type UserRole = 'Consumer' | 'Business Owner' | 'Content Creator' | 'Admin' | 'Super Admin';
 
@@ -105,6 +106,11 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Tag crash reports with who hit them — id and role only, never email.
+  useEffect(() => {
+    identifyUser(user ? { id: user.id, role: profile?.role } : null);
+  }, [user, profile]);
 
   // maybeSingle() rather than single(): a missing row is a state we render,
   // not an exception. One retry covers a cold start or a dropped connection.

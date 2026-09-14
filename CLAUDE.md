@@ -166,6 +166,13 @@ Always use `colors.xxx` from theme context, never hardcode colors.
 
 ## Recent Decisions
 
+### September 2026
+- **Tests + CI (2026-09-14)**: `.github/workflows/ci.yml` runs typecheck → vitest → build for both portals, `tsc` + `expo-doctor` for the consumer app, validates every `apps/*/vercel.json` against Vercel's schema (an unknown key like the `comment` that broke deploys in August now fails the build), and fails if any `.env` is tracked. Regression tests cover the auth contexts (the spinner must always settle: stalled fetch, rejected refresh, missing profile) and `withTimeout`. Run locally with `npm test` in either portal. Root cause of the infinite-spinner incidents: `supabase-js` has no default request timeout, so every auth-context request is wrapped in `withTimeout` (8 s) with a 12 s last-resort guard that clears both spinner flags.
+- **Observability (2026-09-14)**: Sentry on all three surfaces, **inert until a DSN is set** — with no DSN there are no network calls, no behaviour change, and CI needs no secrets.
+  - **Portals**: `src/lib/sentry.ts` exports `initSentry` (called first thing in `main.tsx`), `identifyUser` (auth contexts tag events with user id + role, never email) and `reportRenderError` (ErrorBoundary ships render crashes and shows a `Reference:` event id the user can quote). `vite.config.ts` stamps `VITE_APP_RELEASE` = `<app>@<short sha>` and `VITE_APP_ENV` = Vercel env at build time. Source maps are emitted (`hidden`) and uploaded only when `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` are all set on the Vercel project.
+  - **Consumer app**: `lib/sentry.ts`; `initSentry()` + `withSentryRoot(App)` in `index.ts`; React Navigation breadcrumbs via `navigationIntegration.registerNavigationContainer` in `App.tsx`; `identifyUser` on every auth change; `metro.config.js` uses `getSentryExpoConfig` so bundles carry Debug IDs. **The `@sentry/react-native` Expo config plugin is deliberately NOT in `app.json`**: its Xcode/Gradle upload phases exit non-zero on every build that lacks `SENTRY_AUTH_TOKEN` (see `scripts/sentry-xcode.sh` in the package), which would break EAS and local builds. Add `["@sentry/react-native/expo", { organization, project }]` plus an EAS secret `SENTRY_AUTH_TOKEN` only when native symbolication is wanted.
+  - **Uptime**: `.github/workflows/uptime.yml` probes admin, business, www, the apex → www redirect and Supabase every 15 min. Each probe gets 3 attempts 20 s apart before counting as down; a Vercel bot challenge is logged as inconclusive, not downtime (August lesson: aggressive polling triggers it). Failures open one GitHub issue labelled `uptime`, comment on it while the outage lasts and close it on recovery. `workflow_dispatch` with `simulate_failure` exercises the alert path end to end. GitHub disables scheduled workflows after 60 days without a push; any commit re-arms it.
+
 ### August 2026
 - **Play Store launch sprint (2026-08-10 session)**: live audit found 5 P0 blockers (full report artifact: launch-readiness). Shipped same-session:
   - **Report + block flows (Play UGC policy)**: migration `20260811021308_report_block.sql` adds `post_reports` (reasons spam/harassment/inappropriate/other, statuses pending/reviewed/actioned/dismissed, `UNIQUE NULLS NOT DISTINCT (post_id, comment_id, reporter_id)`) and `blocked_users` (PK blocker/blocked). Consumer UI: ellipsis menu on others' posts → Report/Block; long-press others' comments; block button on the People-tab profile modal. Blocking unfollows (own direction only, RLS) and client-filters feed/comments/People via `blockedIds` Set. `post_reports` is the trigger surface the `moderation_triage` agent has been waiting on (AI_AGENTS_PLAN §5.1).
@@ -273,6 +280,11 @@ node scripts/lagos-news-agent.js
 ### Business Portal (`apps/business-portal/.env`)
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+### Error reporting (all optional — leave unset to disable Sentry)
+- Portals: `VITE_SENTRY_DSN` on each Vercel project. Source-map upload additionally needs `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` on the same project. `VITE_APP_RELEASE` / `VITE_APP_ENV` are derived at build time by `vite.config.ts`, never set by hand.
+- Consumer app: `EXPO_PUBLIC_SENTRY_DSN` — an EAS environment variable (plain text, every profile) for cloud builds, `apps/consumer-app/.env` locally (see `.env.example`).
+- Uptime workflow: optional repo secret `SUPABASE_ANON_KEY` upgrades the Supabase probe from "gateway answers" (401) to "auth service healthy" (200).
 
 ## Scalability Notes
 

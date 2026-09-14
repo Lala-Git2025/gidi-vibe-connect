@@ -1,0 +1,134 @@
+name: Uptime
+
+# Probes every production host on a schedule and turns an outage into a
+# GitHub issue (email reaches whoever watches the repo). Deliberately gentle:
+# one request per host per run, a real User-Agent, 15-minute spacing.
+# Hammering Vercel from a script is what triggered its bot challenge in
+# August, and a challenge page would read as a false outage.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: 'Add a probe that is guaranteed to fail, to exercise the alert path end to end'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+# Never let two runs race to open the same incident.
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: probe production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Probe
+        id: probe
+        env:
+          SUPABASE_URL: https://xvtjcpwkrsoyrhhptdmc.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+        run: |
+          set -u
+          UA="GidiConnect-Uptime/1.0 (+https://github.com/$GH_REPO)"
+          REPORT="$RUNNER_TEMP/report.md"
+          : > "$REPORT"
+          FAILED=()
+
+          # check <name> <url> <status regex> <text that must appear in headers or body, or ""> [extra curl args...]
+          # Three attempts, 20 s apart, so one dropped connection doesn't page anyone.
+          check() {
+            local name=$1 url=$2 want=$3 marker=$4
+            shift 4
+            local expect="HTTP $want"
+            [ -n "$marker" ] && expect="$expect with '$marker' in the response"
+            local attempt code hdr body
+            for attempt in 1 2 3; do
+              hdr=$(mktemp); body=$(mktemp)
+              code=$(curl -sS -o "$body" -D "$hdr" -A "$UA" --max-time 20 -w '%{http_code}' "$@" "$url" 2>/dev/null) || code="000"
+              if grep -qi '^x-vercel-mitigated: challenge' "$hdr"; then
+                echo "::warning::$name served a bot challenge — inconclusive, not counted as downtime"
+                return 0
+              fi
+              if [[ "$code" =~ ^($want)$ ]] && { [ -z "$marker" ] || grep -qi -- "$marker" "$hdr" "$body"; }; then
+                echo "ok       $name  HTTP $code (attempt $attempt)"
+                return 0
+              fi
+              echo "retry    $name  HTTP $code, wanted $expect (attempt $attempt)"
+              [ "$attempt" -lt 3 ] && sleep 20
+            done
+            echo "FAILED   $name"
+            FAILED+=("$name")
+            printf -- '- **%s**: HTTP %s from %s (wanted %s)\n' "$name" "$code" "$url" "$expect" >> "$REPORT"
+            return 1
+          }
+
+          # Portals: 200 plus the SPA mount point, so a 200 that is really an
+          # error page or an interstitial still counts as down.
+          check admin     https://admin.gidiconnect.com/     200 'id="root"'
+          check business  https://business.gidiconnect.com/  200 'id="root"'
+          check landing   https://www.gidiconnect.com/       200 'Gidi Connect'
+          # The apex must keep redirecting to www — a broken redirect strands
+          # everyone who types the address by hand.
+          check apex      https://gidiconnect.com/           '30[1278]' 'location: https://www.gidiconnect.com'
+
+          # Supabase: with the anon key we can ask the auth service directly;
+          # without it the gateway answers 401, which still proves it is up.
+          if [ -n "$SUPABASE_ANON_KEY" ]; then
+            check supabase-auth    "$SUPABASE_URL/auth/v1/health" 200 '' -H "apikey: $SUPABASE_ANON_KEY"
+          else
+            check supabase-gateway "$SUPABASE_URL/auth/v1/health" 401 ''
+          fi
+
+          if [ "$SIMULATE_FAILURE" = "true" ]; then
+            check simulated https://www.gidiconnect.com/uptime-simulated-failure 200 ''
+          fi
+
+          echo "failed=${FAILED[*]:-}" >> "$GITHUB_OUTPUT"
+          if [ "${#FAILED[@]}" -gt 0 ]; then
+            echo "::error::Down: ${FAILED[*]}"
+            exit 1
+          fi
+          echo "all checks passed"
+
+      - name: Open or update the incident issue
+        if: failure() && steps.probe.outputs.failed != ''
+        env:
+          FAILED: ${{ steps.probe.outputs.failed }}
+        run: |
+          set -eu
+          existing=$(gh issue list --label uptime --state open --json number --jq '.[0].number // empty')
+          {
+            echo "**$(date -u '+%Y-%m-%d %H:%M UTC')** — failing: $FAILED"
+            echo
+            cat "$RUNNER_TEMP/report.md"
+            echo
+            echo "Run: $RUN_URL"
+          } > "$RUNNER_TEMP/body.md"
+          if [ -z "$existing" ]; then
+            gh label create uptime --color B60205 --description 'Automated production uptime alerts' 2>/dev/null || true
+            gh issue create --label uptime --title "Uptime: $FAILED down" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue comment "$existing" --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+      - name: Close the incident issue on recovery
+        if: success()
+        run: |
+          set -eu
+          existing=$(gh issue list --label uptime --state open --json number --jq '.[0].number // empty')
+          [ -z "$existing" ] && exit 0
+          gh issue comment "$existing" --body "**$(date -u '+%Y-%m-%d %H:%M UTC')** — recovered, all checks passing. Run: $RUN_URL"
+          gh issue close "$existing" --reason completed

@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { reportRenderError } from '../lib/sentry';
 
 interface Props {
   children: ReactNode;
@@ -11,6 +12,8 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  /** Sentry event id when reporting is configured — shown so the user can quote it. */
+  eventId: string | null;
 }
 
 // Hardcoded dark theme colors — ErrorBoundary renders outside ThemeProvider,
@@ -27,10 +30,12 @@ const fallbackColors = {
 function ErrorFallback({
   error,
   errorInfo,
+  eventId,
   onReset,
 }: {
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  eventId: string | null;
   onReset: () => void;
 }) {
   const colors = fallbackColors;
@@ -77,6 +82,12 @@ function ErrorFallback({
       fontFamily: 'monospace',
       lineHeight: 18,
     },
+    reference: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontFamily: 'monospace',
+      marginBottom: 24,
+    },
     button: {
       backgroundColor: colors.primary,
       paddingHorizontal: 32,
@@ -113,6 +124,10 @@ function ErrorFallback({
           </ScrollView>
         )}
 
+        {eventId && (
+          <Text style={dynamicStyles.reference}>Reference: {eventId}</Text>
+        )}
+
         <TouchableOpacity style={dynamicStyles.button} onPress={onReset}>
           <Text style={dynamicStyles.buttonText}>Try Again</Text>
         </TouchableOpacity>
@@ -128,6 +143,7 @@ export class ErrorBoundary extends Component<Props, State> {
       hasError: false,
       error: null,
       errorInfo: null,
+      eventId: null,
     };
   }
 
@@ -137,17 +153,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error to console in development
     console.error('ErrorBoundary caught an error:', error, errorInfo);
 
-    // Update state with error details
-    this.setState({
-      error,
-      errorInfo,
-    });
+    // Ships to Sentry when a DSN is configured; otherwise returns undefined
+    // and the fallback simply omits the reference line.
+    const eventId = reportRenderError(error, errorInfo.componentStack) ?? null;
 
-    // TODO: Send error to crash reporting service (Sentry, Bugsnag, etc.)
-    // Example: logErrorToService(error, errorInfo);
+    this.setState({ error, errorInfo, eventId });
   }
 
   handleReset = () => {
@@ -155,6 +167,7 @@ export class ErrorBoundary extends Component<Props, State> {
       hasError: false,
       error: null,
       errorInfo: null,
+      eventId: null,
     });
   };
 
@@ -170,6 +183,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <ErrorFallback
           error={this.state.error}
           errorInfo={this.state.errorInfo}
+          eventId={this.state.eventId}
           onReset={this.handleReset}
         />
       );

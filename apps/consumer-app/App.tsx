@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { supabase } from './config/supabase';
 import { registerForPushNotifications } from './lib/pushNotifications';
+import { navigationIntegration, identifyUser } from './lib/sentry';
 import HomeScreen from './screens/HomeScreen';
 import ExploreScreen from './screens/ExploreScreen';
 import ExploreAreaScreen from './screens/ExploreAreaScreen';
@@ -26,24 +27,32 @@ const Tab = createBottomTabNavigator();
 function AppNavigator() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const navigationRef = useNavigationContainerRef();
 
-  // Register Expo push token whenever the user signs in. Idempotent on the DB
-  // side (UNIQUE(user_id, expo_token)) so this is safe to fire on every auth
-  // event without dedup logic here.
+  // On every auth change: tag crash reports with the account (id only) and
+  // register the Expo push token. Both are idempotent — the token insert is
+  // UNIQUE(user_id, expo_token) on the DB side — so no dedup logic here.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!cancelled && session?.user) registerForPushNotifications(session.user.id);
+      if (cancelled) return;
+      identifyUser(session?.user?.id ?? null);
+      if (session?.user) registerForPushNotifications(session.user.id);
     })();
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      identifyUser(session?.user?.id ?? null);
       if (session?.user) registerForPushNotifications(session.user.id);
     });
     return () => { cancelled = true; sub.subscription.unsubscribe(); };
   }, []);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      // Screen-change breadcrumbs, so a crash report says where the user was.
+      onReady={() => navigationIntegration.registerNavigationContainer(navigationRef)}
+    >
       <Tab.Navigator
         tabBar={(props) => {
           // Polished V2 tab bar: floating capsule, gold-filled active pill,

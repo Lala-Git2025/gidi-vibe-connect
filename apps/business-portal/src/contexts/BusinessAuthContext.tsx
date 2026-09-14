@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { withTimeout } from '../lib/withTimeout';
+import { identifyUser } from '../lib/sentry';
 import {
   Profile,
   BusinessSubscription,
@@ -102,6 +103,11 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
       authSubscription.unsubscribe();
     };
   }, []);
+
+  // Tag crash reports with who hit them — id and role only, never email.
+  useEffect(() => {
+    identifyUser(user ? { id: user.id, role: profile?.role } : null);
+  }, [user, profile]);
 
   const fetchUserData = async (userId: string) => {
     setProfileFetching(true);

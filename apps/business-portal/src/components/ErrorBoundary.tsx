@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
+import { reportRenderError } from '../lib/sentry';
 
 interface Props {
   children: ReactNode;
@@ -6,6 +7,8 @@ interface Props {
 
 interface State {
   error: Error | null;
+  /** Sentry event id when reporting is configured — shown so the user can quote it. */
+  eventId: string | null;
 }
 
 /**
@@ -14,18 +17,20 @@ interface State {
  * message and offers a reload instead.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, eventId: null };
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('Render error:', error, info.componentStack);
+    const eventId = reportRenderError(error, info.componentStack);
+    if (eventId) this.setState({ eventId });
   }
 
   render() {
-    const { error } = this.state;
+    const { error, eventId } = this.state;
     if (!error) return this.props.children;
 
     return (
@@ -59,6 +64,11 @@ export class ErrorBoundary extends Component<Props, State> {
           >
             {error.message}
           </pre>
+          {eventId && (
+            <p style={{ color: '#6B7280', fontSize: 12, marginBottom: 16 }}>
+              Reference: <code>{eventId}</code>
+            </p>
+          )}
           <button
             onClick={() => window.location.reload()}
             style={{
