@@ -41,7 +41,11 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
         run: |
-          set -u
+          # Actions runs this under `bash -e`, which would abort at the first
+          # failing probe before the report and the `failed` output are
+          # written — and the alert step keys off that output. Each probe
+          # records its own failure; the exit code is decided at the end.
+          set +e -u
           UA="GidiConnect-Uptime/1.0 (+https://github.com/$GH_REPO)"
           REPORT="$RUNNER_TEMP/report.md"
           : > "$REPORT"
