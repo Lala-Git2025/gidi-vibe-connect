@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { withTimeout } from '../lib/withTimeout';
 
 export type UserRole = 'Consumer' | 'Business Owner' | 'Content Creator' | 'Admin' | 'Super Admin';
 
@@ -75,12 +76,14 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
     init();
 
-    // Safety timeout — never stay loading forever. Uses the functional form
-    // because the `loading` captured here would be stale from first render.
+    // Last-resort guard. Uses the functional form because the `loading`
+    // captured here would be stale from first render. Clears BOTH flags in the
+    // spinner condition — clearing only `loading` still leaves
+    // `!profile && profileFetching` true and the layout spinning.
     const timeout = setTimeout(() => {
-      if (mounted) {
-        setLoading(prev => (prev ? false : prev));
-      }
+      if (!mounted) return;
+      setLoading(prev => (prev ? false : prev));
+      setProfileFetching(prev => (prev ? false : prev));
     }, 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -108,11 +111,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string, attempt = 0): Promise<void> => {
     setProfileFetching(true);
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+      // Wrapped so a stalled connection can't leave this pending forever —
+      // that strands profileFetching and spins the layout indefinitely.
+      const { data, error } = await withTimeout(
+        supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
+        'admin profile',
+      );
 
       if (error) throw error;
 

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { withTimeout } from '../lib/withTimeout';
 import {
   Profile,
   BusinessSubscription,
@@ -70,8 +71,14 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
     init();
 
     // Safety net — never leave the portal stuck on a spinner.
+    // Last-resort guard. Every request now carries its own timeout, so this
+    // should never fire — but it clears BOTH flags in the spinner condition,
+    // because clearing only `loading` still leaves `!profile && profileFetching`
+    // true and the layout spinning.
     const timeout = setTimeout(() => {
-      if (mounted) setLoading(prev => (prev ? false : prev));
+      if (!mounted) return;
+      setLoading(prev => (prev ? false : prev));
+      setProfileFetching(prev => (prev ? false : prev));
     }, 8000);
 
     // Listen for auth changes
@@ -101,20 +108,20 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
     setProfileFetching(true);
     try {
       // Fetch profile. maybeSingle() so a missing row is data, not an error;
-      // one retry covers trigger latency right after signup.
-      let { data: profileData, error: profileErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+      // one retry covers trigger latency right after signup. Every request is
+      // wrapped so a stalled connection can't leave this function pending
+      // forever — that is what strands profileFetching and spins the layout.
+      let { data: profileData, error: profileErr } = await withTimeout(
+        supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
+        'profile',
+      );
 
       if (profileErr || !profileData) {
         await new Promise(r => setTimeout(r, 800));
-        ({ data: profileData, error: profileErr } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle());
+        ({ data: profileData, error: profileErr } = await withTimeout(
+          supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
+          'profile retry',
+        ));
       }
 
       if (profileData) {
@@ -125,29 +132,43 @@ export function BusinessAuthProvider({ children }: { children: ReactNode }) {
         setProfileLoadFailed(true);
       }
 
-      // Fetch subscription
-      const { data: subscriptionData } = await supabase
-        .from('business_subscriptions')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // Subscription and verification are secondary — the dashboard renders
+      // without them, so a failure here must not cost the user the profile
+      // that already loaded above.
+      try {
+        const { data: subscriptionData } = await withTimeout(
+          supabase
+            .from('business_subscriptions')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          'subscription',
+        );
+        setSubscription(subscriptionData ?? null);
+      } catch (err) {
+        console.error('Could not load subscription:', err);
+      }
 
-      setSubscription(subscriptionData ?? null);
-
-      // Fetch verification
-      const { data: verificationData } = await supabase
-        .from('verification_requests')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      setVerification(verificationData ?? null);
+      try {
+        const { data: verificationData } = await withTimeout(
+          supabase
+            .from('verification_requests')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          'verification',
+        );
+        setVerification(verificationData ?? null);
+      } catch (err) {
+        console.error('Could not load verification:', err);
+      }
     } catch (error) {
       console.error('Error fetching user data:', error);
+      setProfileLoadFailed(true);
     } finally {
       setProfileFetching(false);
       setLoading(false);
