@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useRef, useState, ReactNode } from 'react';
 import { Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../config/supabase';
+import { pickMedia } from '../lib/mediaCapture';
 import { StoryEditor, StoryEditorData } from '../components/StoryEditor';
 
 // Single-instance story creator. Both Home's Stories rail ("My Vibe" tile) and
@@ -56,26 +56,20 @@ export const StoryCreatorProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Camera roll access is required to upload.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
+    // Stories are the most time-sensitive surface in the app — a vibe posted
+    // from the venue is the product. Capture is offered first, and video is
+    // allowed here (unlike posts, which hold a single image).
+    const asset = await pickMedia({
+      title: 'Share a vibe',
       mediaTypes: ['images', 'videos'],
-      allowsEditing: false, // editor handles cropping
+      allowsEditing: false, // the story editor handles cropping
       quality: 0.9,
       videoMaxDuration: 60,
     });
-
-    if (result.canceled || !result.assets?.[0]) return;
-
-    const asset = result.assets[0];
-    const mediaType: 'image' | 'video' = asset.type === 'video' ? 'video' : 'image';
+    if (!asset) return;
 
     onCreatedRef.current = options?.onCreated;
-    setEditorData({ uri: asset.uri, mediaType, mimeType: asset.mimeType ?? undefined });
+    setEditorData({ uri: asset.uri, mediaType: asset.mediaType, mimeType: asset.mimeType });
   }, []);
 
   const handleCancel = useCallback(() => {

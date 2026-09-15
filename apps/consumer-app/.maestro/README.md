@@ -26,6 +26,7 @@ maestro test .maestro/areas-and-traffic.yaml
 |---|---|
 | `home.yaml` | Home, top to bottom |
 | `areas-and-traffic.yaml` | The area grid (which absorbed Vibe Check) and the full traffic list |
+| `capture.yaml` | The camera-or-library chooser on posts and stories. **Needs a signed-in session** — both surfaces gate on auth, and as a guest the compose button routes to Profile instead. It asserts that up front so the reason is obvious. |
 
 ## Notes
 

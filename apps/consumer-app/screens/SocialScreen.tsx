@@ -1759,6 +1759,8 @@ export default function SocialScreen() {
           style={styles.fab}
           onPress={handleOpenCreateModal}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Create a post"
         >
           <Ionicons name="add" size={28} color="#000" />
         </TouchableOpacity>
