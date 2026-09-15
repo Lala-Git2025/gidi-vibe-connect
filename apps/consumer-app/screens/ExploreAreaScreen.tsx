@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Image, ActivityIndicator, Alert } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Image, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../config/supabase';
-import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
+import { useFonts, Orbitron_900Black } from '@expo-google-fonts/orbitron';
+import { LAGOS_AREAS, countByArea, vibeFor, VIBE_LADDER, type LagosArea } from '../lib/areas';
+import { type as T, space as S, radius as R, elevation as E, gutter, tracking, tile } from '../theme/tokens';
 
-const { width } = Dimensions.get('window');
-const areaCardWidth = (width - 48) / 2;
+const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?w=800&q=85';
 
 interface Venue {
   id: string;
@@ -18,565 +19,509 @@ interface Venue {
   location: string;
   rating: number;
   professional_media_urls?: string[];
-  features?: string[];
 }
-
-// Lagos Areas/Neighborhoods
-const LAGOS_AREAS = [
-  {
-    id: 'victoria-island',
-    name: 'Victoria Island',
-    shortName: 'VI',
-    description: 'Upscale dining and nightlife hub',
-    emoji: '🏙️',
-    image: 'https://images.unsplash.com/photo-1568822617270-2e2b9c7c7a1e?w=800&q=85'
-  },
-  {
-    id: 'lekki',
-    name: 'Lekki',
-    shortName: 'Lekki',
-    description: 'Trendy bars and beach clubs',
-    emoji: '🏖️',
-    image: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800&q=85'
-  },
-  {
-    id: 'ikoyi',
-    name: 'Ikoyi',
-    shortName: 'Ikoyi',
-    description: 'Fine dining and luxury lounges',
-    emoji: '🍷',
-    image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=85'
-  },
-  {
-    id: 'ikeja',
-    name: 'Ikeja',
-    shortName: 'Ikeja',
-    description: 'Diverse entertainment options',
-    emoji: '🎭',
-    image: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&q=85'
-  },
-  {
-    id: 'yaba',
-    name: 'Yaba',
-    shortName: 'Yaba',
-    description: 'Youth culture and nightlife',
-    emoji: '🎵',
-    image: 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&q=85'
-  },
-  {
-    id: 'surulere',
-    name: 'Surulere',
-    shortName: 'Surulere',
-    description: 'Local spots and live music',
-    emoji: '🎸',
-    image: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?w=800&q=85'
-  },
-];
 
 export default function ExploreAreaScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { colors, activeTheme } = useTheme();
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
+  const [allLocations, setAllLocations] = useState<string[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
-  const [trendingVenues, setTrendingVenues] = useState<Venue[]>([]);
-  const [newVenues, setNewVenues] = useState<Venue[]>([]);
+  const [topRated, setTopRated] = useState<Venue[]>([]);
+  const [recentlyAdded, setRecentlyAdded] = useState<Venue[]>([]);
+  const [showLadder, setShowLadder] = useState(false);
 
-  // Load Orbitron font
-  const [fontsLoaded] = useFonts({
-    Orbitron_700Bold,
-    Orbitron_900Black,
-  });
-
+  const [fontsLoaded] = useFonts({ Orbitron_900Black });
   const styles = getStyles(colors);
 
   // If navigated from a Discover neighbourhood tile (or anywhere passing
-  // `{ area: '<name>' }`), pre-select that area on mount. We map the human
-  // name → the internal id used by LAGOS_AREAS.
+  // `{ area: '<name>' }`), pre-select that area on mount.
   useEffect(() => {
     const params = route.params as { area?: string } | undefined;
     if (!params?.area) return;
 
     const target = params.area.toLowerCase();
-    const match = LAGOS_AREAS.find(
-      a => a.name.toLowerCase() === target || a.id === target,
-    );
+    const match = LAGOS_AREAS.find(a => a.name.toLowerCase() === target || a.id === target);
     if (match) setSelectedArea(match.id);
 
     navigation.setParams({ area: undefined } as any);
   }, [route.params]);
 
-  useEffect(() => {
-    fetchVenues();
-    fetchCollections();
-  }, [selectedArea]);
+  /**
+   * Every venue location, used to rank the areas. Separate from the filtered
+   * `venues` fetch below, which narrows to one area once one is selected —
+   * counting from that would make every area but the selected one read zero.
+   */
+  const fetchAreaCounts = useCallback(async () => {
+    const { data, error } = await supabase.from('venues').select('location');
+    if (error || !data) return;
+    setAllLocations(data.map((v: { location: string }) => v.location));
+  }, []);
 
-  const fetchVenues = async () => {
+  const fetchVenues = useCallback(async () => {
     try {
       setLoading(true);
       let query = supabase
         .from('venues')
-        .select('id, name, category, location, rating, professional_media_urls, features')
+        .select('id, name, category, location, rating, professional_media_urls')
         .order('rating', { ascending: false });
 
-      // Filter by area if selected
       if (selectedArea) {
         const area = LAGOS_AREAS.find(a => a.id === selectedArea);
         if (area) {
-          query = query.ilike('location', `%${area.name}%`);
+          // Match on any alias, not just the display name — otherwise a venue
+          // filed under "Lekki Phase 1" is invisible when Lekki is selected.
+          query = query.or(area.aliases.map(a => `location.ilike.%${a}%`).join(','));
         }
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
-
       setVenues((data as Venue[]) || []);
     } catch (error) {
-      console.error('Error fetching venues:', error);
+      console.log('Error fetching venues:', error);
       setVenues([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedArea]);
 
-  const fetchCollections = async () => {
+  const fetchCollections = useCallback(async () => {
     try {
-      // Fetch trending venues (highest rated)
-      const { data: trending } = await supabase
+      const { data: rated } = await supabase
         .from('venues')
         .select('id, name, category, location, rating, professional_media_urls')
         .order('rating', { ascending: false })
         .limit(6);
+      setTopRated((rated as Venue[]) || []);
 
-      setTrendingVenues((trending as Venue[]) || []);
-
-      // Simulate "new venues" by getting random selection
-      const { data: newOnes } = await supabase
+      // Was an unordered `limit 6` labelled "Latest additions to explore",
+      // which returned whatever the planner felt like and was never new.
+      const { data: recent } = await supabase
         .from('venues')
         .select('id, name, category, location, rating, professional_media_urls')
+        .order('created_at', { ascending: false })
         .limit(6);
-
-      setNewVenues((newOnes as Venue[]) || []);
+      setRecentlyAdded((recent as Venue[]) || []);
     } catch (error) {
-      console.error('Error fetching collections:', error);
+      console.log('Error fetching collections:', error);
     }
-  };
+  }, []);
 
-  const getVenueCount = (areaName: string) => {
-    return venues.filter(v =>
-      v.location.toLowerCase().includes(areaName.toLowerCase())
-    ).length;
-  };
+  useEffect(() => { fetchVenues(); }, [fetchVenues]);
+  useFocusEffect(useCallback(() => {
+    fetchAreaCounts();
+    fetchCollections();
+  }, [fetchAreaCounts, fetchCollections]));
 
-  // Open a venue's detail by hopping to the Explore tab and passing
-  // its id — ExploreScreen reads `route.params.venueId` and opens the modal.
+  const counts = countByArea(allLocations);
+  const populated = LAGOS_AREAS
+    .filter(a => (counts[a.id] || 0) > 0)
+    .sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0));
+  const empty = LAGOS_AREAS.filter(a => !(counts[a.id] || 0));
+  const totalVenues = populated.reduce((sum, a) => sum + (counts[a.id] || 0), 0);
+
+  // Open a venue's detail by hopping to the Explore tab and passing its id.
   const handleVenuePress = (venue: Venue) => {
-    if (!venue?.id) {
-      Alert.alert(venue.name, `${venue.location}\n\nRating: ${venue.rating}⭐`);
-      return;
-    }
     (navigation as any).navigate('Explore', { venueId: venue.id });
   };
 
-  if (!fontsLoaded) {
-    return null;
-  }
+  const renderAreaCard = (area: LagosArea) => {
+    const count = counts[area.id] || 0;
+    const vibe = vibeFor(count);
+    const tone = colors[vibe.tone];
+    const isSelected = selectedArea === area.id;
+
+    return (
+      <TouchableOpacity
+        key={area.id}
+        style={[styles.areaCard, isSelected && { borderColor: colors.primary }]}
+        onPress={() => setSelectedArea(isSelected ? null : area.id)}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={`${area.name}, ${count} venues, ${vibe.level}`}
+      >
+        <View style={styles.areaCardTop}>
+          <View style={[styles.areaIconBox, { backgroundColor: `${tone}1F` }]}>
+            <Ionicons name={area.icon} size={18} color={tone} />
+          </View>
+          {isSelected && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+        </View>
+        <Text style={styles.areaName} numberOfLines={1}>{area.shortName}</Text>
+        <Text style={styles.areaBlurb} numberOfLines={2}>{area.blurb}</Text>
+        <View style={styles.areaFooter}>
+          <Text style={styles.areaCount}>{count} {count === 1 ? 'venue' : 'venues'}</Text>
+          <Text style={[styles.areaVibe, { color: tone }]}>{vibe.level}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderVenueRail = (title: string, subtitle: string, items: Venue[], badge: (v: Venue) => string) => {
+    if (items.length === 0) return null;
+    return (
+      <View style={styles.railSection}>
+        <View style={styles.railHeader}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={styles.railSubtitle}>{subtitle}</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railContent}>
+          {items.map(venue => (
+            <TouchableOpacity
+              key={venue.id}
+              style={styles.venueCard}
+              onPress={() => handleVenuePress(venue)}
+              activeOpacity={0.85}
+            >
+              <Image
+                source={{ uri: venue.professional_media_urls?.[0] || PLACEHOLDER_IMAGE }}
+                style={styles.venueCardImage}
+                resizeMode="cover"
+              />
+              <View style={styles.venueCardScrim} />
+              <View style={styles.venueCardContent}>
+                <View style={styles.venueCardBadge}>
+                  <Text style={styles.venueCardBadgeText}>{badge(venue)}</Text>
+                </View>
+                <Text style={styles.venueCardName} numberOfLines={1}>{venue.name}</Text>
+                <Text style={styles.venueCardLocation} numberOfLines={1}>{venue.location}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  if (!fontsLoaded) return null;
+
+  const selected = LAGOS_AREAS.find(a => a.id === selectedArea);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
-      <ScrollView style={styles.scrollView}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            accessibilityRole="button"
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <Text style={styles.appName}>AREAS</Text>
-          <View style={{ width: 24 }} />
-        </View>
+      {/* ── Header ───────────────────────────────────────────────────────── */}
+      {/* Outside the ScrollView: this screen runs long once an area is
+          selected, and a back button that scrolls off the top strands anyone
+          without a swipe gesture. */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="arrow-back" size={22} color={colors.primary} />
+        </TouchableOpacity>
+        <Text style={styles.appName}>AREAS</Text>
+        <TouchableOpacity
+          onPress={() => setShowLadder(true)}
+          accessibilityLabel="How areas are ranked"
+          accessibilityRole="button"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="information-circle-outline" size={22} color={colors.textMuted} />
+        </TouchableOpacity>
+      </View>
 
-        {/* Title */}
+      <ScrollView style={styles.scrollView} contentContainerStyle={{ paddingBottom: S.giant }}>
+        {/* ── Title ──────────────────────────────────────────────────────── */}
         <View style={styles.titleSection}>
           <Text style={styles.title}>Explore Lagos</Text>
-          <Text style={styles.subtitle}>Discover venues by neighborhood</Text>
+          <Text style={styles.subtitle}>
+            {totalVenues} venue{totalVenues !== 1 ? 's' : ''} across {populated.length} area{populated.length !== 1 ? 's' : ''}
+          </Text>
         </View>
 
-        {/* Areas Grid */}
+        {/* ── Areas ──────────────────────────────────────────────────────── */}
+        {/* The ranking that used to live on Home as "Lagos Vibe Check". It
+            belongs here: this screen already was the Lagos area grid, it just
+            had stock photography where the real counts should have been. */}
         <View style={styles.areasSection}>
-          <Text style={styles.sectionTitle}>Areas & Neighborhoods</Text>
-          <View style={styles.areasGrid}>
-            {LAGOS_AREAS.map((area) => (
-              <TouchableOpacity
-                key={area.id}
-                style={[
-                  styles.areaCard,
-                  selectedArea === area.id && styles.areaCardActive
-                ]}
-                onPress={() => setSelectedArea(selectedArea === area.id ? null : area.id)}
-              >
-                <Image
-                  source={{ uri: area.image }}
-                  style={styles.areaImage}
-                  resizeMode="cover"
-                />
-                <View style={styles.areaOverlay} />
-                <View style={styles.areaContent}>
-                  <Text style={styles.areaEmoji}>{area.emoji}</Text>
-                  <Text style={styles.areaName}>{area.shortName}</Text>
-                  <Text style={styles.areaDescription}>{area.description}</Text>
-                  <View style={styles.venueCountBadge}>
-                    <Text style={styles.venueCountText}>
-                      {venues.filter(v => v.location.includes(area.name)).length} venues
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <View style={styles.areasGrid}>{populated.map(renderAreaCard)}</View>
+
+          {empty.length > 0 && (
+            <Text style={styles.emptyAreasNote}>
+              No venues listed yet in {empty.map(a => a.name).join(', ')}.
+            </Text>
+          )}
         </View>
 
-        {/* Collections */}
-        {!selectedArea && (
-          <>
-            {/* Trending Now */}
-            <View style={styles.collectionSection}>
-              <View style={styles.collectionHeader}>
-                <Text style={styles.collectionTitle}>Trending Now</Text>
-                <Text style={styles.collectionSubtitle}>Hottest spots in Lagos</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.collectionScroll}>
-                {trendingVenues.map((venue) => (
-                  <TouchableOpacity
-                    key={venue.id}
-                    style={styles.venueCard}
-                    onPress={() => handleVenuePress(venue)}
-                  >
-                    <Image
-                      source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?w=800&q=85' }}
-                      style={styles.venueCardImage}
-                      resizeMode="cover"
-                    />
-                    <View style={styles.venueCardGradient} />
-                    <View style={styles.venueCardContent}>
-                      <View style={styles.venueCardBadge}>
-                        <Text style={styles.venueCardBadgeText}>{venue.rating}</Text>
-                      </View>
-                      <Text style={styles.venueCardName}>{venue.name}</Text>
-                      <Text style={styles.venueCardLocation}>{venue.location}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            {/* New & Hot */}
-            <View style={styles.collectionSection}>
-              <View style={styles.collectionHeader}>
-                <Text style={styles.collectionTitle}>New & Hot</Text>
-                <Text style={styles.collectionSubtitle}>Latest additions to explore</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.collectionScroll}>
-                {newVenues.map((venue) => (
-                  <TouchableOpacity
-                    key={venue.id}
-                    style={styles.venueCard}
-                    onPress={() => handleVenuePress(venue)}
-                  >
-                    <Image
-                      source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?w=800&q=85' }}
-                      style={styles.venueCardImage}
-                      resizeMode="cover"
-                    />
-                    <View style={styles.venueCardGradient} />
-                    <View style={styles.venueCardContent}>
-                      <View style={[styles.venueCardBadge, { backgroundColor: colors.primary }]}>
-                        <Text style={styles.venueCardBadgeText}>NEW</Text>
-                      </View>
-                      <Text style={styles.venueCardName}>{venue.name}</Text>
-                      <Text style={styles.venueCardLocation}>{venue.location}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </>
-        )}
-
-        {/* Area Venues List */}
-        {selectedArea && (
+        {/* ── Selected area ──────────────────────────────────────────────── */}
+        {selected ? (
           <View style={styles.areaVenuesSection}>
-            <Text style={styles.sectionTitle}>
-              {LAGOS_AREAS.find(a => a.id === selectedArea)?.name} Venues
-            </Text>
+            <Text style={styles.sectionTitle}>{selected.name}</Text>
             {loading ? (
-              <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 20 }} />
+              <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: S.xl }} />
+            ) : venues.length === 0 ? (
+              <Text style={styles.noVenues}>No venues listed in {selected.name} yet.</Text>
             ) : (
-              <View style={styles.venuesListGrid}>
-                {venues.map((venue) => (
+              <View style={styles.venuesList}>
+                {venues.map(venue => (
                   <TouchableOpacity
                     key={venue.id}
-                    style={styles.venueListCard}
+                    style={styles.venueRow}
                     onPress={() => handleVenuePress(venue)}
+                    activeOpacity={0.85}
                   >
                     <Image
-                      source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?w=800&q=85' }}
-                      style={styles.venueListImage}
+                      source={{ uri: venue.professional_media_urls?.[0] || PLACEHOLDER_IMAGE }}
+                      style={styles.venueRowImage}
                       resizeMode="cover"
                     />
-                    <View style={styles.venueListContent}>
-                      <Text style={styles.venueListName}>{venue.name}</Text>
-                      <Text style={styles.venueListCategory}>{venue.category}</Text>
-                      <View style={styles.venueListRating}>
-                        <Ionicons name="star" size={11} color="#f59e0b" /><Text style={styles.venueListRatingText}> {venue.rating}</Text>
+                    <View style={styles.venueRowContent}>
+                      <Text style={styles.venueRowName} numberOfLines={1}>{venue.name}</Text>
+                      <Text style={styles.venueRowCategory} numberOfLines={1}>{venue.category}</Text>
+                      <View style={styles.venueRowRating}>
+                        <Ionicons name="star" size={11} color={colors.primary} />
+                        <Text style={styles.venueRowRatingText}>{Number(venue.rating).toFixed(1)}</Text>
                       </View>
                     </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
                   </TouchableOpacity>
                 ))}
               </View>
             )}
           </View>
+        ) : (
+          <>
+            {renderVenueRail('Top rated', 'Highest rated across Lagos', topRated, v => Number(v.rating).toFixed(1))}
+            {renderVenueRail('Recently added', 'Newest venues on the app', recentlyAdded, () => 'NEW')}
+          </>
         )}
       </ScrollView>
+
+      {/* ── Vibe ladder explainer ────────────────────────────────────────── */}
+      <Modal visible={showLadder} animationType="fade" transparent onRequestClose={() => setShowLadder(false)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowLadder(false)}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>How areas rank</Text>
+              <TouchableOpacity onPress={() => setShowLadder(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              Areas are ranked by how many venues are listed on the app — not by how busy they are tonight.
+            </Text>
+            {VIBE_LADDER.map(vibe => (
+              <View key={vibe.level} style={styles.ladderRow}>
+                <View style={[styles.ladderIcon, { backgroundColor: `${colors[vibe.tone]}1F` }]}>
+                  <Ionicons name={vibe.icon} size={18} color={colors[vibe.tone]} />
+                </View>
+                <View style={styles.ladderText}>
+                  <View style={styles.ladderLabelRow}>
+                    <Text style={[styles.ladderLevel, { color: colors[vibe.tone] }]}>{vibe.level}</Text>
+                    <Text style={styles.ladderThreshold}>{vibe.threshold}</Text>
+                  </View>
+                  <Text style={styles.ladderDescription}>{vibe.description}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const getStyles = (colors: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  scrollView: { flex: 1 },
+
+  // ── Header ──
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: gutter,
+    paddingVertical: S.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backButton: {
-    fontSize: 24,
-    color: colors.primary,
-    fontWeight: '600',
+    borderBottomColor: colors.line,
   },
   appName: {
-    fontSize: 20,
+    fontSize: T.base,
     fontFamily: 'Orbitron_900Black',
     color: colors.primary,
     letterSpacing: 2,
   },
-  titleSection: {
-    paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 16,
-  },
+
+  // ── Title ──
+  titleSection: { paddingHorizontal: gutter, paddingTop: S.xxl, paddingBottom: S.xl },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: T.xl,
+    fontWeight: '900',
     color: colors.text,
-    marginBottom: 4,
+    letterSpacing: tracking.tight,
   },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  // Areas
-  areasSection: {
-    paddingHorizontal: 16,
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  areasGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
+  subtitle: { fontSize: T.sm, color: colors.textMuted, marginTop: S.xs },
+
+  // ── Areas ──
+  areasSection: { paddingHorizontal: gutter, marginBottom: S.xxxl },
+  areasGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: S.md },
   areaCard: {
-    width: areaCardWidth,
-    height: 180,
-    borderRadius: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    width: tile.widthFor(Dimensions.get('window').width),
+    backgroundColor: colors.surface,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: S.md,
+    ...E.low,
   },
-  areaCardActive: {
-    borderColor: colors.primary,
+  areaCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: S.md,
   },
-  areaImage: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
+  areaIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: R.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  areaOverlay: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  areaName: { fontSize: T.md, fontWeight: '700', color: colors.text },
+  areaBlurb: {
+    fontSize: T.xs,
+    color: colors.textMuted,
+    marginTop: S.xxs,
+    lineHeight: T.xs * 1.4,
+    minHeight: T.xs * 2.8,
   },
-  areaContent: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'flex-end',
+  areaFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: S.md,
+    paddingTop: S.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
   },
-  areaEmoji: {
-    fontSize: 32,
-    marginBottom: 8,
-    fontFamily: '',
+  areaCount: { fontSize: T.xs, color: colors.textMuted, fontWeight: '600' },
+  areaVibe: {
+    fontSize: T.xs,
+    fontWeight: '800',
+    letterSpacing: tracking.label,
+    textTransform: 'uppercase',
   },
-  areaName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  emptyAreasNote: {
+    fontSize: T.xs,
+    color: colors.textFaint,
+    marginTop: S.lg,
+    lineHeight: T.xs * 1.5,
+  },
+
+  // ── Section heading ──
+  sectionTitle: {
+    fontSize: T.lg,
+    fontWeight: '800',
     color: colors.text,
-    marginBottom: 4,
+    letterSpacing: tracking.tight,
   },
-  areaDescription: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginBottom: 8,
-  },
-  venueCountBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  venueCountText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: colors.background,
-  },
-  // Collections
-  collectionSection: {
-    marginBottom: 32,
-  },
-  collectionHeader: {
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  collectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  collectionSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  collectionScroll: {
-    paddingHorizontal: 16,
-  },
+
+  // ── Rails ──
+  railSection: { marginBottom: S.xxxl },
+  railHeader: { paddingHorizontal: gutter, marginBottom: S.md },
+  railSubtitle: { fontSize: T.sm, color: colors.textMuted, marginTop: S.xxs },
+  railContent: { paddingHorizontal: gutter, gap: S.md },
   venueCard: {
     width: 200,
     height: 240,
-    borderRadius: 16,
+    borderRadius: R.lg,
     overflow: 'hidden',
-    marginRight: 12,
-    position: 'relative',
+    backgroundColor: colors.surface,
   },
-  venueCardImage: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  venueCardGradient: {
+  venueCardImage: { width: '100%', height: '100%', position: 'absolute' },
+  venueCardScrim: {
     position: 'absolute',
     width: '100%',
     height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  venueCardContent: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'flex-end',
-  },
+  venueCardContent: { flex: 1, padding: S.md, justifyContent: 'flex-end' },
   venueCardBadge: {
     alignSelf: 'flex-start',
     backgroundColor: colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 8,
+    paddingHorizontal: S.sm,
+    paddingVertical: S.xs,
+    borderRadius: R.sm,
+    marginBottom: S.sm,
   },
   venueCardBadgeText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: colors.background,
+    fontSize: T.xs,
+    fontWeight: '800',
+    color: colors.onAccent,
   },
-  venueCardName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  venueCardLocation: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  // Area Venues List
-  areaVenuesSection: {
-    paddingHorizontal: 16,
-    marginBottom: 32,
-  },
-  venuesListGrid: {
-    gap: 12,
-  },
-  venueListCard: {
+  // These two sit on a dark photo scrim in both themes, so they take fixed
+  // light values rather than theme text colours.
+  venueCardName: { fontSize: T.md, fontWeight: '700', color: '#F8F4EC' },
+  venueCardLocation: { fontSize: T.xs, color: 'rgba(248,244,236,0.72)', marginTop: S.xxs },
+
+  // ── Selected area list ──
+  areaVenuesSection: { paddingHorizontal: gutter, marginBottom: S.xxxl },
+  venuesList: { gap: S.md, marginTop: S.lg },
+  venueRow: {
     flexDirection: 'row',
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: R.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.line,
     overflow: 'hidden',
-    marginBottom: 12,
+    paddingRight: S.md,
   },
-  venueListImage: {
-    width: 100,
-    height: 100,
-  },
-  venueListContent: {
+  venueRowImage: { width: 88, height: 88 },
+  venueRowContent: { flex: 1, paddingHorizontal: S.md, paddingVertical: S.md },
+  venueRowName: { fontSize: T.base, fontWeight: '700', color: colors.text },
+  venueRowCategory: { fontSize: T.xs, color: colors.textMuted, marginTop: S.xxs },
+  venueRowRating: { flexDirection: 'row', alignItems: 'center', gap: S.xs, marginTop: S.sm },
+  venueRowRatingText: { fontSize: T.xs, fontWeight: '700', color: colors.primary },
+  noVenues: { fontSize: T.sm, color: colors.textMuted, marginTop: S.lg },
+
+  // ── Ladder modal ──
+  modalBackdrop: {
     flex: 1,
-    padding: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: S.xxl,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: R.xl,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: S.xxl,
+    width: '100%',
+    maxWidth: 360,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: S.xs,
+  },
+  modalTitle: { fontSize: T.lg, fontWeight: '800', color: colors.text },
+  modalSubtitle: {
+    fontSize: T.sm,
+    color: colors.textMuted,
+    marginBottom: S.xl,
+    lineHeight: T.sm * 1.45,
+  },
+  ladderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: S.md, marginBottom: S.lg },
+  ladderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: R.sm,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  venueListName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  venueListCategory: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 6,
-  },
-  venueListRating: {
-    alignSelf: 'flex-start',
-    backgroundColor: `${colors.primary}20`,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  venueListRatingText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.primary,
-  },
+  ladderText: { flex: 1 },
+  ladderLabelRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, marginBottom: S.xxs },
+  ladderLevel: { fontSize: T.base, fontWeight: '800' },
+  ladderThreshold: { fontSize: T.xs, color: colors.textFaint, fontWeight: '600' },
+  ladderDescription: { fontSize: T.sm, color: colors.textMuted, lineHeight: T.sm * 1.4 },
 });

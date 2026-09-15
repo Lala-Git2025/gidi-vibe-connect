@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Animated, Easing, Dimensions } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,7 +8,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import { categoryAccent, tile, type as T, space as S, radius as R, elevation as E, gutter, tracking } from '../theme/tokens';
 import { TrafficAlert } from '../components/TrafficAlert';
 import { NotificationsBell } from '../components/NotificationsBell';
-import { VibeCheck } from '../components/VibeCheck';
 import { TrendingVenues } from '../components/TrendingVenues';
 import { StorySection } from '../components/StorySection';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
@@ -29,15 +28,18 @@ interface Category {
   accent: keyof typeof categoryAccent;
 }
 
+/**
+ * Six tiles, not eight. Events and Social were dropped: both are bottom tabs,
+ * so the grid was duplicating the tab bar one tap away from it. The four venue
+ * categories are the ones with nowhere else to go.
+ */
 const categories: Category[] = [
-  { icon: 'wine',          label: 'Bars',        sub: 'Lounges',     screen: 'Explore', params: { category: 'Bar' },         accent: 'bars' },
-  { icon: 'restaurant',    label: 'Restaurants', sub: 'Eateries',    screen: 'Explore', params: { category: 'Restaurant' },  accent: 'restaurants' },
-  { icon: 'musical-notes', label: 'Nightlife',   sub: 'Clubs',       screen: 'Explore', params: { category: 'Club' },        accent: 'nightlife' },
-  { icon: 'sunny',         label: 'DayLife',     sub: 'Beach clubs', screen: 'Explore', params: { category: 'Beach Club' },  accent: 'daylife' },
-  { icon: 'calendar',      label: 'Events',      sub: 'This week',   screen: 'Events',                                       accent: 'events' },
-  { icon: 'chatbubbles',   label: 'Social',      sub: 'Communities', screen: 'Social',                                       accent: 'social' },
-  { icon: 'newspaper',     label: 'Gidi News',   sub: 'Latest',      screen: 'News',                                         accent: 'news' },
-  { icon: 'apps',          label: 'See More',    sub: 'Explore all', screen: 'Discover',                                     accent: 'more' },
+  { icon: 'wine',          label: 'Bars',        sub: 'Lounges',        screen: 'Explore',  params: { category: 'Bar' },        accent: 'bars' },
+  { icon: 'restaurant',    label: 'Restaurants', sub: 'Eateries',       screen: 'Explore',  params: { category: 'Restaurant' }, accent: 'restaurants' },
+  { icon: 'musical-notes', label: 'Nightlife',   sub: 'Clubs',          screen: 'Explore',  params: { category: 'Club' },       accent: 'nightlife' },
+  { icon: 'sunny',         label: 'DayLife',     sub: 'Beach clubs',    screen: 'Explore',  params: { category: 'Beach Club' }, accent: 'daylife' },
+  { icon: 'newspaper',     label: 'Gidi News',   sub: 'Latest',         screen: 'News',                                         accent: 'news' },
+  { icon: 'people',        label: 'Discover',    sub: 'Friend activity', screen: 'Discover',                                    accent: 'more' },
 ];
 
 export default function HomeScreen() {
@@ -59,27 +61,16 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
+  // The eyebrow used to read "Tonight in Lagos" at every hour, including nine
+  // in the morning with "Monday Morning" printed directly underneath it.
   const getCurrentTimeGreeting = () => {
     const hour = new Date().getHours();
     const day = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-    const part =
-      hour < 12 ? 'Morning' :
-      hour < 17 ? 'Afternoon' :
-      hour < 21 ? 'Evening' : 'Night';
-    return { day, part };
+    if (hour < 12)  return { day, part: 'Morning',   eyebrow: 'This morning in Lagos' };
+    if (hour < 17)  return { day, part: 'Afternoon', eyebrow: 'This afternoon in Lagos' };
+    if (hour < 21)  return { day, part: 'Evening',   eyebrow: 'Tonight in Lagos' };
+    return            { day, part: 'Night',     eyebrow: 'Tonight in Lagos' };
   };
-
-  const livePulse = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(livePulse, { toValue: 0.35, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(livePulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [livePulse]);
 
   const handleCategoryPress = (category: Category) => {
     (navigation as any).navigate(category.screen, category.params);
@@ -93,7 +84,7 @@ export default function HomeScreen() {
     );
   }
 
-  const { day, part } = getCurrentTimeGreeting();
+  const { day, part, eyebrow } = getCurrentTimeGreeting();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -107,29 +98,18 @@ export default function HomeScreen() {
         }
       >
         {/* ── Header ─────────────────────────────────────────────────────── */}
+        {/* The header carried a search icon that navigated to Explore with no
+            params — the same destination as the search bar forty pixels below
+            it — and a gold dot that pulsed permanently without standing for
+            anything. Both are gone. */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.appName}>GIDI CONNECT</Text>
-            <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
-          </View>
-          <View style={styles.headerRight}>
-            {/* Was a dead control with no handler at all. */}
-            <TouchableOpacity
-              style={styles.headerIconBtn}
-              onPress={() => (navigation as any).navigate('Explore')}
-              accessibilityRole="button"
-              accessibilityLabel="Search venues"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="search" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-            <NotificationsBell />
-          </View>
+          <Text style={styles.appName}>GIDI CONNECT</Text>
+          <NotificationsBell />
         </View>
 
         {/* ── Daypart ────────────────────────────────────────────────────── */}
         <View style={styles.greeting}>
-          <Text style={styles.greetingEyebrow}>Tonight in Lagos</Text>
+          <Text style={styles.greetingEyebrow}>{eyebrow}</Text>
           <Text style={styles.greetingDisplay}>
             {day} <Text style={styles.greetingAccent}>{part}</Text>
           </Text>
@@ -156,6 +136,8 @@ export default function HomeScreen() {
           style={styles.areaRow}
           onPress={() => (navigation as any).navigate('ExploreArea')}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Explore the area, venues by neighbourhood"
         >
           <View style={styles.areaIcon}>
             <Ionicons name="map-outline" size={19} color={colors.primary} />
@@ -198,7 +180,6 @@ export default function HomeScreen() {
         </View>
 
         <TrafficAlert />
-        <VibeCheck />
 
         {/* ── Trending ───────────────────────────────────────────────────── */}
         <View style={styles.sectionHeader}>
@@ -229,26 +210,11 @@ const getStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: gutter,
     paddingVertical: S.md,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: S.sm },
   appName: {
     fontSize: T.sm,
     fontFamily: 'Orbitron_900Black',
     color: colors.primary,
     letterSpacing: 2,
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.live,
-  },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: S.xs },
-  headerIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: R.md,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   // ── Daypart ──

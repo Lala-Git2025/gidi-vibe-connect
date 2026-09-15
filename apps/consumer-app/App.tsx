@@ -17,6 +17,7 @@ import ProfileScreen from './screens/ProfileScreen';
 import NewsScreen from './screens/NewsScreen';
 import SocialScreen from './screens/SocialScreen';
 import DiscoverScreen from './screens/DiscoverScreen';
+import TrafficScreen from './screens/TrafficScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemeProvider, useTheme, polished } from './contexts/ThemeContext';
 import { CreatePostModalProvider } from './contexts/CreatePostModalContext';
@@ -56,11 +57,17 @@ function AppNavigator() {
       <Tab.Navigator
         tabBar={(props) => {
           // Polished V2 tab bar: floating capsule, gold-filled active pill,
-          // glass blur emulated by darker translucent fill. 5 visible tabs;
-          // hidden routes (News, ExploreArea, Discover) are filtered out.
+          // glass blur emulated by darker translucent fill.
+          //
+          // A route hides itself from the bar by declaring `tabBarButton: () =>
+          // null`, and we filter on that declaration rather than on a hardcoded
+          // list of names. The list was a trap: adding the Traffic screen put a
+          // sixth tab in the bar and squeezed every label until "Explore"
+          // wrapped onto two lines, with nothing in the new screen's own code
+          // to suggest why.
           const { state, descriptors, navigation } = props;
-          const visibleRoutes = state.routes.filter(route =>
-            route.name !== 'News' && route.name !== 'ExploreArea' && route.name !== 'Discover'
+          const visibleRoutes = state.routes.filter(
+            route => descriptors[route.key].options.tabBarButton === undefined,
           );
 
           return (
@@ -92,6 +99,10 @@ function AppNavigator() {
                     <TouchableOpacity
                       key={route.key}
                       accessibilityRole="button"
+                      // Without this the tab announced only "button" — the
+                      // label sits in a nested <Text> that the accessibility
+                      // tree does not surface on its own.
+                      accessibilityLabel={String(label)}
                       accessibilityState={isFocused ? { selected: true } : {}}
                       onPress={onPress}
                       style={tabStyles.tab}
@@ -188,6 +199,13 @@ function AppNavigator() {
         <Tab.Screen
           name="Discover"
           component={DiscoverScreen}
+          options={{
+            tabBarButton: () => null,
+          }}
+        />
+        <Tab.Screen
+          name="Traffic"
+          component={TrafficScreen}
           options={{
             tabBarButton: () => null,
           }}

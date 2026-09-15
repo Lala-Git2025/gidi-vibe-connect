@@ -1,0 +1,49 @@
+appId: com.femola.consumerapp
+---
+# Covers the two screens the Home declutter moved content into: the area grid
+# (which absorbed the old "Lagos Vibe Check") and the full traffic list.
+- launchApp
+
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      # The dev-client sheet's close control, tapped by position — no label.
+      - tapOn:
+          point: "90%,48%"
+
+# ── Area screen ────────────────────────────────────────────────────────────
+# Matched on the row's accessibilityLabel, not its visible text: the label is
+# what VoiceOver and the automation tree both read, and the nested <Text> of a
+# composed row is not exposed on its own.
+- tapOn: "Explore the area, venues by neighbourhood"
+- takeScreenshot: shot-01-areas-top
+- scroll
+- takeScreenshot: shot-02-areas-grid
+
+# The ranking explainer that replaced the old Vibe Check info modal.
+- tapOn: "How areas are ranked"
+- takeScreenshot: shot-03-areas-ladder
+- tapOn:
+    point: "50%,92%"
+
+# ── Traffic screen ─────────────────────────────────────────────────────────
+# Back to Home via the tab rather than a back gesture: these are sibling tab
+# routes, so there is no stack to pop.
+- tapOn: "Home"
+
+# Matched on the accessibilityLabel again — it overrides the visible "All 2
+# routes" for anything reading the accessibility tree.
+- scrollUntilVisible:
+    element:
+      text: "See all .* route.*"
+    direction: DOWN
+- tapOn:
+    text: "See all .* route.*"
+- takeScreenshot: shot-04-traffic-screen
