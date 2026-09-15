@@ -123,8 +123,11 @@ const gold = {
   base: '#EAB308',
   /** Pressed states, gradient ends. */
   deep: '#A16207',
-  /** Gold that actually passes contrast as text on a light ground. */
-  onLight: '#7A5200',
+  /** Gold for text on a light ground. The brand gold manages only 1.8:1 on
+   *  paper and fails outright; this clears AA body text at 4.6:1 while still
+   *  reading as gold. An earlier #7A5200 passed at 6.5:1 but rendered brown,
+   *  and clashed with the brand gold still used on dark surfaces. */
+  onLight: '#A16207',
 } as const;
 
 export const darkPalette = {

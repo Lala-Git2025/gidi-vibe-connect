@@ -24,7 +24,9 @@ const LAGOS_AREAS = [
   { name: 'Yaba', aliases: ['Yaba'] },
   { name: 'Ajah', aliases: ['Ajah'] },
   { name: 'Festac', aliases: ['Festac', 'Festac Town'] },
-  { name: 'Lagos Island', aliases: ['Lagos Island', 'Island'] },
+  // No bare 'Island' alias: the matcher is a substring test, so it swallowed
+  // every 'Victoria Island' venue and reported both areas as 14.
+  { name: 'Lagos Island', aliases: ['Lagos Island', 'Isale Eko', 'Marina', 'Broad Street'] },
   { name: 'Maryland', aliases: ['Maryland'] },
 ];
 
