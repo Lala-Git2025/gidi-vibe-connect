@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../config/supabase';
 import { useTheme, polished } from '../contexts/ThemeContext';
+import { tile, type as T, space as S, radius as R, elevation as E, gutter } from '../theme/tokens';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Venue {
@@ -21,21 +22,6 @@ interface Venue {
 interface TrendingVenuesProps {
   refreshTrigger?: number;
 }
-
-const getVibeStatus = (rating: number) => {
-  if (rating >= 4.5) return 'Electric';
-  if (rating >= 4.0) return 'Buzzing';
-  if (rating >= 3.5) return 'Vibing';
-  return 'Chill';
-};
-
-// Pair the vibe label with its signature emoji — same set the polished kit uses.
-const getVibeWithEmoji = (rating: number) => {
-  if (rating >= 4.5) return 'Electric ⚡️';
-  if (rating >= 4.0) return 'Buzzing 🔥';
-  if (rating >= 3.5) return 'Vibing ✨';
-  return 'Chill 🎵';
-};
 
 const isActivePromotion = (venue: Venue) => !!venue.is_promoted;
 
@@ -130,75 +116,43 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
     >
       {venues.map((venue, idx) => {
         const rank = idx + 1;
-        const here = venue.checkins_24h ?? 0;
         const promoted = isActivePromotion(venue);
-        const vibeLabel = getVibeWithEmoji(venue.live_rating ?? venue.rating);
         return (
           <TouchableOpacity
             key={venue.id}
             style={styles.venueCard}
             onPress={() => (navigation as any).navigate('Explore', { venueId: venue.id })}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`${venue.name}, ${venue.location}`}
           >
-            {/* Background image */}
             <Image
               source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?q=80&w=1000' }}
               style={styles.venueImage}
               resizeMode="cover"
             />
-            {/* Polished gradient overlay — transparent at top, near-black at bottom */}
+            {/* Scrim — weighted to the bottom so the name always stays legible
+                whatever the photograph is doing behind it. */}
             <LinearGradient
-              colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.92)']}
-              locations={[0, 0.35, 0.65, 1]}
+              colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.88)']}
+              locations={[0, 0.5, 1]}
               style={StyleSheet.absoluteFillObject}
             />
-            {/* Gold inner rim */}
-            <View style={styles.goldRim} pointerEvents="none" />
 
             <View style={styles.content}>
-              {/* Top row — #N Tonight + glass vibe pill (or Sponsored) on the left, bookmark on the right */}
               <View style={styles.topRow}>
-                <View style={styles.topLeft}>
-                  <Text style={styles.rankLabel}>
-                    {promoted ? (venue.promotion_label || 'Sponsored') : `#${rank} Tonight`}
-                  </Text>
-                  <View style={styles.vibePill}>
-                    <Text style={styles.vibePillText}>{vibeLabel}</Text>
-                  </View>
+                <Text style={styles.rankLabel} numberOfLines={1}>
+                  {promoted ? (venue.promotion_label || 'Sponsored') : `#${rank}`}
+                </Text>
+                <View style={styles.ratingChip}>
+                  <Ionicons name="star" size={9} color={polished.goldMid} />
+                  <Text style={styles.ratingText}>{venue.rating.toFixed(1)}</Text>
                 </View>
-                <TouchableOpacity style={styles.bookmarkBtn} onPress={(e) => e.stopPropagation()}>
-                  <Ionicons name="bookmark-outline" size={16} color="#fff" />
-                </TouchableOpacity>
               </View>
 
-              {/* Bottom content — name + location + glass info bar */}
-              <View style={styles.bottomContent}>
+              <View>
                 <Text style={styles.venueName} numberOfLines={1}>{venue.name}</Text>
-                <View style={styles.locationRow}>
-                  <Ionicons name="location-outline" size={13} color="#E4E4E7" />
-                  <Text style={styles.locationText} numberOfLines={1}>{venue.location}</Text>
-                </View>
-
-                {/* Glass info bar — avatar stack + here-now + rating */}
-                <View style={styles.infoBar}>
-                  <View style={styles.infoLeft}>
-                    <View style={styles.avatarStack}>
-                      {['#F97316', '#3B82F6', '#10B981'].map((c, i) => (
-                        <View key={i} style={[styles.avatar, { backgroundColor: c, marginLeft: i === 0 ? 0 : -8 }]} />
-                      ))}
-                    </View>
-                    <Text style={styles.infoText}>
-                      {here > 0 ? (
-                        <><Text style={styles.infoNum}>{here}</Text> here now</>
-                      ) : (
-                        'Be the first!'
-                      )}
-                    </Text>
-                  </View>
-                  <Text style={styles.infoRating}>
-                    <Ionicons name="star" size={11} color={polished.goldMid} /> {venue.rating.toFixed(1)}
-                  </Text>
-                </View>
+                <Text style={styles.locationText} numberOfLines={1}>{venue.location}</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -210,162 +164,88 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
 
 const getStyles = (colors: any) => StyleSheet.create({
   scrollView: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
+    marginHorizontal: -gutter,
   },
   scrollContent: {
-    gap: 14,
-    paddingRight: 16,
+    gap: S.md,
+    paddingHorizontal: gutter,
   },
   loadingContainer: {
-    paddingVertical: 40,
+    paddingVertical: S.huge,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyContainer: {
-    paddingVertical: 40,
+    paddingVertical: S.huge,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyText: {
     color: colors.textSecondary,
-    fontSize: 14,
+    fontSize: T.sm,
   },
-  // Polished photo card — rim-lit gold, heavy shadow, 320×268.
+  // Same geometry as the Home category tiles — both read from theme/tokens so
+  // the two rows are one module, one filled with colour, one with a photograph.
   venueCard: {
-    width: 268,
-    height: 320,
-    borderRadius: 22,
+    width: tile.widthFor(Dimensions.get('window').width),
+    height: tile.height,
+    borderRadius: R.lg,
     overflow: 'hidden',
-    position: 'relative',
-    shadowColor: '#000',
-    shadowOpacity: 0.55,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    ...E.low,
   },
   venueImage: {
+    ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
-    position: 'absolute',
-  },
-  // Inset gold rim drawn on top of the image — borderColor + huge inner radius
-  goldRim: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(234,179,8,0.55)',
   },
   content: {
     flex: 1,
-    padding: 16,
+    padding: S.md,
     justifyContent: 'space-between',
   },
   topRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-  },
-  topLeft: {
-    gap: 8,
+    justifyContent: 'space-between',
+    gap: S.sm,
   },
   rankLabel: {
-    fontSize: 11,
+    flex: 1,
+    fontSize: 10,
     fontWeight: '900',
     color: polished.goldMid,
-    letterSpacing: 2,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
-    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowColor: 'rgba(0,0,0,0.7)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  // Glass pill — used everywhere we put a label on imagery
-  vibePill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+  ratingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: R.full,
+    backgroundColor: 'rgba(0,0,0,0.55)',
   },
-  vibePillText: {
-    fontSize: 11,
+  ratingText: {
+    fontSize: 10,
     fontWeight: '800',
     color: '#fff',
-    letterSpacing: 0.3,
-  },
-  bookmarkBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bottomContent: {
-    gap: 6,
   },
   venueName: {
-    fontSize: 22,
-    fontWeight: '900',
+    fontSize: T.md,
+    fontWeight: '800',
     color: '#fff',
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   locationText: {
-    fontSize: 13,
-    color: '#E4E4E7',
-    flex: 1,
-  },
-  // Glass info bar — replaces the bare visitor row from the old design
-  infoBar: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  infoLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  avatarStack: {
-    flexDirection: 'row',
-  },
-  avatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: '#000',
-  },
-  infoText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  infoNum: {
-    color: polished.goldMid,
-  },
-  infoRating: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#fff',
+    fontSize: T.xs,
+    color: 'rgba(255,255,255,0.78)',
+    marginTop: 1,
   },
 });

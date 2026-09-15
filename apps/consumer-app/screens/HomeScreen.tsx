@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Linking, RefreshControl, ActivityIndicator, Animated, Easing } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Animated, Easing, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { useTheme, polished } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { categoryAccent, tile, type as T, space as S, radius as R, elevation as E, gutter, tracking } from '../theme/tokens';
 import { TrafficAlert } from '../components/TrafficAlert';
 import { NotificationsBell } from '../components/NotificationsBell';
 import { VibeCheck } from '../components/VibeCheck';
@@ -13,27 +14,30 @@ import { StorySection } from '../components/StorySection';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { Ionicons } from '@expo/vector-icons';
 
-const { width } = Dimensions.get('window');
-const cardWidth = (width - 48) / 2;
-
+/**
+ * Each tile now carries the params that actually filter the destination.
+ * Previously Bars, Restaurants and Nightlife all navigated to Explore with no
+ * category at all, so three differently-labelled tiles produced an identical
+ * unfiltered list. `category` values match the real values in venues.category.
+ */
 interface Category {
-  icon: string;
+  icon: keyof typeof Ionicons.glyphMap;
   label: string;
   sub: string;
   screen: string;
-  c1: string;
-  c2: string;
+  params?: Record<string, string>;
+  accent: keyof typeof categoryAccent;
 }
 
 const categories: Category[] = [
-  { icon: 'wine',           label: 'Bars',        sub: 'Lounges',     screen: 'Explore',  c1: '#7C3AED', c2: '#4338CA' },
-  { icon: 'restaurant',     label: 'Restaurants', sub: 'Eateries',    screen: 'Explore',  c1: '#EA580C', c2: '#7C2D12' },
-  { icon: 'musical-notes',  label: 'Nightlife',   sub: 'Clubs',       screen: 'Explore',  c1: '#DB2777', c2: '#831843' },
-  { icon: 'sunny',          label: 'DayLife',     sub: 'Outdoor',     screen: 'Events',   c1: '#F59E0B', c2: '#92400E' },
-  { icon: 'calendar',       label: 'Events',      sub: 'This week',   screen: 'Events',   c1: '#4338CA', c2: '#1E1B4B' },
-  { icon: 'chatbubbles',    label: 'Social',      sub: 'Communities', screen: 'Social',   c1: '#10B981', c2: '#064E3B' },
-  { icon: 'newspaper',      label: 'Gidi News',   sub: 'Latest',      screen: 'News',     c1: '#0891B2', c2: '#0E7490' },
-  { icon: 'apps',           label: 'See More',    sub: 'Explore all', screen: 'Discover', c1: '#DC2626', c2: '#7F1D1D' },
+  { icon: 'wine',          label: 'Bars',        sub: 'Lounges',     screen: 'Explore', params: { category: 'Bar' },         accent: 'bars' },
+  { icon: 'restaurant',    label: 'Restaurants', sub: 'Eateries',    screen: 'Explore', params: { category: 'Restaurant' },  accent: 'restaurants' },
+  { icon: 'musical-notes', label: 'Nightlife',   sub: 'Clubs',       screen: 'Explore', params: { category: 'Club' },        accent: 'nightlife' },
+  { icon: 'sunny',         label: 'DayLife',     sub: 'Beach clubs', screen: 'Explore', params: { category: 'Beach Club' },  accent: 'daylife' },
+  { icon: 'calendar',      label: 'Events',      sub: 'This week',   screen: 'Events',                                       accent: 'events' },
+  { icon: 'chatbubbles',   label: 'Social',      sub: 'Communities', screen: 'Social',                                       accent: 'social' },
+  { icon: 'newspaper',     label: 'Gidi News',   sub: 'Latest',      screen: 'News',                                         accent: 'news' },
+  { icon: 'apps',          label: 'See More',    sub: 'Explore all', screen: 'Discover',                                     accent: 'more' },
 ];
 
 export default function HomeScreen() {
@@ -42,186 +46,169 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [venueRefreshTrigger, setVenueRefreshTrigger] = useState(0);
 
-  // Load Orbitron font
-  const [fontsLoaded] = useFonts({
-    Orbitron_700Bold,
-    Orbitron_900Black,
-  });
-
+  const [fontsLoaded] = useFonts({ Orbitron_700Bold, Orbitron_900Black });
   const styles = getStyles(colors);
 
+  // Bumping the trigger remounts the data children so they refetch. Held open
+  // briefly so the control doesn't snap shut before anything has arrived —
+  // previously it cleared synchronously and the spinner just flashed.
   const onRefresh = async () => {
     setRefreshing(true);
-    // Trigger venues refresh by incrementing the counter
     setVenueRefreshTrigger(prev => prev + 1);
+    await new Promise(r => setTimeout(r, 600));
     setRefreshing(false);
   };
 
   const getCurrentTimeGreeting = () => {
     const hour = new Date().getHours();
-    const day = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+    const day = new Date().toLocaleDateString('en-US', { weekday: 'long' });
     const part =
-      hour < 12 ? 'MORNING' :
-      hour < 17 ? 'AFTERNOON' :
-      hour < 21 ? 'EVENING' : 'NIGHT';
+      hour < 12 ? 'Morning' :
+      hour < 17 ? 'Afternoon' :
+      hour < 21 ? 'Evening' : 'Night';
     return { day, part };
   };
 
-  // Pulsing green "live" dot driven by Animated; no extra deps.
   const livePulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(livePulse, {
-          toValue: 0.4, duration: 800,
-          easing: Easing.inOut(Easing.ease), useNativeDriver: true,
-        }),
-        Animated.timing(livePulse, {
-          toValue: 1, duration: 800,
-          easing: Easing.inOut(Easing.ease), useNativeDriver: true,
-        }),
+        Animated.timing(livePulse, { toValue: 0.35, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(livePulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]),
     );
     loop.start();
     return () => loop.stop();
   }, [livePulse]);
 
-  const handleCategoryPress = (category: any) => {
-    if (category.url) {
-      Linking.openURL(category.url);
-    } else if (category.screen) {
-      navigation.navigate(category.screen as never);
-    }
+  const handleCategoryPress = (category: Category) => {
+    (navigation as any).navigate(category.screen, category.params);
   };
 
   if (!fontsLoaded) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+      <SafeAreaView style={[styles.container, styles.centred]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ color: colors.textSecondary, marginTop: 12, fontSize: 14 }}>Loading Gidi Connect...</Text>
       </SafeAreaView>
     );
   }
+
+  const { day, part } = getCurrentTimeGreeting();
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: S.giant }}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />
         }
       >
-        {/* Header — polished: gold-gradient wordmark + breathing live dot + bell with notification pip */}
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            {/* expo-linear-gradient can't fill text, so we use a gold-toned color
-                with text-shadow approximation. */}
             <Text style={styles.appName}>GIDI CONNECT</Text>
             <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.headerIconBtn}>
-              <Ionicons name="search" size={20} color={colors.text} />
+            {/* Was a dead control with no handler at all. */}
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={() => (navigation as any).navigate('Explore')}
+              accessibilityRole="button"
+              accessibilityLabel="Search venues"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="search" size={20} color={colors.textMuted} />
             </TouchableOpacity>
             <NotificationsBell />
           </View>
         </View>
 
-        {/* Time-based Greeting — daypart in gold */}
-        <View style={styles.greetingSection}>
-          {(() => {
-            const { day, part } = getCurrentTimeGreeting();
-            return (
-              <Text style={styles.greetingTime}>
-                {day} <Text style={styles.greetingPart}>{part}</Text>
-              </Text>
-            );
-          })()}
+        {/* ── Daypart ────────────────────────────────────────────────────── */}
+        <View style={styles.greeting}>
+          <Text style={styles.greetingEyebrow}>Tonight in Lagos</Text>
+          <Text style={styles.greetingDisplay}>
+            {day} <Text style={styles.greetingAccent}>{part}</Text>
+          </Text>
         </View>
 
-        {/* My Vibe — promoted up here from below the menu cards */}
+        {/* ── Stories ────────────────────────────────────────────────────── */}
         <StorySection />
 
-        {/* Search Section */}
+        {/* ── Search ─────────────────────────────────────────────────────── */}
         <TouchableOpacity
-          style={styles.searchSection}
-          onPress={() => navigation.navigate('Explore' as never)}
+          style={styles.searchBar}
+          onPress={() => (navigation as any).navigate('Explore')}
+          activeOpacity={0.7}
+          accessibilityRole="search"
         >
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={18} color={colors.textSecondary} style={{ marginRight: 12 }} />
-            <Text style={styles.searchPlaceholder}>Search your destination here...</Text>
-          </View>
+          <Ionicons name="search" size={17} color={colors.textFaint} />
+          <Text style={styles.searchPlaceholder}>Search venues, areas…</Text>
         </TouchableOpacity>
 
-        {/* Explore the Area - Featured Card */}
+        {/* ── Explore the area ───────────────────────────────────────────── */}
+        {/* Was a gold-bordered, gold-glowing box competing with every other
+            gold element on the page. Now a quiet row; the gold is the arrow. */}
         <TouchableOpacity
-          style={styles.exploreAreaCard}
-          onPress={() => navigation.navigate('ExploreArea' as never)}
+          style={styles.areaRow}
+          onPress={() => (navigation as any).navigate('ExploreArea')}
+          activeOpacity={0.8}
         >
-          <View style={styles.exploreAreaContent}>
-            <Ionicons name="map" size={32} color={colors.primary} />
-            <View style={styles.exploreAreaText}>
-              <Text style={styles.exploreAreaTitle}>Explore the Area</Text>
-              <Text style={styles.exploreAreaSubtitle}>Discover venues by neighborhood</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={24} color={colors.primary} />
+          <View style={styles.areaIcon}>
+            <Ionicons name="map-outline" size={19} color={colors.primary} />
           </View>
+          <View style={styles.areaText}>
+            <Text style={styles.areaTitle}>Explore the area</Text>
+            <Text style={styles.areaSub}>Venues by neighbourhood</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={19} color={colors.primary} />
         </TouchableOpacity>
 
-        {/* Categories Grid — jewel-tone gradient tiles with corner shine */}
-        <View style={styles.categoriesSection}>
-          <View style={styles.categoriesGrid}>
-            {categories.map((category, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.categoryCard}
-                onPress={() => handleCategoryPress(category)}
-                activeOpacity={0.8}
+        {/* ── Categories ─────────────────────────────────────────────────── */}
+        {/* Eight saturated unrelated hues became one warm family, each a dark
+            surface with a gold icon. The tiles read as a set, and the gold
+            stays meaningful because it isn't competing with seven other hues. */}
+        <View style={styles.grid}>
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={category.label}
+              style={styles.tile}
+              onPress={() => handleCategoryPress(category)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`${category.label}, ${category.sub}`}
+            >
+              <LinearGradient
+                colors={categoryAccent[category.accent]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.tileFill}
               >
-                <LinearGradient
-                  colors={[category.c1, category.c2]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.categoryGradient}
-                >
-                  {/* Corner shine highlight */}
-                  <View style={styles.categoryShine} />
-                  <Ionicons
-                    name={category.icon as any}
-                    size={22}
-                    color="#fff"
-                    style={styles.categoryIcon}
-                  />
-                  <View style={styles.categoryTextWrap}>
-                    <Text style={styles.categoryLabel}>{category.label}</Text>
-                    <Text style={styles.categorySub}>{category.sub}</Text>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-            ))}
-          </View>
+                <Ionicons name={category.icon} size={20} color={colors.goldHi} />
+                <View>
+                  <Text style={styles.tileLabel}>{category.label}</Text>
+                  <Text style={styles.tileSub}>{category.sub}</Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Traffic Update - Dynamic (header is inside TrafficAlert component) */}
         <TrafficAlert />
-
-        {/* Vibe Check Section - Dynamic (title is inside VibeCheck component) */}
         <VibeCheck />
 
-        {/* Trending Venues - Dynamic */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Trending Venues</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Explore' as never)}>
-              <Text style={styles.seeAll}>See All →</Text>
-            </TouchableOpacity>
-          </View>
+        {/* ── Trending ───────────────────────────────────────────────────── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Trending venues</Text>
+          <TouchableOpacity
+            onPress={() => (navigation as any).navigate('Explore')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.seeAll}>See all</Text>
+          </TouchableOpacity>
         </View>
         <TrendingVenues refreshTrigger={venueRefreshTrigger} />
       </ScrollView>
@@ -230,345 +217,141 @@ export default function HomeScreen() {
 }
 
 const getStyles = (colors: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  // Header — polished
+  container: { flex: 1, backgroundColor: colors.background },
+  centred: { justifyContent: 'center', alignItems: 'center' },
+  scrollView: { flex: 1 },
+
+  // ── Header ──
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(234,179,8,0.08)',
+    paddingHorizontal: gutter,
+    paddingVertical: S.md,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: S.sm },
   appName: {
-    fontSize: 15,
+    fontSize: T.sm,
     fontFamily: 'Orbitron_900Black',
-    color: polished.goldMid,
+    color: colors.primary,
     letterSpacing: 2,
-    textShadowColor: 'rgba(234,179,8,0.55)',
-    textShadowRadius: 8,
-    textShadowOffset: { width: 0, height: 0 },
   },
   liveDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: '#22C55E',
-    shadowColor: '#22C55E',
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
-    elevation: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.live,
   },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: S.xs },
   headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: R.md,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
-  notifPip: {
-    position: 'absolute',
-    top: 9,
-    right: 10,
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: '#EF4444',
-    borderWidth: 2,
-    borderColor: colors.background,
-    shadowColor: '#EF4444',
-    shadowOpacity: 0.8,
-    shadowRadius: 4,
-    elevation: 4,
+
+  // ── Daypart ──
+  greeting: {
+    paddingHorizontal: gutter,
+    paddingTop: S.sm,
+    paddingBottom: S.xl,
   },
-  // Greeting — polished
-  greetingSection: {
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 4,
+  greetingEyebrow: {
+    fontSize: T.xs,
+    fontWeight: '700',
+    color: colors.textFaint,
+    letterSpacing: tracking.label,
+    textTransform: 'uppercase',
+    marginBottom: S.xs,
   },
-  greetingTime: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    letterSpacing: 3,
-    fontWeight: '600',
+  greetingDisplay: {
+    fontSize: T.xxl,
+    fontWeight: '900',
+    color: colors.text,
+    letterSpacing: tracking.tight,
+    lineHeight: T.xxl * 1.15,
   },
-  greetingPart: {
-    color: polished.goldMid,
-  },
-  // Search
-  searchSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
+  greetingAccent: { color: colors.primary },
+
+  // ── Search ──
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: S.md,
+    marginHorizontal: gutter,
+    marginBottom: S.lg,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.line,
+    borderRadius: R.md,
+    paddingHorizontal: S.lg,
+    paddingVertical: S.md,
   },
-  searchIcon: {
-    fontSize: 20,
-    marginRight: 12,
-    fontFamily: '',
-  },
-  searchPlaceholder: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  // Explore Area Card
-  exploreAreaCard: {
-    marginHorizontal: 16,
-    marginVertical: 16,
-    backgroundColor: colors.cardBackground,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    padding: 16,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  exploreAreaContent: {
+  searchPlaceholder: { fontSize: T.base, color: colors.textFaint },
+
+  // ── Explore the area ──
+  areaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
-  exploreAreaEmoji: {
-    fontSize: 32,
-    fontFamily: '',
-  },
-  exploreAreaText: {
-    flex: 1,
-  },
-  exploreAreaTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 2,
-  },
-  exploreAreaSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  exploreAreaArrow: {
-    fontSize: 24,
-    color: colors.primary,
-    fontWeight: 'bold',
-    fontFamily: '',
-  },
-  // Categories — polished gradient tiles
-  categoriesSection: {
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 6,
-  },
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  categoryCard: {
-    width: cardWidth,
-    height: 96,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  categoryGradient: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    position: 'relative',
-  },
-  categoryShine: {
-    position: 'absolute',
-    top: -30,
-    right: -30,
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    opacity: 0.5,
-  },
-  categoryIcon: {
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  categoryTextWrap: {
-    alignItems: 'flex-start',
-  },
-  categoryLabel: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: -0.1,
-  },
-  categorySub: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.78)',
-    marginTop: 2,
-    fontWeight: '600',
-  },
-  // Section
-  section: {
-    paddingHorizontal: 16,
-    marginBottom: 32,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  seeAll: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: '500',
-  },
-  // Traffic
-  trafficCard: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
+    gap: S.md,
+    marginHorizontal: gutter,
+    marginBottom: S.xxl,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
+    borderColor: colors.line,
+    borderRadius: R.lg,
+    padding: S.lg,
   },
-  trafficAlert: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  trafficEmoji: {
-    fontSize: 24,
-  },
-  trafficContent: {
-    flex: 1,
-  },
-  trafficTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  trafficLocation: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  trafficTime: {
-    fontSize: 10,
-    color: colors.textSecondary,
-  },
-  // Vibe Check
-  vibeCard: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-  },
-  vibeTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  vibeStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  vibeStat: {
-    alignItems: 'center',
-  },
-  vibeStatValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 4,
-  },
-  vibeStatLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  // Venues
-  venuesScroll: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  venueCard: {
-    width: 150,
-    marginRight: 12,
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 10,
-  },
-  venueImagePlaceholder: {
-    width: '100%',
-    height: 80,
-    backgroundColor: colors.border,
-    borderRadius: 8,
+  areaIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: R.sm,
+    backgroundColor: colors.surfaceRaised,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
-  venueIcon: {
-    fontSize: 32,
+  areaText: { flex: 1 },
+  areaTitle: { fontSize: T.md, fontWeight: '700', color: colors.text },
+  areaSub: { fontSize: T.sm, color: colors.textMuted, marginTop: 1 },
+
+  // ── Category grid ──
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: S.md,
+    paddingHorizontal: gutter,
+    marginBottom: S.xxl,
   },
-  venueName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
+  tile: {
+    // Geometry comes from theme/tokens so the trending venue rail can match it.
+    width: tile.widthFor(Dimensions.get('window').width),
+    height: tile.height,
+    borderRadius: R.lg,
+    overflow: 'hidden',
+    ...E.low,
   },
-  venueLocation: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 8,
+  tileFill: {
+    flex: 1,
+    padding: S.md,
+    justifyContent: 'space-between',
   },
-  venueRating: {
+  tileLabel: { fontSize: T.md, fontWeight: '700', color: '#F8F4EC' },
+  tileSub: { fontSize: T.xs, color: 'rgba(248,244,236,0.62)', marginTop: 1 },
+
+  // ── Section header ──
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'space-between',
+    paddingHorizontal: gutter,
+    marginBottom: S.lg,
   },
-  starIcon: {
-    fontSize: 12,
-  },
-  ratingText: {
-    fontSize: 12,
-    fontWeight: '600',
+  sectionTitle: {
+    fontSize: T.lg,
+    fontWeight: '800',
     color: colors.text,
+    letterSpacing: tracking.tight,
   },
+  seeAll: { fontSize: T.sm, fontWeight: '700', color: colors.primary },
 });
