@@ -34,3 +34,7 @@ android/
 .env.*
 !.env.example
 supabase/.temp/
+
+# Store submission service accounts — never commit
+secrets/
+*service-account*.json
