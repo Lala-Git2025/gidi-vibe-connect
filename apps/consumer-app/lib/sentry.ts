@@ -17,40 +17,74 @@ const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
 export const sentryEnabled = Boolean(dsn);
 
+/**
+ * Nothing in this file may throw during import or init.
+ *
+ * `@sentry/react-native` is a NATIVE module. A dev client built before it was
+ * added has no native counterpart, so touching the SDK throws on import — and
+ * because index.ts calls initSentry() before registerRootComponent(), that
+ * took the whole app down with `"main" has not been registered`, an error that
+ * says nothing about Sentry and sends you looking at Metro instead.
+ *
+ * Crash reporting must never be load-bearing for startup. If the SDK is
+ * unavailable for any reason, the app boots with reporting off.
+ */
+
 // Created eagerly so App.tsx can hand it the NavigationContainer ref whether
-// or not Sentry is on — registering with an unused integration does nothing.
-export const navigationIntegration = Sentry.reactNavigationIntegration({
-  enableTimeToInitialDisplay: false,
-});
+// or not Sentry is on. Null when the native module is missing.
+export const navigationIntegration = (() => {
+  try {
+    return Sentry.reactNavigationIntegration({ enableTimeToInitialDisplay: false });
+  } catch (err) {
+    console.warn('[sentry] navigation integration unavailable:', err);
+    return null;
+  }
+})();
 
 export function initSentry(): void {
   if (!dsn) return;
 
-  Sentry.init({
-    dsn,
-    // Dev client → development. EAS builds report their update channel
-    // (preview / production) so test builds never pollute production alerts.
-    environment: __DEV__ ? 'development' : Updates.channel ?? 'production',
-    integrations: [navigationIntegration],
-    tracesSampleRate: 0.1,
-    sendDefaultPii: false,
-    // All three surfaces currently share one Sentry project — this tag is
-    // how events from the app stay distinguishable from the two portals.
-    initialScope: { tags: { surface: 'consumer-app' } },
-  });
+  try {
+    Sentry.init({
+      dsn,
+      // Dev client → development. EAS builds report their update channel
+      // (preview / production) so test builds never pollute production alerts.
+      environment: __DEV__ ? 'development' : Updates.channel ?? 'production',
+      integrations: navigationIntegration ? [navigationIntegration] : [],
+      tracesSampleRate: 0.1,
+      sendDefaultPii: false,
+      // All three surfaces currently share one Sentry project — this tag is
+      // how events from the app stay distinguishable from the two portals.
+      initialScope: { tags: { surface: 'consumer-app' } },
+    });
+  } catch (err) {
+    console.warn('[sentry] init failed, continuing without crash reporting:', err);
+  }
 }
 
 /** Wrap the root component for touch breadcrumbs and app-start timing. */
 export function withSentryRoot<P extends Record<string, unknown>>(
   Root: ComponentType<P>,
 ): ComponentType<P> {
-  return sentryEnabled ? Sentry.wrap(Root) : Root;
+  if (!sentryEnabled) return Root;
+  try {
+    return Sentry.wrap(Root);
+  } catch (err) {
+    // Returning the unwrapped root is always safe — the alternative is
+    // registering nothing at all, which is how this file took down startup.
+    console.warn('[sentry] wrap failed, using unwrapped root:', err);
+    return Root;
+  }
 }
 
 /** Attach the signed-in account (id only, never email) to later events. */
 export function identifyUser(userId: string | null): void {
   if (!sentryEnabled) return;
-  Sentry.setUser(userId ? { id: userId } : null);
+  try {
+    Sentry.setUser(userId ? { id: userId } : null);
+  } catch (err) {
+    console.warn('[sentry] setUser failed:', err);
+  }
 }
 
 /**
@@ -59,7 +93,14 @@ export function identifyUser(userId: string | null): void {
  */
 export function reportRenderError(error: unknown, componentStack?: string | null): string | undefined {
   if (!sentryEnabled) return undefined;
-  return Sentry.captureException(error, {
-    contexts: { react: { componentStack: componentStack ?? undefined } },
-  });
+  try {
+    return Sentry.captureException(error, {
+      contexts: { react: { componentStack: componentStack ?? undefined } },
+    });
+  } catch (err) {
+    // This runs from inside an ErrorBoundary that is already handling a crash.
+    // Throwing here would replace a recoverable render error with a hard one.
+    console.warn('[sentry] captureException failed:', err);
+    return undefined;
+  }
 }

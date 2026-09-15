@@ -52,7 +52,7 @@ function AppNavigator() {
     <NavigationContainer
       ref={navigationRef}
       // Screen-change breadcrumbs, so a crash report says where the user was.
-      onReady={() => navigationIntegration.registerNavigationContainer(navigationRef)}
+      onReady={() => navigationIntegration?.registerNavigationContainer(navigationRef)}
     >
       <Tab.Navigator
         tabBar={(props) => {
