@@ -79,26 +79,18 @@ export const VibeCheck = () => {
   ]);
   const styles = getStyles(colors);
 
-  // Polished LIVE dot pulse + breathing gold border around the hero list.
-  const livePulse = useRef(new Animated.Value(1)).current;
+  // Breathing gold border around the hero list.
   const breathe = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const liveLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(livePulse, { toValue: 0.4, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(livePulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
     const breatheLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(breathe, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
         Animated.timing(breathe, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
       ]),
     );
-    liveLoop.start();
     breatheLoop.start();
-    return () => { liveLoop.stop(); breatheLoop.stop(); };
-  }, [livePulse, breathe]);
+    return () => breatheLoop.stop();
+  }, [breathe]);
 
   useEffect(() => {
     fetchAreaVibes();
@@ -194,20 +186,11 @@ export const VibeCheck = () => {
       setAreaVibes(vibes);
     } catch (error) {
       console.error('Error fetching area vibes:', error);
-      // Fallback data — all 10 areas with realistic Lagos venue counts
-      const fallback: AreaVibe[] = [
-        { name: 'Victoria Island', venueCount: 24, vibe: 'Electric', vibeType: 'Electric', color: colors.primary },
-        { name: 'Lekki',           venueCount: 18, vibe: 'Buzzing',  vibeType: 'Buzzing',  color: colors.warning },
-        { name: 'Ikeja',           venueCount: 12, vibe: 'Buzzing',  vibeType: 'Buzzing',  color: colors.warning },
-        { name: 'Ikoyi',           venueCount: 9,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
-        { name: 'Surulere',        venueCount: 7,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
-        { name: 'Ajah',            venueCount: 5,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
-        { name: 'Lagos Island',    venueCount: 4,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
-        { name: 'Yaba',            venueCount: 3,  vibe: 'Vibing',   vibeType: 'Vibing',   color: colors.error },
-        { name: 'Maryland',        venueCount: 2,  vibe: 'Chill',    vibeType: 'Chill',    color: colors.info },
-        { name: 'Festac',          venueCount: 1,  vibe: 'Chill',    vibeType: 'Chill',    color: colors.info },
-      ];
-      setAreaVibes(fallback);
+      // Deliberately empty rather than inventing counts. The old fallback
+      // claimed Victoria Island had 24 venues and Lekki 18; the entire
+      // database holds 33, fourteen of them on the Island. Those numbers were
+      // never real, and a failed fetch should read as a failed fetch.
+      setAreaVibes([]);
     } finally {
       setLoading(false);
     }
@@ -246,9 +229,13 @@ export const VibeCheck = () => {
     (navigation as any).navigate('Explore', { venueId });
   };
 
+  // An area with nothing in it is not a vibe. Six of the ten areas had no
+  // venues at all and still rendered, each opening an empty list when tapped.
+  const populatedAreas = areaVibes.filter(area => area.venueCount > 0);
+
   const filteredAreas = selectedVibe === 'All'
-    ? areaVibes
-    : areaVibes.filter(area => area.vibeType === selectedVibe);
+    ? populatedAreas
+    : populatedAreas.filter(area => area.vibeType === selectedVibe);
 
   const getDisplayedAreas = () => {
     if (filteredAreas.length <= 4) return filteredAreas;
@@ -291,10 +278,11 @@ export const VibeCheck = () => {
             {filteredCount} area{filteredCount !== 1 ? 's' : ''} • Tap an area to see venues
           </Text>
         </View>
-        <View style={styles.liveBadge}>
-          <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
-          <Text style={styles.liveText}>LIVE</Text>
-        </View>
+        {/* A "LIVE" badge used to sit here. The Electric/Buzzing/Vibing/Chill
+            ladder is computed purely from how many venues are listed in each
+            area — it reads no check-ins and does not change through the night,
+            so nothing about it was live. Restore the badge when the ladder
+            reads venue_check_ins. */}
       </View>
 
       {/* Vibe Filters */}
@@ -415,7 +403,9 @@ export const VibeCheck = () => {
                         />
                         <View style={styles.areaInfo}>
                           <Text style={styles.areaName}>{area.name}</Text>
-                          <Text style={styles.areaVenue}>{area.venueCount} venues active</Text>
+                          <Text style={styles.areaVenue}>
+                            {area.venueCount} {area.venueCount === 1 ? 'venue' : 'venues'}
+                          </Text>
                         </View>
                       </View>
                       <View style={styles.areaRight}>
@@ -595,33 +585,6 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     fontWeight: '500',
-  },
-  liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.35)',
-    backgroundColor: 'rgba(34,197,94,0.10)',
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#22C55E',
-    shadowColor: '#22C55E',
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  liveText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#22C55E',
-    letterSpacing: 1.2,
   },
 
   // Filters

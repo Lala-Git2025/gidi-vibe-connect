@@ -8,6 +8,7 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -150,9 +151,18 @@ export const NotificationsBell = () => {
   };
 
   if (!userId) {
-    // Guest — render an inert bell that nudges to sign in.
+    // Guest. This used to be genuinely inert despite the comment claiming
+    // otherwise — no handler, so tapping it did nothing at all while every
+    // other gated action in the app prompts. Now it says why it's empty.
     return (
-      <TouchableOpacity style={styles.bellBtn}>
+      <TouchableOpacity
+        style={styles.bellBtn}
+        accessibilityRole="button"
+        accessibilityLabel="Notifications, sign in required"
+        onPress={() =>
+          Alert.alert('Sign In Required', 'Please sign in to see your notifications.')
+        }
+      >
         <Ionicons name="notifications-outline" size={20} color={colors.text} />
       </TouchableOpacity>
     );
