@@ -34,6 +34,9 @@ export function initSentry(): void {
     integrations: [navigationIntegration],
     tracesSampleRate: 0.1,
     sendDefaultPii: false,
+    // All three surfaces currently share one Sentry project — this tag is
+    // how events from the app stay distinguishable from the two portals.
+    initialScope: { tags: { surface: 'consumer-app' } },
   });
 }
 
