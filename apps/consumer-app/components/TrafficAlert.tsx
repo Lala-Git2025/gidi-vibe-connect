@@ -5,16 +5,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { type as T, space as S, gutter, tracking } from '../theme/tokens';
 import { TrafficRow } from './TrafficRow';
+import { LiveDot } from './LiveDot';
 import { useTrafficReports, verdict, timeAgo, isFreshAt, type TrafficReport } from '../lib/traffic';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 const PREVIEW_COUNT = 3;
 
 /**
- * Home's traffic band: a verdict, the three routes that matter most, and a way
- * through to the rest. Was a horizontal rail of ten equal-weight cards ordered
- * newest-first, which meant scanning sideways through clear roads to find the
- * blocked one.
+ * Home's traffic band: a verdict, the route that matters most as a hero card,
+ * two more beneath it, and a way through to the rest. Was a horizontal rail
+ * of ten equal-weight cards ordered newest-first.
  */
 export const TrafficAlert = () => {
   const { colors } = useTheme();
@@ -46,8 +46,9 @@ export const TrafficAlert = () => {
   // current, and say so when that happens rather than passing them off as now.
   const showingFresh = fresh.length > 0;
   const group: TrafficReport[] = showingFresh ? fresh : earlier;
-  const preview = group.slice(0, PREVIEW_COUNT);
+  const [lead, ...rest] = group.slice(0, PREVIEW_COUNT);
   const currentlyFresh = newestAt !== null && isFreshAt(newestAt);
+  const sourceName = all[0]?.source_name;
 
   return (
     <View style={styles.container}>
@@ -59,10 +60,9 @@ export const TrafficAlert = () => {
           <Text style={styles.verdict}>{verdict(group)}</Text>
         </View>
         <View style={styles.freshness}>
-          {currentlyFresh && <View style={styles.liveDot} />}
-          {/* The age of the newest report, never the time of the last fetch.
-              Staleness is carried by the absent dot and the note below, so the
-              age itself reads the same either way. */}
+          {/* Breathes only while a report is inside the freshness window —
+              the one looping animation on Home, and it means something. */}
+          {currentlyFresh && <LiveDot color={colors.live} />}
           <Text style={styles.freshnessText}>
             {newestAt === null ? '' : timeAgo(newestAt)}
           </Text>
@@ -76,21 +76,27 @@ export const TrafficAlert = () => {
       )}
 
       <View style={styles.rows}>
-        {preview.map(report => <TrafficRow key={report.id} report={report} />)}
+        {lead && <TrafficRow report={lead} index={0} variant="hero" />}
+        {rest.map((report, i) => <TrafficRow key={report.id} report={report} index={i + 1} />)}
       </View>
 
-      <TouchableOpacity
-        style={styles.allRoutes}
-        onPress={() => (navigation as any).navigate('Traffic')}
-        activeOpacity={0.75}
-        accessibilityRole="button"
-        accessibilityLabel={`See all ${all.length} routes`}
-      >
-        <Text style={styles.allRoutesText}>
-          All {all.length} route{all.length !== 1 ? 's' : ''}
-        </Text>
-        <Ionicons name="arrow-forward" size={16} color={colors.primary} />
-      </TouchableOpacity>
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={styles.allRoutes}
+          onPress={() => (navigation as any).navigate('Traffic')}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={`See all ${all.length} routes`}
+        >
+          <Text style={styles.allRoutesText}>
+            All {all.length} route{all.length !== 1 ? 's' : ''}
+          </Text>
+          <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+        </TouchableOpacity>
+        {!!sourceName && (
+          <Text style={styles.source} numberOfLines={1}>via {sourceName}</Text>
+        )}
+      </View>
     </View>
   );
 };
@@ -125,9 +131,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   verdict: { fontSize: T.sm, color: colors.textMuted, marginTop: S.xxs },
 
   freshness: { flexDirection: 'row', alignItems: 'center', gap: S.xs, paddingTop: S.xxs },
-  // The one pulse-free live indicator on the screen: it is either lit, meaning
-  // a report landed within the freshness window, or it is absent.
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.live },
   freshnessText: { fontSize: T.xs, fontWeight: '700', color: colors.textMuted },
 
   staleNote: {
@@ -140,13 +143,15 @@ const getStyles = (colors: any) => StyleSheet.create({
 
   rows: { paddingHorizontal: gutter, gap: S.sm },
 
-  allRoutes: {
+  footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: S.sm,
-    alignSelf: 'flex-start',
+    justifyContent: 'space-between',
+    gap: S.md,
     paddingHorizontal: gutter,
     paddingTop: S.md,
   },
+  allRoutes: { flexDirection: 'row', alignItems: 'center', gap: S.sm },
   allRoutesText: { fontSize: T.sm, fontWeight: '700', color: colors.primary },
+  source: { flex: 1, textAlign: 'right', fontSize: T.xs, color: colors.textFaint },
 });

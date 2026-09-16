@@ -80,16 +80,21 @@ export const timeAgo = (ms: number, now = Date.now()): string => {
  */
 export const verdict = (reports: TrafficReport[]): string => {
   if (reports.length === 0) return '';
-  const blocked = reports.filter(r => r.severity === 'closed').length;
-  const heavy   = reports.filter(r => r.severity === 'critical' || r.severity === 'heavy').length;
-  const slow    = reports.filter(r => r.severity === 'moderate').length;
-  const moving  = reports.filter(r => r.severity === 'light').length;
+  // Each bucket uses the same word the row beneath it shows, so the verdict
+  // never says "1 heavy" above a card labelled GRIDLOCK.
+  const count = (s: Severity) => reports.filter(r => r.severity === s).length;
+  const closed = count('closed');
+  const gridlock = count('critical');
+  const heavy = count('heavy');
+  const slow = count('moderate');
+  const moving = count('light');
 
   return [
-    blocked && `${blocked} closed`,
-    heavy   && `${heavy} heavy`,
-    slow    && `${slow} slow`,
-    moving  && `${moving} moving`,
+    closed   && `${closed} closed`,
+    gridlock && `${gridlock} gridlock`,
+    heavy    && `${heavy} heavy`,
+    slow     && `${slow} slow`,
+    moving   && `${moving} moving`,
   ].filter(Boolean).join(' · ');
 };
 

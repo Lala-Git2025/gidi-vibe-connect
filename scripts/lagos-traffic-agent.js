@@ -85,7 +85,7 @@ const CLASSIFICATION_SCHEMA = {
     },
     summary: {
       type: 'string',
-      description: '1-2 sentence plain-English summary citing the cause if mentioned. Do not just restate the headline.',
+      description: '1-2 sentences written for a Lagos driver deciding whether to leave now: what is happening, where exactly, and the cause if given. Direct, plain, no headline restatement.',
     },
     confidence: {
       type: 'number',
@@ -115,7 +115,7 @@ Rules:
    - "closed", "blocked", "diversion in effect", "road shut" → closed
    - "INCIDENT REPORT" headlines usually mean heavy/critical/closed — confirm with body.
 3. Pick area from the enum.
-4. Summary cites cause if mentioned (accident, road work, broken-down vehicle, rain). 1-2 sentences. Don't just rephrase the headline.
+4. Summary is written FOR Gidi Connect, not copied from the source. Speak to a Lagos driver deciding whether to leave now: say what is happening, where exactly (junction, direction — inward/outward), and the cause if given (accident, road work, broken-down vehicle, rain, flooding). 1-2 sentences, direct and plain. Use Lagos names as locals say them ("Third Mainland", "Lekki-Epe", "Ikorodu Road"). Never invent a detail the post does not contain; if the post is thin, keep the summary short rather than padding it. No headline restatement, no exclamation marks.
 5. Confidence:
    - 0.9+ if route is clear and severity unambiguous
    - 0.7-0.9 if severity inferred indirectly

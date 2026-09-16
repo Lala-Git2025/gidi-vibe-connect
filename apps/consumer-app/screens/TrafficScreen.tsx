@@ -8,6 +8,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useFonts, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { type as T, space as S, gutter, tracking } from '../theme/tokens';
 import { TrafficRow } from '../components/TrafficRow';
+import { LiveDot } from '../components/LiveDot';
 import { useTrafficReports, verdict, timeAgo, isFreshAt } from '../lib/traffic';
 
 /**
@@ -67,7 +68,7 @@ export default function TrafficScreen() {
               <Text style={styles.verdict}>{verdict(all)}</Text>
               {newestAt !== null && (
                 <View style={styles.freshness}>
-                  {currentlyFresh && <View style={styles.liveDot} />}
+                  {currentlyFresh && <LiveDot color={colors.live} />}
                   <Text style={styles.freshnessText}>{timeAgo(newestAt)}</Text>
                 </View>
               )}
@@ -91,7 +92,9 @@ export default function TrafficScreen() {
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Now</Text>
                 <View style={styles.rows}>
-                  {fresh.map(report => <TrafficRow key={report.id} report={report} />)}
+                  {fresh.map((report, i) => (
+                    <TrafficRow key={report.id} report={report} index={i} variant={i === 0 ? 'hero' : 'row'} />
+                  ))}
                 </View>
               </View>
             )}
@@ -103,13 +106,15 @@ export default function TrafficScreen() {
                   Over four hours old — the road may have cleared since.
                 </Text>
                 <View style={styles.rows}>
-                  {earlier.map(report => <TrafficRow key={report.id} report={report} />)}
+                  {earlier.map((report, i) => (
+                    <TrafficRow key={report.id} report={report} index={fresh.length + i} />
+                  ))}
                 </View>
               </View>
             )}
 
             {!!sourceName && (
-              <Text style={styles.source}>Reports via {sourceName}. Tap a route to open the original.</Text>
+              <Text style={styles.source}>Reports via {sourceName}, summarised for Gidi Connect.</Text>
             )}
           </>
         )}
@@ -153,7 +158,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   verdict: { flex: 1, fontSize: T.sm, color: colors.textMuted },
   freshness: { flexDirection: 'row', alignItems: 'center', gap: S.xs },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.live },
   freshnessText: { fontSize: T.xs, fontWeight: '700', color: colors.textMuted },
 
   section: { marginBottom: S.xxxl },
