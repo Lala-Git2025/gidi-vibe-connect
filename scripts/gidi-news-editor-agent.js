@@ -31,7 +31,7 @@
  * Required env:
  *   GEMINI_API_KEY, VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  * Optional:
- *   NEWS_EDITOR_BATCH (60), NEWS_EDITOR_LOOKBACK_HOURS (72), GEMINI_MODEL (gemini-2.5-flash)
+ *   NEWS_EDITOR_BATCH (60), NEWS_EDITOR_LOOKBACK_HOURS (72), GEMINI_MODEL (gemini-flash-latest)
  */
 
 import axios from 'axios';
@@ -44,7 +44,11 @@ dotenv.config();
 const SUPABASE_URL   = process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY    = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GEMINI_KEY     = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL   = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// 'gemini-flash-latest' is Google's alias for the current flash model, kept
+// unpinned deliberately — see the matching note in lagos-traffic-agent.js.
+// gemini-2.5-flash was blocked for API-key access on 2026-09-16, the same day
+// this script's first production run hit it.
+const GEMINI_MODEL   = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 const BATCH          = Number(process.env.NEWS_EDITOR_BATCH || 60);
 const LOOKBACK_HOURS = Number(process.env.NEWS_EDITOR_LOOKBACK_HOURS || 72);
 const DRY_RUN        = process.argv.includes('--dry-run');

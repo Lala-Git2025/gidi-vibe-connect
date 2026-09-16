@@ -24,7 +24,7 @@
  * Optional:
  *   TRAFFIC_SOURCE_URL           (default: https://trafficradio961.ng/news/traffic-updates/)
  *   TRAFFIC_MAX_POSTS            (default: 10)
- *   GEMINI_MODEL                 (default: gemini-2.0-flash)
+ *   GEMINI_MODEL                 (default: gemini-flash-latest)
  */
 
 import axios from 'axios';
@@ -36,9 +36,14 @@ dotenv.config();
 
 const SOURCE_URL   = process.env.TRAFFIC_SOURCE_URL || 'https://trafficradio961.ng/news/traffic-updates/';
 const MAX_POSTS    = Number(process.env.TRAFFIC_MAX_POSTS || 10);
-// gemini-2.5-flash is the current free-tier standard (15 RPM / 1,500 RPD).
-// gemini-2.0-flash was superseded in 2026 and is no longer reliably on the free tier.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// 'gemini-flash-latest' is Google's own alias for "whatever the current flash
+// model is" — deliberately not pinned to a dated version. This is the second
+// time a hardcoded model name has been silently retired out from under this
+// script: gemini-2.0-flash superseded in 2026, then gemini-2.5-flash blocked
+// for API-key access on 2026-09-16 while still listed by the models endpoint
+// (the generateContent call 404'd; only that call, not the listing, enforces
+// the cutoff). The alias is Google's fix for exactly this failure mode.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
