@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { darkPalette, lightPalette, type, weight, leading, tracking, space, radius, elevation, gutter } from '../theme/tokens';
+import type { Palette } from '../theme/tokens';
 
 type ThemeMode = 'light' | 'dark' | 'auto';
 type ActiveTheme = 'light' | 'dark';
@@ -9,7 +11,20 @@ interface ThemeContextType {
   themeMode: ThemeMode;
   activeTheme: ActiveTheme;
   setThemeMode: (mode: ThemeMode) => void;
-  colors: typeof lightColors;
+  /** Palette for the active theme. Superset of the old keys, so existing
+   *  screens keep working while new ones get the full token set. */
+  colors: Palette;
+  /** Type, space, radius and elevation scales — see theme/tokens.ts. */
+  t: {
+    type: typeof type;
+    weight: typeof weight;
+    leading: typeof leading;
+    tracking: typeof tracking;
+    space: typeof space;
+    radius: typeof radius;
+    elevation: typeof elevation;
+    gutter: number;
+  };
 }
 
 // Polished V2 palette — these constants are theme-independent and consumed
@@ -80,6 +95,8 @@ interface ThemeProviderProps {
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
   const systemColorScheme = useColorScheme();
+  // Follows the system. A dark default was trialled and rolled back — the
+  // light ground is the preferred look for this product.
   const [themeMode, setThemeModeState] = useState<ThemeMode>('auto');
   const [isReady, setIsReady] = useState(false);
 
@@ -89,7 +106,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       ? (systemColorScheme === 'dark' ? 'dark' : 'light')
       : themeMode;
 
-  const colors = activeTheme === 'dark' ? darkColors : lightColors;
+  const colors = activeTheme === 'dark' ? darkPalette : lightPalette;
 
   // Load saved theme preference on mount
   useEffect(() => {
@@ -136,6 +153,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     activeTheme,
     setThemeMode,
     colors,
+    t: { type, weight, leading, tracking, space, radius, elevation, gutter },
   };
 
   // Safety timeout — if AsyncStorage hangs, render anyway after 3s

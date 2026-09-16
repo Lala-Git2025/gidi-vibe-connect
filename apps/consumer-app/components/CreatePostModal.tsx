@@ -12,9 +12,9 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../config/supabase';
+import { pickMedia } from '../lib/mediaCapture';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { resolveCommunityIcon } from '../constants/communityIcons';
@@ -178,30 +178,18 @@ export const CreatePostModal = ({
     setCommunities((data as Community[]) ?? []);
   };
 
+  // Camera first: a post about where you are right now is worth more than one
+  // assembled from the camera roll afterwards. social_posts carries a single
+  // image_url, so this stays photos-only — story video lives in StoryCreator.
   const handlePickImage = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant permission to access your photos');
-        return;
-      }
-
-      // NB: in-app crop is iOS-only. On Android (Samsung in particular) the
-      // system crop UI lacks a visible confirm button on some phones, leaving
-      // users stuck. iOS PHPicker handles the crop sheet cleanly.
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
-        ...(Platform.OS === 'ios' && { allowsEditing: true, aspect: [4, 3] as [number, number] }),
-      });
-
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        setSelectedImage(result.assets[0].uri);
-      }
-    } catch (err) {
-      console.warn('Image picker failed:', err);
-      Alert.alert('Image picker error', 'Could not open the image library. Please try again.');
-    }
+    const asset = await pickMedia({
+      title: 'Add a photo',
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [4, 3],
+    });
+    if (asset) setSelectedImage(asset.uri);
   };
 
   const handleSubmit = async () => {
@@ -363,7 +351,12 @@ export const CreatePostModal = ({
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Ionicons name="close" size={20} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.title}>{editingPost ? 'Edit Post' : 'Create Post'}</Text>
@@ -529,10 +522,15 @@ export const CreatePostModal = ({
             )}
 
             {/* Image Picker */}
-            <TouchableOpacity style={styles.imagePickerBtn} onPress={handlePickImage}>
+            <TouchableOpacity
+              style={styles.imagePickerBtn}
+              onPress={handlePickImage}
+              accessibilityRole="button"
+              accessibilityLabel={selectedImage ? 'Change photo' : 'Add a photo'}
+            >
               <Ionicons name="camera" size={24} color={colors.primary} />
               <Text style={styles.imagePickerText}>
-                {selectedImage ? 'Change Image' : 'Add Image'}
+                {selectedImage ? 'Change photo' : 'Add a photo'}
               </Text>
             </TouchableOpacity>
 

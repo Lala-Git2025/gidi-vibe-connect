@@ -15,35 +15,21 @@ interface FriendActivity {
   time_ago: string;
 }
 
-const VENUE_CATEGORIES = [
-  { emoji: '🍽️', label: 'Restaurants', category: 'Restaurant' },
-  { emoji: '🍸', label: 'Bars', category: 'Bar' },
-  { emoji: '🎵', label: 'Clubs', category: 'Club' },
-  { emoji: '🛋️', label: 'Lounges', category: 'Lounge' },
-  { emoji: '🏖️', label: 'Beach Clubs', category: 'Beach Club' },
-  { emoji: '🏙️', label: 'Rooftops', category: 'Rooftop' },
-  { emoji: '🎉', label: 'Event Centers', category: 'Event Center' },
-  { emoji: '🏨', label: 'Hotels', category: 'Hotel' },
-  { emoji: '☕', label: 'Cafes', category: 'Cafe' },
-];
+/** Icon per category; the tiles rendered come from the database. */
+const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Restaurant: 'restaurant-outline',
+  Bar: 'beer-outline',
+  Club: 'musical-note-outline',
+  Lounge: 'wine-outline',
+  'Beach Club': 'umbrella-outline',
+  Rooftop: 'sunny-outline',
+  'Event Center': 'business-outline',
+  Hotel: 'bed-outline',
+  Cafe: 'cafe-outline',
+};
 
-const EXPERIENCE_TYPES = [
-  { emoji: '🥞', label: 'Brunch Spots', filter: 'brunch' },
-  { emoji: '💑', label: 'Date Night', filter: 'romantic' },
-  { emoji: '👨‍👩‍👧‍👦', label: 'Family-Friendly', filter: 'family' },
-  { emoji: '🌙', label: 'Late Night', filter: 'late_night' },
-  { emoji: '🎸', label: 'Live Music', filter: 'live_music' },
-  { emoji: '🍻', label: 'Happy Hour', filter: 'happy_hour' },
-];
 
-const CURATED_COLLECTIONS = [
-  { emoji: '💕', label: 'Best for First Dates', collection: 'first_dates' },
-  { emoji: '📸', label: 'Instagram-Worthy', collection: 'instagram' },
-  { emoji: '💰', label: 'Budget-Friendly', collection: 'budget' },
-  { emoji: '👔', label: 'VIP Experience', collection: 'vip' },
-  { emoji: '🎂', label: 'Birthday Spots', collection: 'birthday' },
-  { emoji: '🌅', label: 'Sunset Views', collection: 'sunset' },
-];
+
 
 const NEIGHBORHOOD_GUIDES = [
   { emoji: '🏝️', label: 'Victoria Island', area: 'Victoria Island' },
@@ -54,47 +40,120 @@ const NEIGHBORHOOD_GUIDES = [
   { emoji: '🏘️', label: 'Surulere', area: 'Surulere' },
 ];
 
+const formatTimeAgo = (iso: string) => {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? 'yesterday' : `${days}d ago`;
+};
+
 export default function DiscoverScreen() {
   const navigation = useNavigation();
   const { colors, activeTheme } = useTheme();
   const [friendsActivity, setFriendsActivity] = useState<FriendActivity[]>([]);
+  const [venueCategories, setVenueCategories] = useState<{ category: string; count: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const styles = getStyles(colors);
 
   useEffect(() => {
     fetchFriendsActivity();
+    fetchVenueCategories();
   }, []);
 
+  /** Only the categories that actually have venues, busiest first. */
+  const fetchVenueCategories = async () => {
+    try {
+      const { data } = await supabase.from('venues').select('category');
+      const counts = new Map<string, number>();
+      for (const row of data ?? []) {
+        if (!row.category) continue;
+        counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
+      }
+      setVenueCategories(
+        [...counts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([category, count]) => ({ category, count })),
+      );
+    } catch (error) {
+      console.log('Error fetching venue categories:', error);
+      setVenueCategories([]);
+    }
+  };
+
+  /**
+   * Real activity from people the signed-in user follows. This previously
+   * returned three hard-coded fictional people ("Chioma N.", "Tunde B.",
+   * "Aisha M.") with invented check-ins at real venues, shown to every user
+   * including those following nobody.
+   *
+   * Done as separate queries rather than an embedded join: venue_check_ins
+   * references auth.users, not profiles, so the display name can't be reached
+   * through a nested select.
+   */
   const fetchFriendsActivity = async () => {
     try {
-      // For now, using mock data. Replace with actual friends activity query
-      const mockActivity: FriendActivity[] = [
-        {
-          id: '1',
-          friend_name: 'Chioma N.',
-          venue_name: 'RSVP Lagos',
-          activity_type: 'check-in',
-          time_ago: '2h ago',
-        },
-        {
-          id: '2',
-          friend_name: 'Tunde B.',
-          venue_name: 'Quilox',
-          activity_type: 'review',
-          time_ago: '5h ago',
-        },
-        {
-          id: '3',
-          friend_name: 'Aisha M.',
-          venue_name: 'The Place',
-          activity_type: 'post',
-          time_ago: '1d ago',
-        },
-      ];
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        setFriendsActivity([]);
+        return;
+      }
 
-      setFriendsActivity(mockActivity);
+      const { data: following } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', session.user.id);
+
+      const followedIds = (following ?? []).map(f => f.following_id);
+      if (followedIds.length === 0) {
+        setFriendsActivity([]);
+        return;
+      }
+
+      const { data: checkIns } = await supabase
+        .from('venue_check_ins')
+        .select('id, user_id, venue_id, checked_in_at')
+        .in('user_id', followedIds)
+        .order('checked_in_at', { ascending: false })
+        .limit(10);
+
+      if (!checkIns?.length) {
+        setFriendsActivity([]);
+        return;
+      }
+
+      const [{ data: people }, { data: venues }] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('user_id, full_name, username')
+          .in('user_id', [...new Set(checkIns.map(c => c.user_id))]),
+        supabase
+          .from('venues')
+          .select('id, name')
+          .in('id', [...new Set(checkIns.map(c => c.venue_id))]),
+      ]);
+
+      const nameFor = new Map((people ?? []).map(p => [p.user_id, p.full_name || p.username || 'Someone']));
+      const venueFor = new Map((venues ?? []).map(v => [v.id, v.name]));
+
+      setFriendsActivity(
+        checkIns
+          // Drop anything whose venue has since been removed rather than
+          // rendering a check-in at a blank place.
+          .filter(c => venueFor.has(c.venue_id))
+          .map(c => ({
+            id: c.id,
+            friend_name: nameFor.get(c.user_id) ?? 'Someone',
+            venue_name: venueFor.get(c.venue_id) as string,
+            activity_type: 'check-in' as const,
+            time_ago: formatTimeAgo(c.checked_in_at),
+          })),
+      );
     } catch (error) {
-      console.error('Error fetching friends activity:', error);
+      console.log('Error fetching friends activity:', error);
+      setFriendsActivity([]);
     } finally {
       setLoading(false);
     }
@@ -174,54 +233,34 @@ export default function DiscoverScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Venue Categories</Text>
           <View style={styles.grid}>
-            {VENUE_CATEGORIES.map((item, index) => (
+            {venueCategories.map(({ category, count }) => (
               <TouchableOpacity
-                key={index}
+                key={category}
                 style={styles.gridItem}
-                onPress={() => handleCategoryPress(item.category)}
+                onPress={() => handleCategoryPress(category)}
+                accessibilityRole="button"
+                accessibilityLabel={`${category}, ${count} venues`}
               >
-                <Text style={styles.gridEmoji}>{item.emoji}</Text>
-                <Text style={styles.gridLabel}>{item.label}</Text>
+                <Ionicons
+                  name={CATEGORY_ICONS[category] ?? 'pricetag-outline'}
+                  size={22}
+                  color={colors.primary}
+                  style={styles.gridIcon}
+                />
+                <Text style={styles.gridLabel}>{category}</Text>
+                <Text style={styles.gridCount}>{count}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Experience Types */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Experience Types</Text>
-          <View style={styles.grid}>
-            {EXPERIENCE_TYPES.map((item, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.gridItem}
-                onPress={() => handleCategoryPress(item.filter)}
-              >
-                <Text style={styles.gridEmoji}>{item.emoji}</Text>
-                <Text style={styles.gridLabel}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Curated Collections */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Curated Collections</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.horizontalList}>
-              {CURATED_COLLECTIONS.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.collectionCard}
-                  onPress={() => handleCategoryPress(item.collection)}
-                >
-                  <Text style={styles.collectionEmoji}>{item.emoji}</Text>
-                  <Text style={styles.collectionLabel}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
+        {/* Experience Types and Curated Collections used to sit here: twelve
+            tiles passing pseudo-categories ('brunch', 'first_dates', 'vip') to
+            Explore, which has no such categories and falls back to a free-text
+            search over name, location and description. No venue is named
+            "first dates", so all twelve dead-ended on an empty list. They can
+            come back when venues carry the tags to support them — one of 33
+            currently does. */}
 
         {/* Neighborhood Guides */}
         <View style={styles.section}>
@@ -351,6 +390,16 @@ const getStyles = (colors: any) => StyleSheet.create({
     marginBottom: 8,
     fontFamily: '',
   },
+  // Ionicons, per the project convention that UI icons are never bare emoji.
+  gridIcon: {
+    marginBottom: 8,
+  },
+  gridCount: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   gridLabel: {
     fontSize: 11,
     fontWeight: '600',
@@ -377,11 +426,5 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 32,
     marginBottom: 8,
     fontFamily: '',
-  },
-  collectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
   },
 });

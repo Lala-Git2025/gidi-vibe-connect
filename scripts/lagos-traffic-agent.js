@@ -24,7 +24,7 @@
  * Optional:
  *   TRAFFIC_SOURCE_URL           (default: https://trafficradio961.ng/news/traffic-updates/)
  *   TRAFFIC_MAX_POSTS            (default: 10)
- *   GEMINI_MODEL                 (default: gemini-2.0-flash)
+ *   GEMINI_MODEL                 (default: gemini-flash-latest)
  */
 
 import axios from 'axios';
@@ -36,9 +36,14 @@ dotenv.config();
 
 const SOURCE_URL   = process.env.TRAFFIC_SOURCE_URL || 'https://trafficradio961.ng/news/traffic-updates/';
 const MAX_POSTS    = Number(process.env.TRAFFIC_MAX_POSTS || 10);
-// gemini-2.5-flash is the current free-tier standard (15 RPM / 1,500 RPD).
-// gemini-2.0-flash was superseded in 2026 and is no longer reliably on the free tier.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// 'gemini-flash-latest' is Google's own alias for "whatever the current flash
+// model is" — deliberately not pinned to a dated version. This is the second
+// time a hardcoded model name has been silently retired out from under this
+// script: gemini-2.0-flash superseded in 2026, then gemini-2.5-flash blocked
+// for API-key access on 2026-09-16 while still listed by the models endpoint
+// (the generateContent call 404'd; only that call, not the listing, enforces
+// the cutoff). The alias is Google's fix for exactly this failure mode.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -85,7 +90,7 @@ const CLASSIFICATION_SCHEMA = {
     },
     summary: {
       type: 'string',
-      description: '1-2 sentence plain-English summary citing the cause if mentioned. Do not just restate the headline.',
+      description: '1-2 sentences written for a Lagos driver deciding whether to leave now: what is happening, where exactly, and the cause if given. Direct, plain, no headline restatement.',
     },
     confidence: {
       type: 'number',
@@ -115,7 +120,7 @@ Rules:
    - "closed", "blocked", "diversion in effect", "road shut" → closed
    - "INCIDENT REPORT" headlines usually mean heavy/critical/closed — confirm with body.
 3. Pick area from the enum.
-4. Summary cites cause if mentioned (accident, road work, broken-down vehicle, rain). 1-2 sentences. Don't just rephrase the headline.
+4. Summary is written FOR Gidi Connect, not copied from the source. Speak to a Lagos driver deciding whether to leave now: say what is happening, where exactly (junction, direction — inward/outward), and the cause if given (accident, road work, broken-down vehicle, rain, flooding). 1-2 sentences, direct and plain. Use Lagos names as locals say them ("Third Mainland", "Lekki-Epe", "Ikorodu Road"). Never invent a detail the post does not contain; if the post is thin, keep the summary short rather than padding it. No headline restatement, no exclamation marks.
 5. Confidence:
    - 0.9+ if route is clear and severity unambiguous
    - 0.7-0.9 if severity inferred indirectly

@@ -59,16 +59,26 @@ const NEIGHBOURHOODS = [
   { label: 'Ajah',           icon: 'flower-outline', key: 'Ajah' },
 ];
 
-const CATEGORIES = [
-  { label: 'All',        icon: 'apps-outline' },
-  { label: 'Club',       icon: 'musical-note-outline' },
-  { label: 'Restaurant', icon: 'restaurant-outline' },
-  { label: 'Lounge',     icon: 'wine-outline' },
-  { label: 'Bar',        icon: 'beer-outline' },
-  { label: 'Rooftop',    icon: 'sunny-outline' },
-  { label: 'Beach Club', icon: 'umbrella-outline' },
-  { label: 'Hotel',      icon: 'bed-outline' },
-];
+/**
+ * Icons per category. The chip row itself is derived from the venues actually
+ * loaded rather than hardcoded — the old fixed list offered a Hotel chip that
+ * matched nothing (no hotel has ever been in the database) while omitting
+ * Event Center, which does have a venue, leaving it reachable only via All.
+ * Deriving means the row is always exactly the categories that return results.
+ */
+const CATEGORY_ICONS: Record<string, string> = {
+  All: 'apps-outline',
+  Club: 'musical-note-outline',
+  Restaurant: 'restaurant-outline',
+  Lounge: 'wine-outline',
+  Bar: 'beer-outline',
+  Rooftop: 'sunny-outline',
+  'Beach Club': 'umbrella-outline',
+  Hotel: 'bed-outline',
+  Cafe: 'cafe-outline',
+  'Event Center': 'business-outline',
+};
+const CATEGORY_FALLBACK_ICON = 'pricetag-outline';
 
 const PRICE_COLORS: Record<string, string> = {
   Budget: '#22c55e',
@@ -542,11 +552,11 @@ export default function ExploreScreen() {
     if (!params) return;
 
     if (params.category) {
-      const known = CATEGORIES.find(
-        c => c.label.toLowerCase() === params.category!.toLowerCase(),
+      const known = Object.keys(CATEGORY_ICONS).find(
+        label => label.toLowerCase() === params.category!.toLowerCase(),
       );
       if (known) {
-        setActiveCategory(known.label);
+        setActiveCategory(known);
       } else {
         // Unknown bucket — let the search filter try to match it across
         // name/location/description.
@@ -577,8 +587,12 @@ export default function ExploreScreen() {
       setVenues((data as unknown as Venue[]) || []);
     } catch (err) {
       console.error('[Explore] fetch error:', err);
-      // Fallback hardcoded venues if DB is empty
-      setVenues(FALLBACK_VENUES);
+      // Deliberately empty rather than substituting invented venues. The old
+      // fallback used synthetic ids '1'..'6', so tapping one opened a detail
+      // modal for a venue that doesn't exist and any check-in or review
+      // written against it failed. The same bug was removed from
+      // TrendingVenues in May 2026; this was the last copy of it.
+      setVenues([]);
     } finally {
       setLoading(false);
     }
@@ -591,6 +605,21 @@ export default function ExploreScreen() {
   };
 
   // ── Filtering ──
+
+  // Only categories that actually have venues, busiest first.
+  const categories = (() => {
+    const counts = new Map<string, number>();
+    for (const v of venues) {
+      if (!v.category) continue;
+      counts.set(v.category, (counts.get(v.category) ?? 0) + 1);
+    }
+    return [
+      { label: 'All', icon: CATEGORY_ICONS.All },
+      ...[...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([label]) => ({ label, icon: CATEGORY_ICONS[label] ?? CATEGORY_FALLBACK_ICON })),
+    ];
+  })();
 
   const filteredVenues = venues.filter((v) => {
     const catMatch =
@@ -717,7 +746,7 @@ export default function ExploreScreen() {
             style={styles.hScroll}
             contentContainerStyle={styles.hScrollContent}
           >
-            {CATEGORIES.map((cat) => {
+            {categories.map((cat) => {
               const active = activeCategory === cat.label;
               return (
                 <TouchableOpacity
@@ -840,14 +869,6 @@ export default function ExploreScreen() {
 
 // ── Fallback venues (shown if DB is empty) ───────────────────────────────────
 
-const FALLBACK_VENUES: Venue[] = [
-  { id: '1', name: 'Quilox', category: 'Club', location: 'Victoria Island', rating: 4.8, is_verified: true, price_range: 'Premium', professional_media_urls: ['https://images.unsplash.com/photo-1566737236500-c8ac43014a67?w=800&q=80'], description: 'Lagos\' most iconic nightclub with world-class DJs and VIP tables.', features: ['Live DJ', 'VIP Tables', 'Valet Parking', 'Dress Code'] },
-  { id: '2', name: 'NOK by Alara', category: 'Restaurant', location: 'Victoria Island', rating: 4.7, is_verified: true, price_range: 'Premium', professional_media_urls: ['https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80'], description: 'Farm-to-table fine dining in the heart of VI.', features: ['Outdoor Seating', 'Reservations Required', 'Private Rooms'] },
-  { id: '3', name: 'Brass & Copper', category: 'Bar', location: 'Ikoyi', rating: 4.7, is_verified: true, price_range: 'Premium', professional_media_urls: ['https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=800&q=80'], description: 'Lagos\' finest craft cocktail bar.', features: ['Craft Cocktails', 'Happy Hour', 'Reservations'] },
-  { id: '4', name: 'The Shank', category: 'Lounge', location: 'Lekki', rating: 4.7, is_verified: false, price_range: 'Moderate', professional_media_urls: ['https://images.unsplash.com/photo-1543007630-9710e4a00a20?w=800&q=80'], description: 'Lekki\'s coolest hangout spot for good vibes and great food.', features: ['Live Music', 'Outdoor Seating', 'Hookah'] },
-  { id: '5', name: 'Landmark Beach Club', category: 'Beach Club', location: 'Oniru', rating: 4.6, is_verified: true, price_range: 'Premium', professional_media_urls: ['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80'], description: 'Waterfront beach club with pool, cabanas, and stunning lagoon views.', features: ['Pool', 'Beach Access', 'DJ', 'Cabanas'] },
-  { id: '6', name: 'Sky Restaurant & Lounge', category: 'Rooftop', location: 'Lekki', rating: 4.5, is_verified: true, price_range: 'Premium', professional_media_urls: ['https://images.unsplash.com/photo-1445019980597-93fa8acb246c?w=800&q=80'], description: 'Stunning rooftop dining with panoramic Lagos views.', features: ['Rooftop', 'Outdoor Seating', 'Cocktail Bar'] },
-];
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 

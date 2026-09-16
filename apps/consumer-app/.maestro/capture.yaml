@@ -1,0 +1,48 @@
+appId: com.femola.consumerapp
+---
+# Verifies the camera-or-library chooser that fronts every media pick.
+#
+# REQUIRES A SIGNED-IN SESSION. Posting and story creation both gate on auth,
+# so as a guest the compose button routes to Profile to prompt sign-in and this
+# flow has nothing to assert. The guard below fails loudly with that reason
+# rather than failing obscurely three steps later.
+#
+# The simulator has no camera, so "Take photo" cannot be followed through here.
+# What this proves is that the chooser appears offering both routes — the app
+# previously went straight to the photo library with no capture option at all.
+- launchApp
+
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn:
+          point: "90%,48%"
+
+- tapOn: "Profile"
+- assertNotVisible:
+    text: "Guest User"
+
+- tapOn: "Social"
+- tapOn: "Create a post"
+- takeScreenshot: shot-01-composer
+
+- tapOn: "Add a photo"
+- takeScreenshot: shot-02-post-source-chooser
+- tapOn: "Cancel"
+# The composer is a full-screen modal covering the tab bar, so it has to be
+# dismissed before Home is reachable.
+- tapOn: "Close"
+
+# ── Story variant ──────────────────────────────────────────────────────────
+# Stories accept video, so the same helper must offer "Take photo or video"
+# here rather than the photo-only wording the post composer gets.
+- tapOn: "Home"
+- tapOn: "My Vibe"
+- takeScreenshot: shot-03-story-source-chooser

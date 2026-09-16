@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme, polished } from '../contexts/ThemeContext';
+import { NotificationsBell } from '../components/NotificationsBell';
 import { supabase } from '../config/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
@@ -1228,14 +1229,7 @@ export default function SocialScreen() {
         </View>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={styles.headerIconBtn}
-            onPress={() => {}}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="notifications-outline" size={20} color={colors.text} />
-            <View style={styles.headerNotifPip} />
-          </TouchableOpacity>
+          <NotificationsBell />
         </View>
       </View>
 
@@ -1765,6 +1759,8 @@ export default function SocialScreen() {
           style={styles.fab}
           onPress={handleOpenCreateModal}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Create a post"
         >
           <Ionicons name="add" size={28} color="#000" />
         </TouchableOpacity>
@@ -2214,17 +2210,6 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-  },
-  headerNotifPip: {
-    position: 'absolute',
-    top: 9,
-    right: 9,
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: '#EF4444',
-    borderWidth: 2,
-    borderColor: colors.background,
   },
   // ── Search ──────────────────────────────────────────────────────────
   searchContainer: {

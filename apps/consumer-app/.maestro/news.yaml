@@ -1,0 +1,41 @@
+appId: com.femola.consumerapp
+---
+# Gidi News: the feed with Gidi-written headlines and the in-app reader that
+# replaced opening every story in a browser.
+- launchApp
+
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn:
+          point: "90%,48%"
+
+# The Home tile's accessibilityLabel is "<label>, <sub>". On first paint it is
+# a sliver peeking out beneath the floating tab bar: Maestro counts it as
+# visible because its bounds are on-screen, then taps its centre, and the tab
+# bar absorbs the tap. scrollUntilVisible does not help — it is already
+# "visible". A plain scroll first is what a person would do.
+- scroll
+- tapOn: "Gidi News, Latest"
+- takeScreenshot: shot-01-news-feed
+
+# Cards carry testID news-card-<n>; the first "Latest" story is card 0.
+# centerElement matters: without it the scroll stops the moment the card's
+# bounds enter the viewport — beneath the floating tab bar — and the tap on
+# its centre goes to the bar instead.
+- scrollUntilVisible:
+    element:
+      id: "news-card-0"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "news-card-0"
+- takeScreenshot: shot-02-news-reader
+- tapOn: "Close"

@@ -1,0 +1,33 @@
+appId: com.femola.consumerapp
+---
+# Relaunch for a clean starting state each run.
+- launchApp
+
+# The expo-dev-client sheet can appear in two states: the first-run onboarding
+# ("Continue"), and the menu itself behind it. Dismiss whichever is showing.
+# Both are optional so this flow also works once neither appears.
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      # The sheet's close control, tapped by position — it carries no label.
+      - tapOn:
+          point: "90%,48%"
+
+- takeScreenshot: shot-01-home-top
+
+# Down the page, one capture per band, so the whole screen can be reviewed.
+- scroll
+- takeScreenshot: shot-02-home-tiles
+- scroll
+- takeScreenshot: shot-03-home-traffic
+- scroll
+- takeScreenshot: shot-04-home-vibe
+- scroll
+- takeScreenshot: shot-05-home-trending

@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "platforms": [
       "ios",
@@ -21,7 +21,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.femola.consumerapp",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Gidi Connect needs access to your photos so you can add pictures and videos to your posts, vibes and profile picture.",
+        "NSCameraUsageDescription": "Gidi Connect uses your camera so you can capture a photo or video where you are and share it straight to your vibe or post.",
+        "NSMicrophoneUsageDescription": "Gidi Connect uses your microphone so the videos you record for your vibes have sound."
       }
     },
     "android": {
@@ -31,7 +34,14 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.femola.consumerapp"
+      "package": "com.femola.consumerapp",
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -46,7 +56,21 @@
     },
     "plugins": [
       "expo-video",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Gidi Connect needs access to your photos so you can add pictures and videos to your posts, vibes and profile picture.",
+          "cameraPermission": "Gidi Connect uses your camera so you can capture a photo or video where you are and share it straight to your vibe or post.",
+          "microphonePermission": "Gidi Connect uses your microphone so the videos you record for your vibes have sound."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#EAB308"
+        }
+      ]
     ]
   }
 }
