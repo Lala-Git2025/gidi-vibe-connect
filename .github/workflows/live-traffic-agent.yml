@@ -1,0 +1,42 @@
+name: Live Traffic Agent (Every 20 Minutes)
+
+# The quantitative half of the traffic feature: Google Routes API travel-time
+# readings for a curated set of Lagos corridors. Pairs with traffic-agent.yml
+# (the radio-narrative half) — see scripts/live-traffic-agent.js for why both.
+#
+# Cadence caveat, same as the other scheduled agents: GitHub throttles free-tier
+# scheduled workflows under load. traffic-agent.yml is named "Every Hour" and
+# actually fires every 3-6 hours. Expect this one to run less often than every
+# 20 minutes too. It stays correct regardless — each run overwrites the same
+# eight rows with fresher numbers, so a late run is just a late reading, never
+# a wrong one. If genuinely reliable cadence matters, move it to pg_cron + an
+# edge function; that is the fix, not a tighter cron expression.
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+
+jobs:
+  live-traffic:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Read live route times
+        run: node scripts/live-traffic-agent.js --apply
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

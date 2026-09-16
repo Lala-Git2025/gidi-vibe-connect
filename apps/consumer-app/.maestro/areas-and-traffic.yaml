@@ -38,12 +38,15 @@ appId: com.femola.consumerapp
 # routes, so there is no stack to pop.
 - tapOn: "Home"
 
-# Matched on the accessibilityLabel again — it overrides the visible "All 2
-# routes" for anything reading the accessibility tree.
+# Matched on the accessibilityLabel again — it overrides the visible "All
+# traffic" for anything reading the accessibility tree.
 - scrollUntilVisible:
     element:
-      text: "See all .* route.*"
+      text: "See all traffic"
     direction: DOWN
+    centerElement: true
 - tapOn:
-    text: "See all .* route.*"
+    text: "See all traffic"
 - takeScreenshot: shot-04-traffic-screen
+- scroll
+- takeScreenshot: shot-05-traffic-screen-reported

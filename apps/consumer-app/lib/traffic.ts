@@ -78,7 +78,9 @@ export const timeAgo = (ms: number, now = Date.now()): string => {
  * A one-line answer to "should I leave now" — the thing most people opened the
  * section for, readable before they scroll.
  */
-export const verdict = (reports: TrafficReport[]): string => {
+// Accepts anything with a severity so the same line can summarise live route
+// readings (which carry no narrative) as readily as radio reports.
+export const verdict = (reports: Array<{ severity: Severity }>): string => {
   if (reports.length === 0) return '';
   // Each bucket uses the same word the row beneath it shows, so the verdict
   // never says "1 heavy" above a card labelled GRIDLOCK.
@@ -162,4 +164,66 @@ export const useTrafficReports = () => {
   }, []);
 
   return { ...data, loading, load };
+};
+
+// ── Live routes (Google Routes API) ─────────────────────────────────────────
+// The quantitative half of the hybrid. `traffic_reports` above is human-sourced
+// and says WHY a road is bad, but only when someone posts. These rows say HOW
+// MUCH slower a curated set of corridors is right now versus a clear road, and
+// they are overwritten on every run of scripts/live-traffic-agent.js — so they
+// are always the freshest thing on the screen, and they never explain anything.
+
+export interface LiveRoute {
+  id: string;
+  route_key: string;
+  route_label: string;
+  duration_seconds: number | null;
+  typical_duration_seconds: number | null;
+  distance_meters: number | null;
+  /** Never 'closed' — a duration ratio can't tell a closure from gridlock. */
+  severity: Exclude<Severity, 'closed'> | null;
+  updated_at: string;
+}
+
+/** Minutes lost to traffic right now, against a clear road. */
+export const delayMinutes = (r: LiveRoute): number | null =>
+  r.duration_seconds != null && r.typical_duration_seconds != null
+    ? Math.round((r.duration_seconds - r.typical_duration_seconds) / 60)
+    : null;
+
+/**
+ * A reading older than this is shown as stale. The agent is scheduled every
+ * 20 minutes but GitHub throttles it, so this is generous on purpose — it
+ * should flag a broken pipeline, not an ordinary late run.
+ */
+export const LIVE_STALE_MS = 90 * 60 * 1000;
+
+export const newestLiveAt = (routes: LiveRoute[]): number | null =>
+  routes.length ? Math.max(...routes.map(r => new Date(r.updated_at).getTime())) : null;
+
+export const useLiveRoutes = () => {
+  const [routes, setRoutes] = useState<LiveRoute[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from('traffic_live_routes').select('*');
+      if (error || !data) return;
+
+      // Worst first, then most delayed — the same rule as the narrative
+      // reports, so the two lists read the same way.
+      const rank = (r: LiveRoute) => (r.severity ? SEVERITY[r.severity].rank : -1);
+      setRoutes(
+        [...(data as LiveRoute[])].sort(
+          (a, b) => rank(b) - rank(a) || (delayMinutes(b) ?? 0) - (delayMinutes(a) ?? 0),
+        ),
+      );
+    } catch (err) {
+      console.log('Live routes fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { routes, loading, load };
 };

@@ -8,33 +8,55 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useFonts, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { type as T, space as S, gutter, tracking } from '../theme/tokens';
 import { TrafficRow } from '../components/TrafficRow';
+import { LiveRouteRow } from '../components/LiveRouteRow';
 import { LiveDot } from '../components/LiveDot';
-import { useTrafficReports, verdict, timeAgo, isFreshAt } from '../lib/traffic';
+import {
+  useTrafficReports, useLiveRoutes, verdict, timeAgo, isFreshAt,
+  newestLiveAt, LIVE_STALE_MS, type Severity,
+} from '../lib/traffic';
 
 /**
- * Every route the source has classified in the last twelve hours, split by
- * whether it still describes the road now. Reached from Home's traffic band.
+ * Everything the app knows about the roads, in two kinds of row.
+ *
+ * "Right now": every curated corridor with its live Google travel time,
+ * worst first. Quantitative, always fresh, silent on causes.
+ *
+ * "Reported" / "Earlier": the radio reports, split by whether they still
+ * describe the road. Qualitative — the accident, the spillage, the closure —
+ * and only as current as the last post.
  */
 export default function TrafficScreen() {
   const navigation = useNavigation();
   const { colors, activeTheme } = useTheme();
   const styles = getStyles(colors);
-  const { fresh, earlier, all, newestAt, loading, load } = useTrafficReports();
+  const { fresh, earlier, all, newestAt, loading: reportsLoading, load: loadReports } = useTrafficReports();
+  const { routes, loading: liveLoading, load: loadLive } = useLiveRoutes();
   const [refreshing, setRefreshing] = useState(false);
 
   const [fontsLoaded] = useFonts({ Orbitron_900Black });
 
+  const load = useCallback(() => { loadReports(); loadLive(); }, [loadReports, loadLive]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await Promise.all([loadReports(), loadLive()]);
     setRefreshing(false);
   };
 
   if (!fontsLoaded) return null;
 
-  const currentlyFresh = newestAt !== null && isFreshAt(newestAt);
+  const loading = reportsLoading && liveLoading;
+  const nothing = all.length === 0 && routes.length === 0;
+
+  const liveAt = newestLiveAt(routes);
+  const liveFresh = liveAt !== null && Date.now() - liveAt <= LIVE_STALE_MS;
+  const reportsFresh = newestAt !== null && isFreshAt(newestAt);
+  const newest = Math.max(liveAt ?? 0, newestAt ?? 0) || null;
+  const currentlyFresh = liveFresh || reportsFresh;
+
+  const liveForVerdict = routes.flatMap(r => (r.severity ? [{ severity: r.severity as Severity }] : []));
+  const verdictLine = verdict(liveForVerdict.length ? liveForVerdict : all);
   const sourceName = all[0]?.source_name;
 
   return (
@@ -63,13 +85,13 @@ export default function TrafficScreen() {
       >
         <View style={styles.titleSection}>
           <Text style={styles.title}>Lagos Traffic</Text>
-          {all.length > 0 && (
+          {!nothing && (
             <View style={styles.titleMeta}>
-              <Text style={styles.verdict}>{verdict(all)}</Text>
-              {newestAt !== null && (
+              <Text style={styles.verdict}>{verdictLine}</Text>
+              {newest !== null && (
                 <View style={styles.freshness}>
                   {currentlyFresh && <LiveDot color={colors.live} />}
-                  <Text style={styles.freshnessText}>{timeAgo(newestAt)}</Text>
+                  <Text style={styles.freshnessText}>{timeAgo(newest)}</Text>
                 </View>
               )}
             </View>
@@ -78,19 +100,38 @@ export default function TrafficScreen() {
 
         {loading ? (
           <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: S.huge }} />
-        ) : all.length === 0 ? (
+        ) : nothing ? (
           <View style={styles.empty}>
             <Ionicons name="car-outline" size={44} color={colors.textFaint} />
-            <Text style={styles.emptyTitle}>No reports right now</Text>
+            <Text style={styles.emptyTitle}>No readings right now</Text>
             <Text style={styles.emptyBody}>
-              Nothing has come through in the last twelve hours. Pull down to check again.
+              Nothing has come through yet. Pull down to check again.
             </Text>
           </View>
         ) : (
           <>
+            {routes.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHead}>
+                  <Text style={styles.sectionLabel}>Right now</Text>
+                  {liveAt !== null && (
+                    <Text style={styles.sectionMeta}>via Google · {timeAgo(liveAt)}</Text>
+                  )}
+                </View>
+                {!liveFresh && (
+                  <Text style={styles.sectionNote}>
+                    This reading is older than it should be — the live check may not have run recently.
+                  </Text>
+                )}
+                <View style={styles.rows}>
+                  {routes.map(route => <LiveRouteRow key={route.route_key} route={route} />)}
+                </View>
+              </View>
+            )}
+
             {fresh.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Now</Text>
+                <Text style={styles.sectionLabel}>Reported</Text>
                 <View style={styles.rows}>
                   {fresh.map((report, i) => (
                     <TrafficRow key={report.id} report={report} index={i} variant={i === 0 ? 'hero' : 'row'} />
@@ -101,7 +142,7 @@ export default function TrafficScreen() {
 
             {earlier.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Earlier</Text>
+                <Text style={styles.sectionLabel}>Reported earlier</Text>
                 <Text style={styles.sectionNote}>
                   Over four hours old — the road may have cleared since.
                 </Text>
@@ -113,9 +154,10 @@ export default function TrafficScreen() {
               </View>
             )}
 
-            {!!sourceName && (
-              <Text style={styles.source}>Reports via {sourceName}, summarised for Gidi Connect.</Text>
-            )}
+            <Text style={styles.source}>
+              {routes.length > 0 ? 'Live times via Google. ' : ''}
+              {sourceName ? `Reports via ${sourceName}, summarised for Gidi Connect.` : ''}
+            </Text>
           </>
         )}
       </ScrollView>
@@ -161,6 +203,13 @@ const getStyles = (colors: any) => StyleSheet.create({
   freshnessText: { fontSize: T.xs, fontWeight: '700', color: colors.textMuted },
 
   section: { marginBottom: S.xxxl },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: gutter,
+    marginBottom: S.md,
+  },
   sectionLabel: {
     fontSize: T.xs,
     fontWeight: '800',
@@ -170,6 +219,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: gutter,
     marginBottom: S.md,
   },
+  sectionMeta: { fontSize: T.xs, fontWeight: '600', color: colors.textFaint },
   sectionNote: {
     fontSize: T.xs,
     color: colors.textFaint,
