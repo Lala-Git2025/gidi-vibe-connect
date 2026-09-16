@@ -1,20 +1,23 @@
-name: Live Traffic Agent (Every 20 Minutes)
+name: Live Traffic Agent (Every Hour)
 
 # The quantitative half of the traffic feature: Google Routes API travel-time
 # readings for a curated set of Lagos corridors. Pairs with traffic-agent.yml
 # (the radio-narrative half) — see scripts/live-traffic-agent.js for why both.
 #
+# Hourly at :30 — offset from news-agent (:00) and traffic-agent (:15) so the
+# three don't queue behind each other on the same minute.
+#
 # Cadence caveat, same as the other scheduled agents: GitHub throttles free-tier
 # scheduled workflows under load. traffic-agent.yml is named "Every Hour" and
-# actually fires every 3-6 hours. Expect this one to run less often than every
-# 20 minutes too. It stays correct regardless — each run overwrites the same
-# eight rows with fresher numbers, so a late run is just a late reading, never
-# a wrong one. If genuinely reliable cadence matters, move it to pg_cron + an
-# edge function; that is the fix, not a tighter cron expression.
+# actually fires every 3-6 hours. Expect the same here. It stays correct
+# regardless — each run overwrites the same eight rows with fresher numbers, so
+# a late run is just a late reading, never a wrong one, and the app prints the
+# reading's real age next to it. If genuinely reliable cadence ever matters,
+# move it to pg_cron + an edge function; that is the fix, not a tighter cron.
 
 on:
   schedule:
-    - cron: '*/20 * * * *'
+    - cron: '30 * * * *'
   workflow_dispatch:
 
 jobs:

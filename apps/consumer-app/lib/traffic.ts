@@ -192,11 +192,13 @@ export const delayMinutes = (r: LiveRoute): number | null =>
     : null;
 
 /**
- * A reading older than this is shown as stale. The agent is scheduled every
- * 20 minutes but GitHub throttles it, so this is generous on purpose — it
- * should flag a broken pipeline, not an ordinary late run.
+ * A reading older than this is shown as stale. The agent is scheduled hourly
+ * and GitHub routinely fires free-tier schedules 3-6h late, so this sits past
+ * that on purpose: it should flag a broken pipeline, not an ordinary late run.
+ * The reading's real age is always printed beside it regardless — this is the
+ * second-level warning, not the only one.
  */
-export const LIVE_STALE_MS = 90 * 60 * 1000;
+export const LIVE_STALE_MS = 6 * 60 * 60 * 1000;
 
 export const newestLiveAt = (routes: LiveRoute[]): number | null =>
   routes.length ? Math.max(...routes.map(r => new Date(r.updated_at).getTime())) : null;
