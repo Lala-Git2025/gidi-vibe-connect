@@ -27,6 +27,23 @@ maestro test .maestro/areas-and-traffic.yaml
 | `home.yaml` | Home, top to bottom |
 | `areas-and-traffic.yaml` | The area grid (which absorbed Vibe Check) and the full traffic list |
 | `capture.yaml` | The camera-or-library chooser on posts and stories. **Needs a signed-in session** — both surfaces gate on auth, and as a guest the compose button routes to Profile instead. It asserts that up front so the reason is obvious. |
+| `news.yaml` | Gidi News feed and the in-app reader. |
+
+## The floating tab bar lies to Maestro
+
+An element whose bounds are on-screen but *underneath* the floating tab bar
+counts as visible. `scrollUntilVisible` stops the moment the card's bottom
+edge enters the viewport, `tapOn` hits its centre, the tab bar absorbs the
+tap, and the step reports COMPLETED with nothing having navigated. The
+screenshot after it shows the same screen you started on.
+
+- For anything reached by scrolling: `scrollUntilVisible` with
+  `centerElement: true`.
+- For a Home tile that is a sliver above the bar on first paint: a plain
+  `- scroll` first, then tap.
+
+This cost two debug cycles before it was obvious; the tell is a "successful"
+tap followed by an unchanged screenshot.
 
 ## Notes
 

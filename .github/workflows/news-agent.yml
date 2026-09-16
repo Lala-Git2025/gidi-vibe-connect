@@ -50,7 +50,18 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
+      # Turns what the scraper just collected into briefs read inside the app.
+      # Runs even if the scraper found nothing new, so a backlog from a failed
+      # run still gets worked through.
+      - name: Curate for Gidi News
+        if: always()
+        run: node scripts/gidi-news-editor-agent.js
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
       - name: Log completion
         run: |
           echo "✅ News agent completed at $(date)"
-          echo "📰 Next run in 3 hours"
+          echo "📰 Next run in 1 hour"

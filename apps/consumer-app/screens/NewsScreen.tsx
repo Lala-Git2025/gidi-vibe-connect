@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  Image, ActivityIndicator, RefreshControl, Linking, Alert,
+  Image, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -9,19 +9,57 @@ import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { NewsReader } from '../components/NewsReader';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface NewsItem {
   id: string;
+  /** Gidi's headline once the editor agent has run; the original until then. */
   title: string;
   summary: string;
+  /** Always a key from GIDI_CATEGORIES. */
   category: string;
+  brief?: string | null;
+  relevance?: number | null;
   external_url?: string;
   featured_image_url?: string;
   publish_date: string;
   source?: string;
 }
+
+// ─── Categories ───────────────────────────────────────────────────────────────
+// The taxonomy the editor agent writes. The old per-source categories were
+// wrong often enough that a Wike/APC story sat under "nightlife"; the client
+// keyword heuristic below is now only a fallback for rows the agent has not
+// reached yet, and its output is mapped into this list.
+
+const GIDI_CATEGORIES: { key: string; label: string }[] = [
+  { key: 'All',        label: 'All' },
+  { key: 'nightlife',  label: 'Nightlife' },
+  { key: 'food-drink', label: 'Food & Drink' },
+  { key: 'music',      label: 'Music' },
+  { key: 'events',     label: 'Events' },
+  { key: 'culture',    label: 'Culture' },
+  { key: 'city',       label: 'City' },
+  { key: 'traffic',    label: 'Traffic' },
+  { key: 'business',   label: 'Business' },
+  { key: 'sport',      label: 'Sport' },
+  { key: 'politics',   label: 'Politics' },
+];
+
+const LEGACY_TO_GIDI: Record<string, string> = {
+  general: 'city', politics: 'politics', crime: 'city', business: 'business',
+  entertainment: 'culture', sports: 'sport', events: 'events', lifestyle: 'culture',
+  health: 'city', technology: 'business', education: 'city', nightlife: 'nightlife',
+  food: 'food-drink', traffic: 'traffic',
+};
+
+const categoryLabel = (key: string): string =>
+  GIDI_CATEGORIES.find(c => c.key === key)?.label ?? 'City';
+
+/** Below this the story is not worth a going-out audience's attention. */
+const MIN_RELEVANCE = 30;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -65,8 +103,18 @@ const SOURCE_MAP: Record<string, string> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// The scraper files some publishers under several names ('Punch', 'Legit.ng
+// Entertainment'); one name per publisher, so a rail never shows both.
+const SOURCE_ALIASES: Record<string, string> = {
+  'Punch': 'The Punch',
+  'Legit.ng Nigeria': 'Legit.ng',
+  'Legit.ng Entertainment': 'Legit.ng',
+};
+
 function getSourceName(source: string | undefined, url: string | undefined): string {
-  if (source && source !== 'AI Agent' && source !== 'Unknown Source') return source;
+  if (source && source !== 'AI Agent' && source !== 'Unknown Source') {
+    return SOURCE_ALIASES[source] ?? source;
+  }
   if (!url) return 'Lagos News';
   try {
     const host = new URL(url).hostname.replace('www.', '');
@@ -197,6 +245,9 @@ export default function NewsScreen() {
   const [refreshing, setRefreshing]     = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
+  // The story open in the in-app reader, if any.
+  const [reading, setReading] = useState<NewsItem | null>(null);
+
   // News image URLs that 404'd / failed hotlink checks — show placeholder instead.
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const markBroken = (url: string) =>
@@ -206,8 +257,6 @@ export default function NewsScreen() {
       next.add(url);
       return next;
     });
-
-  const categories = ['All', 'general', 'politics', 'crime', 'business', 'entertainment', 'sports', 'events', 'lifestyle', 'health', 'technology', 'education', 'nightlife', 'food', 'traffic'];
 
   // ── Fetch ────────────────────────────────────────────────────────────────────
 
@@ -219,8 +268,10 @@ export default function NewsScreen() {
 
       const { data, error } = await supabase
         .from('news')
-        .select('id, title, summary, category, external_url, featured_image_url, publish_date, source')
+        .select('id, title, summary, category, external_url, featured_image_url, publish_date, source, gidi_headline, brief, gidi_category, relevance')
         .not('external_url', 'is', null)
+        .eq('is_active', true)
+        .is('duplicate_of', null)             // one story, once — the agent marks repeats
         .gte('publish_date', cutoff)          // last MAX_AGE_HOURS
         .order('publish_date', { ascending: false })
         .limit(200);
@@ -232,14 +283,21 @@ export default function NewsScreen() {
       }
 
       const valid = (data || []).filter(item => isValidUrl(item.external_url));
-      // Re-categorize every article based on actual content (fixes wrong DB categories)
-      // and route image URLs through the weserv proxy so hotlink-protected CDNs render.
-      const recategorized = valid.map(item => ({
-        ...item,
-        category: categorizeArticle(item.title, item.summary),
-        featured_image_url: proxyImage(item.featured_image_url),
-      }));
-      const deduped = deduplicateNews(recategorized).slice(0, 80);
+      // Prefer what the editor agent wrote. Rows it has not reached yet fall
+      // back to the original title and the keyword heuristic, mapped into the
+      // Gidi taxonomy so the chips still work. Curated rows the agent scored
+      // as not worth a going-out audience's time are dropped here.
+      const curated = valid
+        .filter(item => item.relevance == null || item.relevance >= MIN_RELEVANCE)
+        .map(item => ({
+          ...item,
+          title: item.gidi_headline || item.title,
+          category: item.gidi_category
+            || LEGACY_TO_GIDI[categorizeArticle(item.title, item.summary)]
+            || 'city',
+          featured_image_url: proxyImage(item.featured_image_url),
+        }));
+      const deduped = deduplicateNews(curated).slice(0, 80);
       setNews(deduped);
       setLastUpdated(new Date());
     } catch (err) {
@@ -259,20 +317,14 @@ export default function NewsScreen() {
   // ── Derived data ─────────────────────────────────────────────────────────────
 
   const filtered = news.filter(item =>
-    activeCategory === 'All' ||
-    item.category.toLowerCase() === activeCategory.toLowerCase()
+    activeCategory === 'All' || item.category === activeCategory
   );
 
   const breaking = filtered.filter(item => hoursAgo(item.publish_date) <= BREAKING_AGE_HOURS);
   const latest   = filtered.filter(item => hoursAgo(item.publish_date) >  BREAKING_AGE_HOURS);
 
-  const openArticle = (url?: string) => {
-    if (url) {
-      Linking.openURL(url).catch(() =>
-        Alert.alert('Unable to open article', 'The link could not be opened.'),
-      );
-    }
-  };
+  // Opens the in-app reader. Was Linking.openURL — every tap left the app.
+  const openArticle = (item: NewsItem) => setReading(item);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -308,20 +360,23 @@ export default function NewsScreen() {
             )}
           </View>
           <Text style={styles.title}>Latest Lagos News</Text>
-          <Text style={styles.subtitle}>Last 24 hours from top Nigerian sources</Text>
+          {/* Was "Last 24 hours" over a seven-day window. */}
+          <Text style={styles.subtitle}>Briefed by Gidi from Lagos's top sources</Text>
         </View>
 
         {/* ── Categories ── */}
         <View style={styles.categoriesSection}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesContent}>
-            {categories.map((cat) => (
+            {GIDI_CATEGORIES.map(({ key, label }) => (
               <TouchableOpacity
-                key={cat}
-                style={[styles.categoryBtn, activeCategory === cat && styles.categoryBtnActive]}
-                onPress={() => setActiveCategory(cat)}
+                key={key}
+                style={[styles.categoryBtn, activeCategory === key && styles.categoryBtnActive]}
+                onPress={() => setActiveCategory(key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: activeCategory === key }}
               >
-                <Text style={[styles.categoryBtnText, activeCategory === cat && styles.categoryBtnTextActive]}>
-                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                <Text style={[styles.categoryBtnText, activeCategory === key && styles.categoryBtnTextActive]}>
+                  {label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -357,8 +412,10 @@ export default function NewsScreen() {
                     <TouchableOpacity
                       key={article.id}
                       style={styles.breakingCard}
-                      onPress={() => openArticle(article.external_url)}
+                      onPress={() => openArticle(article)}
                       activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={article.title}
                     >
                       {article.featured_image_url && !brokenImages.has(article.featured_image_url) ? (
                         <Image
@@ -384,7 +441,7 @@ export default function NewsScreen() {
                       {/* Content */}
                       <View style={styles.breakingBottom}>
                         <View style={styles.breakingCatBadge}>
-                          <Text style={styles.breakingCatText}>{article.category.toUpperCase()}</Text>
+                          <Text style={styles.breakingCatText}>{categoryLabel(article.category).toUpperCase()}</Text>
                         </View>
                         <Text style={styles.breakingTitle} numberOfLines={3}>{article.title}</Text>
                         <Text style={styles.breakingSource}>
@@ -404,12 +461,15 @@ export default function NewsScreen() {
                   <Text style={styles.sectionTitle}>Latest News</Text>
                   <Text style={styles.sectionCount}>{latest.length} articles</Text>
                 </View>
-                {latest.map(article => (
+                {latest.map((article, i) => (
                   <TouchableOpacity
                     key={article.id}
+                    testID={`news-card-${i}`}
                     style={styles.latestCard}
-                    onPress={() => openArticle(article.external_url)}
+                    onPress={() => openArticle(article)}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={article.title}
                   >
                     {/* Thumbnail */}
                     {article.featured_image_url && !brokenImages.has(article.featured_image_url) ? (
@@ -428,12 +488,12 @@ export default function NewsScreen() {
                     {/* Text */}
                     <View style={styles.latestContent}>
                       <View style={styles.latestMeta}>
-                        <Text style={styles.latestCat}>{article.category.toUpperCase()}</Text>
+                        <Text style={styles.latestCat}>{categoryLabel(article.category).toUpperCase()}</Text>
                         <Text style={styles.latestTime}>{formatDate(article.publish_date)}</Text>
                       </View>
                       <Text style={styles.latestTitle} numberOfLines={2}>{article.title}</Text>
                       <Text style={styles.latestSource} numberOfLines={1}>
-                        {getSourceName(article.source, article.external_url)} · Read more →
+                        {getSourceName(article.source, article.external_url)}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -445,6 +505,26 @@ export default function NewsScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      <NewsReader
+        item={reading && {
+          id: reading.id,
+          title: reading.title,
+          brief: reading.brief,
+          summary: reading.summary,
+          categoryLabel: categoryLabel(reading.category),
+          // The feed already knows which images failed; don't make the
+          // reader discover it again.
+          featured_image_url: reading.featured_image_url && !brokenImages.has(reading.featured_image_url)
+            ? reading.featured_image_url
+            : undefined,
+          publish_date: reading.publish_date,
+          sourceName: getSourceName(reading.source, reading.external_url),
+          external_url: reading.external_url,
+          timeLabel: formatDate(reading.publish_date),
+        }}
+        onClose={() => setReading(null)}
+      />
     </SafeAreaView>
   );
 }
