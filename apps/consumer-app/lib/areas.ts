@@ -40,7 +40,7 @@ export const LAGOS_AREAS: LagosArea[] = [
     shortName: 'Lekki',
     blurb: 'Trendy bars and beach clubs',
     icon: 'sunny',
-    aliases: ['Lekki', 'Lekki Phase 1', 'Lekki Phase 2'],
+    aliases: ['Lekki', 'Lekki Phase 1', 'Lekki Phase 2', 'Chevron', 'Chevy View'],
   },
   {
     id: 'ikoyi',
@@ -116,6 +116,129 @@ export const LAGOS_AREAS: LagosArea[] = [
     blurb: 'Mall-side bars and casual dining',
     icon: 'storefront',
     aliases: ['Maryland'],
+  },
+
+  // ── Mainland expansion ──────────────────────────────────────────────────
+  // The original eleven left the island's downtown cluster (VI/Ikoyi/Oniru/
+  // Lagos Island) crowded with overlapping addresses and the mainland almost
+  // entirely unrepresented. A discovery run against real Google Places data
+  // showed the overlap problem directly: adding more areas to that cluster
+  // just produces more of the same venues reattributed between neighbours,
+  // not new ground. The mainland has genuine unclaimed territory instead —
+  // distinct neighbourhoods with their own real nightlife identity. Epe is
+  // the one addition to the island corridor, and it's far enough down the
+  // Lekki-Epe corridor not to overlap the existing cluster.
+  {
+    id: 'opebi',
+    name: 'Opebi',
+    shortName: 'Opebi',
+    blurb: 'Ikeja’s bar and lounge strip',
+    icon: 'flame',
+    aliases: ['Opebi', 'Opebi Road'],
+  },
+  {
+    id: 'gbagada',
+    name: 'Gbagada',
+    shortName: 'Gbagada',
+    blurb: 'An emerging mainland bar scene',
+    icon: 'leaf',
+    aliases: ['Gbagada'],
+  },
+  {
+    id: 'magodo',
+    name: 'Magodo',
+    shortName: 'Magodo',
+    blurb: 'Upscale mainland dining',
+    icon: 'business',
+    aliases: ['Magodo', 'Magodo GRA'],
+  },
+  {
+    id: 'ogudu',
+    name: 'Ogudu',
+    shortName: 'Ogudu',
+    blurb: 'Waterside spots off the expressway',
+    icon: 'water',
+    aliases: ['Ogudu', 'Ogudu GRA'],
+  },
+  {
+    id: 'anthony',
+    name: 'Anthony',
+    shortName: 'Anthony',
+    blurb: 'Mainland bars and grills',
+    icon: 'storefront',
+    aliases: ['Anthony', 'Anthony Village'],
+  },
+  {
+    id: 'ilupeju',
+    name: 'Ilupeju',
+    shortName: 'Ilupeju',
+    blurb: 'Industrial-mainland eateries',
+    icon: 'construct',
+    aliases: ['Ilupeju'],
+  },
+  {
+    id: 'apapa',
+    name: 'Apapa',
+    shortName: 'Apapa',
+    blurb: 'Port-side restaurants and lounges',
+    icon: 'boat',
+    aliases: ['Apapa', 'Apapa GRA'],
+  },
+  {
+    id: 'amuwo-odofin',
+    name: 'Amuwo Odofin',
+    shortName: 'Amuwo',
+    blurb: 'Festac-adjacent local favourites',
+    icon: 'home',
+    aliases: ['Amuwo Odofin', 'Amuwo'],
+  },
+  {
+    id: 'isolo',
+    name: 'Isolo',
+    shortName: 'Isolo',
+    blurb: 'Dense mainland eateries and bars',
+    icon: 'grid',
+    aliases: ['Isolo'],
+  },
+  {
+    id: 'oshodi',
+    name: 'Oshodi',
+    shortName: 'Oshodi',
+    blurb: 'Transit-hub food and nightlife',
+    icon: 'train',
+    aliases: ['Oshodi'],
+  },
+  {
+    id: 'agege',
+    name: 'Agege',
+    shortName: 'Agege',
+    blurb: 'Local mainland spots',
+    icon: 'home',
+    aliases: ['Agege'],
+  },
+  {
+    id: 'ikorodu',
+    name: 'Ikorodu',
+    shortName: 'Ikorodu',
+    blurb: 'Far-mainland neighbourhood spots',
+    icon: 'map',
+    aliases: ['Ikorodu'],
+  },
+  {
+    id: 'shomolu',
+    name: 'Shomolu',
+    shortName: 'Shomolu',
+    blurb: 'Mainland bukas and bars',
+    icon: 'storefront',
+    aliases: ['Shomolu', 'Bariga'],
+  },
+  {
+    id: 'epe',
+    name: 'Epe',
+    shortName: 'Epe',
+    blurb: 'Beachfront resorts down the coast',
+    icon: 'umbrella',
+    aliases: ['Epe'],
   },
 ];
 
