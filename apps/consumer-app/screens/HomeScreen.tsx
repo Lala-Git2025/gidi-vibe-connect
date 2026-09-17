@@ -119,14 +119,20 @@ export default function HomeScreen() {
         <StorySection />
 
         {/* ── Search ─────────────────────────────────────────────────────── */}
+        {/* This used to navigate to Explore with no params, so a control
+            labelled "Search venues, areas…" opened an unfiltered venue list
+            with the keyboard down and no way to reach an area at all. It now
+            opens the Search screen, which queries venues, areas, events, news
+            and people and focuses its field on arrival. */}
         <TouchableOpacity
           style={styles.searchBar}
-          onPress={() => (navigation as any).navigate('Explore')}
+          onPress={() => (navigation as any).navigate('Search')}
           activeOpacity={0.7}
           accessibilityRole="search"
+          accessibilityLabel="Search venues, areas, events, news and people"
         >
           <Ionicons name="search" size={17} color={colors.textFaint} />
-          <Text style={styles.searchPlaceholder}>Search venues, areas…</Text>
+          <Text style={styles.searchPlaceholder}>Search venues, areas, events…</Text>
         </TouchableOpacity>
 
         {/* ── Explore the area ───────────────────────────────────────────── */}

@@ -4,7 +4,7 @@ import {
   Image, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
@@ -237,6 +237,7 @@ function categorizeArticle(title: string, summary: string = ''): string {
 
 export default function NewsScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const { colors, activeTheme } = useTheme();
   const styles = getStyles(colors);
 
@@ -325,6 +326,61 @@ export default function NewsScreen() {
 
   // Opens the in-app reader. Was Linking.openURL — every tap left the app.
   const openArticle = (item: NewsItem) => setReading(item);
+
+  // A `newsId` param opens that story's reader directly — this is where a Gidi
+  // News hit from the Search screen lands.
+  //
+  // The id is copied into state and the param cleared immediately, in two
+  // steps rather than one. Reading it straight out of `route.params` in the
+  // effect below does not survive: that effect also depends on `news`, so the
+  // feed arriving mid-flight tore down the in-flight fetch and the re-run then
+  // found the param already cleared — the reader silently never opened.
+  const [pendingNewsId, setPendingNewsId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = route.params as { newsId?: string } | undefined;
+    if (!params?.newsId) return;
+    setPendingNewsId(params.newsId);
+    navigation.setParams({ newsId: undefined } as any);
+  }, [route.params]);
+
+  // The story is not necessarily in `news`: the feed only loads the last
+  // MAX_AGE_HOURS and drops anything below the relevance floor, while search
+  // deliberately applies neither. So a miss fetches the single row rather than
+  // failing silently, which is what "open the thing I just tapped" requires.
+  useEffect(() => {
+    if (!pendingNewsId) return;
+
+    const local = news.find(item => item.id === pendingNewsId);
+    if (local) {
+      setReading(local);
+      setPendingNewsId(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('news')
+        .select('id, title, summary, category, external_url, featured_image_url, publish_date, source, gidi_headline, brief, gidi_category')
+        .eq('id', pendingNewsId)
+        .maybeSingle();
+
+      if (cancelled || error || !data) return;
+      const item = data as any;
+      setReading({
+        ...item,
+        title: item.gidi_headline || item.title,
+        category: item.gidi_category
+          || LEGACY_TO_GIDI[categorizeArticle(item.title, item.summary)]
+          || 'city',
+        featured_image_url: proxyImage(item.featured_image_url),
+      });
+      setPendingNewsId(null);
+    })();
+
+    return () => { cancelled = true; };
+  }, [pendingNewsId, news]);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 

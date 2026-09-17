@@ -540,16 +540,30 @@ export default function ExploreScreen() {
   }, [route.params, venues]);
 
   // Apply category / neighbourhood / search filter when navigated from
-  // DiscoverScreen tiles (or any external entry point).
+  // DiscoverScreen tiles, the Search screen, or any other external entry point.
   //   - `category`     → matches a CATEGORIES chip when possible.
   //                      Pseudo-categories ('brunch', 'first_dates', etc.)
   //                      drop into the search box as free-text.
   //   - `neighbourhood`→ sets the area chip directly.
+  //   - `search`       → free text, straight into the search box. This is
+  //                      where "Show all N venues" from the Search screen
+  //                      lands, so the list it opens is the list that was
+  //                      being previewed rather than an unfiltered one.
   useEffect(() => {
     const params = route.params as
-      | { category?: string; neighbourhood?: string }
+      | { category?: string; neighbourhood?: string; search?: string }
       | undefined;
     if (!params) return;
+
+    if (params.search) {
+      setSearchQuery(params.search);
+      // Free text and a category chip fight each other — a search for "rooftop"
+      // inside category Bar hides rooftop restaurants. Text wins; the chip
+      // resets so the result set matches what the Search screen counted.
+      setActiveCategory('All');
+      setActiveNeighbourhood('');
+      navigation.setParams({ search: undefined } as any);
+    }
 
     if (params.category) {
       const known = Object.keys(CATEGORY_ICONS).find(

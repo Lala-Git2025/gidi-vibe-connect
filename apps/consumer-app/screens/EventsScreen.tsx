@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../config/supabase';
 import { useTheme, polished } from '../contexts/ThemeContext';
@@ -94,6 +94,7 @@ const getCategoryFallbackImage = (category: string | null | undefined): string =
 
 export default function EventsScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const { colors, activeTheme } = useTheme();
   const [activeFilter, setActiveFilter] = useState('All Events');
   const [events, setEvents] = useState<Event[]>([]);
@@ -102,6 +103,19 @@ export default function EventsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [rsvpdEventIds, setRsvpdEventIds] = useState<Set<string>>(new Set());
+  /** Set by an `eventId` param; narrows the list to that one event. */
+  const [focusId, setFocusId] = useState<string | null>(null);
+
+  // Held in state rather than read from params on every render: the param is
+  // cleared immediately so that going back and returning to this tab shows the
+  // full list again, instead of silently re-focusing a stale event.
+  useEffect(() => {
+    const params = route.params as { eventId?: string } | undefined;
+    if (!params?.eventId) return;
+    setFocusId(params.eventId);
+    setActiveFilter('All Events');
+    navigation.setParams({ eventId: undefined } as any);
+  }, [route.params]);
 
   const [fontsLoaded] = useFonts({
     Orbitron_700Bold,
@@ -329,12 +343,20 @@ export default function EventsScreen() {
   const getSourceLabel = (source: string): string =>
     SOURCE_LABELS[source] ?? 'Lagos Events';
 
-  const filteredEvents = events.filter((event) => {
-    if (activeFilter === 'All Events') return true;
-    const cat = event.category?.toLowerCase() ?? '';
-    return cat === activeFilter.toLowerCase() ||
-      cat.includes(activeFilter.toLowerCase());
-  });
+  // A `focusId` narrows the list to the one event that was tapped elsewhere —
+  // the Search screen, today. The screen has no per-event detail view, so
+  // rather than dropping someone into a hundred-row list and leaving them to
+  // find it, the list becomes that event, with a banner back to everything.
+  const focusedEvent = focusId ? events.find(e => e.id === focusId) ?? null : null;
+
+  const filteredEvents = focusedEvent
+    ? [focusedEvent]
+    : events.filter((event) => {
+        if (activeFilter === 'All Events') return true;
+        const cat = event.category?.toLowerCase() ?? '';
+        return cat === activeFilter.toLowerCase() ||
+          cat.includes(activeFilter.toLowerCase());
+      });
 
   const featuredEvents = filteredEvents.filter((e) => e.is_featured);
   const regularEvents = filteredEvents.filter((e) => !e.is_featured);
@@ -390,7 +412,28 @@ export default function EventsScreen() {
           </Text>
         </View>
 
+        {/* ── Focused on one event ── */}
+        {/* Shown instead of the category filters, not above them: a row of
+            category chips over a list of exactly one event invites taps that
+            appear to do nothing. */}
+        {focusedEvent && (
+          <TouchableOpacity
+            style={styles.focusBanner}
+            onPress={() => setFocusId(null)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Show all events"
+          >
+            <Ionicons name="funnel" size={15} color={colors.primary} />
+            <Text style={styles.focusBannerText} numberOfLines={1}>
+              Showing one event
+            </Text>
+            <Text style={styles.focusBannerAction}>Show all</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Filters */}
+        {!focusedEvent && (
         <View style={styles.filtersSection}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
             {filters.map((filter) => (
@@ -414,6 +457,7 @@ export default function EventsScreen() {
             ))}
           </ScrollView>
         </View>
+        )}
 
         {/* ── Featured Events ── */}
         {featuredEvents.length > 0 && (
@@ -645,6 +689,21 @@ const getStyles = (colors: any) =>
     // ── Filters — polished pill chips ──
     filtersSection: { marginBottom: 8 },
     filtersScroll: { paddingHorizontal: 18 },
+    focusBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginHorizontal: 18,
+      marginBottom: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.cardBackground,
+    },
+    focusBannerText: { flex: 1, fontSize: 13, color: colors.textSecondary },
+    focusBannerAction: { fontSize: 13, fontWeight: '700', color: colors.primary },
     filterButton: {
       paddingHorizontal: 14,
       paddingVertical: 7,
