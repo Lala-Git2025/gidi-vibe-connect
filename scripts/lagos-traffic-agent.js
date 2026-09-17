@@ -36,14 +36,21 @@ dotenv.config();
 
 const SOURCE_URL   = process.env.TRAFFIC_SOURCE_URL || 'https://trafficradio961.ng/news/traffic-updates/';
 const MAX_POSTS    = Number(process.env.TRAFFIC_MAX_POSTS || 10);
-// 'gemini-flash-latest' is Google's own alias for "whatever the current flash
-// model is" — deliberately not pinned to a dated version. This is the second
-// time a hardcoded model name has been silently retired out from under this
-// script: gemini-2.0-flash superseded in 2026, then gemini-2.5-flash blocked
-// for API-key access on 2026-09-16 while still listed by the models endpoint
-// (the generateContent call 404'd; only that call, not the listing, enforces
-// the cutoff). The alias is Google's fix for exactly this failure mode.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+// Pinned to a LITE model, deliberately not an alias.
+//
+// The history here is worth keeping: gemini-2.0-flash was superseded, then
+// gemini-2.5-flash was blocked for API-key access on 2026-09-16 while still
+// appearing in the models listing (only generateContent enforces the cutoff).
+// The obvious fix looked like 'gemini-flash-latest' — let Google point us at
+// the current model. That backfired: the alias resolves to the NEWEST flash
+// model, which carries the tightest free-tier quota (it landed on
+// gemini-3.8-flash, limit 20 requests), and the news agent's briefs collapsed
+// under 429s.
+//
+// Lite models have far more generous free-tier limits. Pinned, so a
+// retirement is a loud 404 we fix on purpose rather than a silent slide onto
+// a model the free tier can't sustain.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;

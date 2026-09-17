@@ -44,11 +44,20 @@ dotenv.config();
 const SUPABASE_URL   = process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY    = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GEMINI_KEY     = process.env.GEMINI_API_KEY;
-// 'gemini-flash-latest' is Google's alias for the current flash model, kept
-// unpinned deliberately — see the matching note in lagos-traffic-agent.js.
-// gemini-2.5-flash was blocked for API-key access on 2026-09-16, the same day
-// this script's first production run hit it.
-const GEMINI_MODEL   = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+// Pinned to a LITE model on purpose, and pinned rather than aliased.
+//
+// 'gemini-flash-latest' looked like the safe, future-proof choice after
+// gemini-2.5-flash was retired mid-flight. It wasn't: the alias tracks forward
+// onto whatever the newest flash model is, and that model carries the
+// *tightest* free-tier quota. It resolved to gemini-3.8-flash with a limit of
+// 20 requests, which is why production runs returned a wall of 503s and then
+// 429s and briefed 3 stories out of 60.
+//
+// Lite models carry far more generous free-tier limits, which is what a
+// batch job over hundreds of rows actually needs. Pinning means a retirement
+// shows up as a loud 404 (fix it deliberately) instead of a silent slide onto
+// a model we can't afford to call.
+const GEMINI_MODEL   = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 const BATCH          = Number(process.env.NEWS_EDITOR_BATCH || 60);
 const LOOKBACK_HOURS = Number(process.env.NEWS_EDITOR_LOOKBACK_HOURS || 72);
 const DRY_RUN        = process.argv.includes('--dry-run');
@@ -193,6 +202,43 @@ async function writeBrief(input) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Transient, worth retrying: 429 (rate limited), 503 (model overloaded), 500
+ * and 504 (server-side blips). Anything else — 400 for a malformed request,
+ * 403 for a dead key, 404 for a retired model — is a real problem that
+ * retrying only hides, so it fails immediately and loudly.
+ */
+const RETRYABLE = new Set([429, 500, 503, 504]);
+
+/**
+ * Up to four attempts with exponential backoff (4s, 12s, 36s).
+ *
+ * The first version treated only 429 as retryable and gave up on everything
+ * else. Gemini returned 503 "model is currently experiencing high demand" 17
+ * times in one production run, so 22 of 60 stories failed outright and three
+ * got briefs. Those rows keep `curated_at = null` and do come back around on
+ * the next run, but at that hit rate the backlog grows faster than it drains
+ * — 619 stories were sitting unbriefed when this was found.
+ */
+async function briefWithRetry(input, label) {
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await writeBrief(input);
+    } catch (err) {
+      const last = attempt === MAX_ATTEMPTS;
+      if (!RETRYABLE.has(err.status) || last) {
+        console.log(`  !  ${label}\n       ${err.message}`);
+        return null;
+      }
+      const backoff = 4000 * Math.pow(3, attempt - 1);
+      console.log(`       ${err.status} — retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${MAX_ATTEMPTS})`);
+      await sleep(backoff);
+    }
+  }
+  return null;
+}
+
 const STOP = new Set(['the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or', 'as', 'by', 'with', 'from', 'is', 'are', 'was', 'were', 'be', 'has', 'have', 'had', 'that', 'this', 'it', 'its', 'over', 'after', 'amid', 'says', 'say', 'said']);
 
 /**
@@ -296,21 +342,14 @@ async function main() {
     if (!body) stats.bodyMissing++;
 
     // ── Brief
-    let out;
-    try {
-      out = await writeBrief({ title: row.title, snippet: row.summary || '', body: body || '', source: sourceFor(row) });
-    } catch (err) {
-      if (err.status === 429) {
-        console.log(`  !  rate limited — pausing 30s`);
-        await sleep(30_000);
-        try { out = await writeBrief({ title: row.title, snippet: row.summary || '', body: body || '', source: sourceFor(row) }); }
-        catch (again) { stats.failed++; console.log(`  !  ${label}\n       ${again.message}`); await sleep(PACE_MS); continue; }
-      } else {
-        stats.failed++;
-        console.log(`  !  ${label}\n       ${err.message}`);
-        await sleep(PACE_MS);
-        continue;
-      }
+    const out = await briefWithRetry(
+      { title: row.title, snippet: row.summary || '', body: body || '', source: sourceFor(row) },
+      label,
+    );
+    if (!out) {
+      stats.failed++;
+      await sleep(PACE_MS);
+      continue;
     }
 
     const relevance = Math.max(0, Math.min(100, Math.round(Number(out.relevance) || 0)));
