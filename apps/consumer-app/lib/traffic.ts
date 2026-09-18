@@ -173,23 +173,75 @@ export const useTrafficReports = () => {
 // they are overwritten on every run of scripts/live-traffic-agent.js — so they
 // are always the freshest thing on the screen, and they never explain anything.
 
+/**
+ * How this reading compares with what the corridor normally does at this hour
+ * on this day of the week. `null` means no baseline row exists yet — show the
+ * severity alone and omit the comparison rather than inventing one.
+ */
+export type VsUsual = 'better' | 'normal' | 'worse' | 'much_worse';
+
 export interface LiveRoute {
   id: string;
   route_key: string;
   route_label: string;
   duration_seconds: number | null;
+  /**
+   * MISNOMER kept for compatibility: this is Google `staticDuration`, the
+   * FREE-FLOW drive with no traffic — not a typical one. Used only to derive
+   * `severity`. For what the road usually takes, use expected_duration_seconds.
+   */
   typical_duration_seconds: number | null;
+  /** What this corridor normally takes at this hour on this weekday. */
+  expected_duration_seconds: number | null;
+  vs_usual: VsUsual | null;
   distance_meters: number | null;
   /** Never 'closed' — a duration ratio can't tell a closure from gridlock. */
   severity: Exclude<Severity, 'closed'> | null;
   updated_at: string;
 }
 
-/** Minutes lost to traffic right now, against a clear road. */
-export const delayMinutes = (r: LiveRoute): number | null =>
-  r.duration_seconds != null && r.typical_duration_seconds != null
-    ? Math.round((r.duration_seconds - r.typical_duration_seconds) / 60)
-    : null;
+/**
+ * The two axes, and why the row shows both.
+ *
+ * `severity` answers "how congested is this road" against a free-flow drive.
+ * `vs_usual` answers "is this unusual" against what the road does at this hour
+ * on this day. They are independent, and the combination is the useful part:
+ * HEAVY + normal means it is bad and waiting will not help, which is a
+ * different decision from HEAVY + much worse.
+ *
+ * The previous design showed only the first, against a free-flow baseline, and
+ * so read HEAVY on chronically busy corridors at every hour of every day.
+ */
+export const VS_USUAL: Record<VsUsual, { label: string; tone: 'error' | 'warning' | 'success' | 'textMuted' }> = {
+  much_worse: { label: 'Much worse than usual', tone: 'error' },
+  worse:      { label: 'Worse than usual',      tone: 'warning' },
+  normal:     { label: 'Normal for this time',  tone: 'textMuted' },
+  better:     { label: 'Better than usual',     tone: 'success' },
+};
+
+/**
+ * Minutes above what this road normally takes now — NOT minutes above an empty
+ * road. Returns null without a baseline, and 0 or less is not surfaced: "3 min
+ * quicker than usual" is noise dressed as information.
+ */
+export const extraMinutes = (r: LiveRoute): number | null => {
+  if (r.duration_seconds == null || r.expected_duration_seconds == null) return null;
+  const extra = Math.round((r.duration_seconds - r.expected_duration_seconds) / 60);
+  return extra > 0 ? extra : null;
+};
+
+/**
+ * Ordering within the same severity: the most abnormal first. A corridor that
+ * is heavy every Monday at eight is less worth the top slot than one that is
+ * heavy today and normally is not.
+ *
+ * Severity still outranks this, because the first question a city view answers
+ * is "which roads are bad" — same principle as severity outranking recency for
+ * the narrative reports above.
+ */
+const VS_USUAL_RANK: Record<VsUsual, number> = {
+  much_worse: 3, worse: 2, normal: 1, better: 0,
+};
 
 /**
  * A reading older than this is shown as stale. The agent is scheduled hourly
@@ -212,12 +264,17 @@ export const useLiveRoutes = () => {
       const { data, error } = await supabase.from('traffic_live_routes').select('*');
       if (error || !data) return;
 
-      // Worst first, then most delayed — the same rule as the narrative
-      // reports, so the two lists read the same way.
+      // Worst first, then most abnormal, then most delayed — the same
+      // severity-first rule as the narrative reports, so the two lists read
+      // the same way.
       const rank = (r: LiveRoute) => (r.severity ? SEVERITY[r.severity].rank : -1);
+      const odd  = (r: LiveRoute) => (r.vs_usual ? VS_USUAL_RANK[r.vs_usual] : -1);
       setRoutes(
         [...(data as LiveRoute[])].sort(
-          (a, b) => rank(b) - rank(a) || (delayMinutes(b) ?? 0) - (delayMinutes(a) ?? 0),
+          (a, b) =>
+            rank(b) - rank(a) ||
+            odd(b) - odd(a) ||
+            (extraMinutes(b) ?? 0) - (extraMinutes(a) ?? 0),
         ),
       );
     } catch (err) {

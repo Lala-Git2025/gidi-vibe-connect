@@ -40,6 +40,9 @@
 
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import {
+  ROUTES, computeRoute, severityFor, vsUsualFor, lagosParts, DOW_NAMES,
+} from './lagos-corridors.js';
 
 dotenv.config();
 
@@ -48,120 +51,7 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const APPLY        = process.argv.includes('--apply');
 
-const ROUTES_ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const PACE_MS = 250;
-
-// ── Routes ──────────────────────────────────────────────────────────────────
-// A curated set of the corridors that decide whether a night out happens at
-// all — the mainland↔island crossings first, then the big mainland arteries.
-// route_key is the stable UPSERT identity and must never change once live;
-// route_label is what the app shows and may be reworded freely.
-
-const ROUTES = [
-  {
-    key: 'third-mainland-bridge',
-    label: 'Third Mainland Bridge',
-    origin: 'Iyana Oworo, Lagos, Nigeria',
-    destination: 'Adeniji Adele Road, Lagos Island, Lagos, Nigeria',
-  },
-  {
-    key: 'eko-bridge',
-    label: 'Eko Bridge',
-    origin: 'Costain, Lagos, Nigeria',
-    destination: 'Idumota, Lagos Island, Lagos, Nigeria',
-  },
-  {
-    key: 'lekki-epe-expressway',
-    label: 'Lekki-Epe Expressway',
-    origin: 'Falomo, Ikoyi, Lagos, Nigeria',
-    destination: 'Ajah, Lagos, Nigeria',
-  },
-  {
-    key: 'ikorodu-road',
-    label: 'Ikorodu Road',
-    origin: 'Ojota, Lagos, Nigeria',
-    destination: 'Fadeyi, Lagos, Nigeria',
-  },
-  {
-    key: 'apapa-oshodi-expressway',
-    label: 'Apapa-Oshodi Expressway',
-    origin: 'Apapa, Lagos, Nigeria',
-    destination: 'Oshodi, Lagos, Nigeria',
-  },
-  {
-    key: 'agege-motor-road',
-    label: 'Agege Motor Road',
-    origin: 'Oshodi, Lagos, Nigeria',
-    destination: 'Iyana Ipaja, Lagos, Nigeria',
-  },
-  {
-    key: 'funsho-williams-avenue',
-    label: 'Funsho Williams Avenue',
-    origin: 'Costain, Lagos, Nigeria',
-    destination: 'Alaka, Surulere, Lagos, Nigeria',
-  },
-  {
-    key: 'airport-road',
-    label: 'Airport Road',
-    origin: 'Mafoluku, Lagos, Nigeria',
-    destination: 'Murtala Muhammed International Airport, Lagos, Nigeria',
-  },
-];
-
-// ── Severity from the duration ratio ────────────────────────────────────────
-// duration / typical. Thresholds are a judgement call, chosen to match how a
-// Lagos driver would describe the road: a fifth slower than normal is
-// noticeable but fine; nearly double is a real problem.
-
-const severityFor = (ratio) => {
-  if (ratio < 1.15) return 'light';
-  if (ratio < 1.4)  return 'moderate';
-  if (ratio < 1.8)  return 'heavy';
-  return 'critical';
-};
-
-// Routes API returns durations as strings like "1234s".
-const seconds = (s) => (typeof s === 'string' ? parseInt(s, 10) : null);
-
-// ── Routes API ──────────────────────────────────────────────────────────────
-
-async function computeRoute(route) {
-  const res = await fetch(ROUTES_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': API_KEY,
-      // Only these fields — the mask decides the pricing SKU, and duration
-      // versus staticDuration is the entire signal. Segment-level traffic
-      // along the polyline is a pricier tier and isn't needed for a ratio.
-      'X-Goog-FieldMask': 'routes.duration,routes.staticDuration,routes.distanceMeters',
-    },
-    body: JSON.stringify({
-      origin:      { address: route.origin },
-      destination: { address: route.destination },
-      travelMode: 'DRIVE',
-      // TRAFFIC_AWARE makes `duration` reflect current conditions;
-      // `staticDuration` stays the no-traffic baseline regardless.
-      routingPreference: 'TRAFFIC_AWARE',
-      computeAlternativeRoutes: false,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Routes API ${res.status}: ${body.slice(0, 300)}`);
-  }
-
-  const { routes } = await res.json();
-  const r = routes?.[0];
-  if (!r) throw new Error('Routes API returned no route');
-
-  const duration = seconds(r.duration);
-  const typical  = seconds(r.staticDuration);
-  if (!duration || !typical) throw new Error(`Unparseable durations: ${JSON.stringify(r)}`);
-
-  return { duration, typical, distance: r.distanceMeters ?? null };
-}
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
@@ -181,14 +71,35 @@ async function main() {
 
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-  console.log(`${APPLY ? 'APPLYING' : 'DRY RUN'} — ${ROUTES.length} routes\n`);
+  // Which baseline slot this run falls in. Read once: a run takes a couple of
+  // seconds and must not straddle two hour buckets halfway through, which
+  // would compare the last routes against a different hour than the first.
+  const { hour, dow } = lagosParts();
 
-  const stats = { ok: 0, failed: 0 };
+  const { data: baselineRows, error: baselineError } = await supabase
+    .from('traffic_route_baseline')
+    .select('route_key, expected_duration_seconds')
+    .eq('dow', dow)
+    .eq('hour', hour);
+
+  if (baselineError) {
+    console.log(`  baseline lookup failed (${baselineError.message}) — continuing without comparisons`);
+  }
+  const expectedFor = new Map((baselineRows ?? []).map(r => [r.route_key, r.expected_duration_seconds]));
+
+  console.log(
+    `${APPLY ? 'APPLYING' : 'DRY RUN'} — ${ROUTES.length} routes, ` +
+    `${DOW_NAMES[dow]} ${String(hour).padStart(2, '0')}:00 Lagos, ` +
+    `${expectedFor.size}/${ROUTES.length} baselines available\n`,
+  );
+
+  const stats = { ok: 0, failed: 0, noBaseline: 0 };
+  const readings = [];
 
   for (const route of ROUTES) {
     let reading;
     try {
-      reading = await computeRoute(route);
+      reading = await computeRoute(route, API_KEY);
     } catch (err) {
       stats.failed++;
       console.log(`  !  ${route.label}\n       ${err.message}`);
@@ -196,17 +107,36 @@ async function main() {
       continue;
     }
 
-    const ratio = reading.duration / reading.typical;
-    const severity = severityFor(ratio);
-    const delay = mins(reading.duration - reading.typical);
+    // Two independent axes, and the app shows both.
+    //   severity  — how congested, against a free-flow road
+    //   vs_usual  — how unusual, against what this hour normally looks like
+    // A corridor can be genuinely HEAVY and entirely NORMAL for the time, and
+    // that combination is the one that tells you waiting will not help.
+    const severity = severityFor(reading.duration / reading.freeFlow);
+    const expected = expectedFor.get(route.key) ?? null;
+    const vsUsual = vsUsualFor(reading.duration, expected);
+    if (!expected) stats.noBaseline++;
 
     stats.ok++;
+    const now = mins(reading.duration);
     console.log(
       `  ${severity === 'light' ? '✓' : '▲'}  ${route.label.padEnd(26)} ` +
-      `${String(mins(reading.duration)).padStart(3)} min  ` +
-      `(normally ${mins(reading.typical)}, ${delay >= 0 ? '+' : ''}${delay})  ` +
-      `${severity.toUpperCase()}`,
+      `${String(now).padStart(3)} min  ` +
+      `${severity.toUpperCase().padEnd(9)} ` +
+      (expected
+        ? `usually ${String(mins(expected)).padStart(3)} → ${vsUsual}`
+        : `free-flow ${String(mins(reading.freeFlow)).padStart(3)} (no baseline yet)`),
     );
+
+    readings.push({
+      route_key: route.key,
+      observed_at: new Date().toISOString(),
+      duration_seconds: reading.duration,
+      free_flow_seconds: reading.freeFlow,
+      expected_duration_seconds: expected,
+      severity,
+      vs_usual: vsUsual,
+    });
 
     if (APPLY) {
       const { error } = await supabase.from('traffic_live_routes').upsert(
@@ -216,7 +146,12 @@ async function main() {
           origin_address: route.origin,
           destination_address: route.destination,
           duration_seconds: reading.duration,
-          typical_duration_seconds: reading.typical,
+          // Still Google staticDuration. The column name is a misnomer kept
+          // for client compatibility — see the COMMENT on it in migration
+          // 20260918024200. `expected_duration_seconds` is the real baseline.
+          typical_duration_seconds: reading.freeFlow,
+          expected_duration_seconds: expected,
+          vs_usual: vsUsual,
           distance_meters: reading.distance,
           severity,
           updated_at: new Date().toISOString(),
@@ -232,9 +167,20 @@ async function main() {
     await sleep(PACE_MS);
   }
 
+  // Append every reading. The live table above overwrites one row per route,
+  // so before this existed each observation was destroyed an hour after it was
+  // taken — including all the history that would have let us build a baseline
+  // from what Lagos actually does rather than what Google predicts.
+  if (APPLY && readings.length) {
+    const { error } = await supabase.from('traffic_route_readings').insert(readings);
+    if (error) console.log(`  readings insert FAILED: ${error.message}`);
+    else console.log(`\n  ${readings.length} readings appended`);
+  }
+
   console.log(`\n${'─'.repeat(60)}`);
-  console.log(`read      ${stats.ok}`);
-  console.log(`failed    ${stats.failed}`);
+  console.log(`read         ${stats.ok}`);
+  console.log(`failed       ${stats.failed}`);
+  console.log(`no baseline  ${stats.noBaseline}${stats.noBaseline ? '  (run traffic-baseline-agent.js --apply)' : ''}`);
   if (!APPLY) console.log('\nDry run — nothing written. Re-run with --apply to write.');
 }
 
