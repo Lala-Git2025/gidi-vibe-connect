@@ -1,0 +1,73 @@
+# Home search bar → Search screen → results → destinations.
+#
+# Exercises the path that was broken: the Home bar used to navigate to Explore
+# with no params, so "does tapping a result open the thing" is what this guards.
+# Every result kind has a different destination and each one needed its own
+# param plumbing, so a passing search screen proves very little on its own.
+#
+# NOTE ON SELECTORS: every element below is matched by its accessibilityLabel,
+# not by the text you can read on screen. Maestro prefers the label, and a
+# label OVERRIDES the visible text — so `tapOn: "Search venues, areas, events…"`
+# fails even though those exact words are on screen. Cost a cycle to rediscover.
+#
+# Run with:
+#   JAVA_HOME=/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home \
+#   ~/.maestro/bin/maestro test .maestro/search.yaml
+appId: com.femola.consumerapp
+---
+- launchApp
+
+# ── The bar opens a search field, not an unfiltered list ────────────────────
+- tapOn: "Search venues, areas, events, news and people"
+- assertVisible: "Search Gidi Connect"
+
+# Empty state: both browse rails reachable without typing anything.
+- assertVisible: "Browse by area"
+- assertVisible: "Browse venues in Lekki"
+
+# ── An area name leads with the area, not with venues that sit in it ────────
+# This is the promotion rule: a group holding something actually *called* what
+# was typed jumps ahead of the default order.
+- inputText: "lekki"
+- extendedWaitUntil:
+    visible: "Areas"
+    timeout: 8000
+- assertVisible: "Venues"
+
+# ── A venue result opens its detail modal on Explore ────────────────────────
+- tapOn: "2 Shots Bar. Bar · Lekki"
+- extendedWaitUntil:
+    visible: "Craft Cocktails"
+    timeout: 8000
+
+# ── A news result opens the in-app reader ───────────────────────────────────
+# The story may sit outside the feed's own age window, so this also covers the
+# single-row fallback fetch in NewsScreen.
+- launchApp
+- tapOn: "Search venues, areas, events, news and people"
+- inputText: "governor"
+- extendedWaitUntil:
+    visible: "Gidi News"
+    timeout: 8000
+
+# Groups whose screen has no free-text filter expand in place, so the count in
+# the header never promises rows the user cannot reach.
+- assertVisible: "Show .* more Gidi News"
+- tapOn: "Show .* more Gidi News"
+
+- tapOn:
+    index: 0
+    text: "Wike and Uzodinma.*"
+# Trailing `.*` is required: Maestro matches a selector against the WHOLE text
+# of a node, so a bare prefix never matches a node that continues past it.
+- extendedWaitUntil:
+    visible: "Briefed by Gidi from.*"
+    timeout: 8000
+
+# ── Nothing found says so, rather than spinning ─────────────────────────────
+- launchApp
+- tapOn: "Search venues, areas, events, news and people"
+- inputText: "zzzqqq"
+- extendedWaitUntil:
+    visible: "Try a venue name.*"
+    timeout: 8000

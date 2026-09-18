@@ -1,11 +1,23 @@
-name: Live Traffic Agent (Every Hour)
+name: Live Traffic Agent (Every 2 Hours)
 
 # The quantitative half of the traffic feature: Google Routes API travel-time
 # readings for a curated set of Lagos corridors. Pairs with traffic-agent.yml
 # (the radio-narrative half) — see scripts/live-traffic-agent.js for why both.
 #
-# Hourly at :30 — offset from news-agent (:00) and traffic-agent (:15) so the
-# three don't queue behind each other on the same minute.
+# Every 2 hours at :30 — offset from news-agent (:00) and traffic-agent (:15)
+# so the three don't queue behind each other on the same minute.
+#
+# WHY NOT HOURLY, which is what this was. The Google Cloud project's Routes API
+# quota is `ComputeRoutesRequestsPerDay` = 100. At 8 routes per run, hourly is
+# 192 calls/day — so this workflow was exceeding the cap every day and silently
+# failing for the back half of it, returning 429 on every route. GitHub's
+# throttling of free-tier schedules (it actually fires these every 3-6h) had
+# been masking it.
+#
+# Every 2 hours is 96 calls/day, which fits. If the quota is raised in the
+# Cloud Console — Routes API > Quotas > ComputeRoutesRequestsPerDay, it is free
+# to raise and 100 is far below Google's default — put this back to '30 * * * *'
+# and give traffic-baseline-agent.yml a real schedule at the same time.
 #
 # Cadence caveat, same as the other scheduled agents: GitHub throttles free-tier
 # scheduled workflows under load. traffic-agent.yml is named "Every Hour" and
@@ -17,7 +29,7 @@ name: Live Traffic Agent (Every Hour)
 
 on:
   schedule:
-    - cron: '30 * * * *'
+    - cron: '30 */2 * * *'
   workflow_dispatch:
 
 jobs:

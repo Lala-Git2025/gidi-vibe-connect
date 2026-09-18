@@ -1,0 +1,70 @@
+name: Traffic Baseline Agent (Manual)
+
+# Builds the thing "worse than usual" is measured against: for every corridor,
+# what it normally takes at each hour of each day of the week, from Google's
+# predictions for a future departureTime. See scripts/traffic-baseline-agent.js.
+#
+# MANUAL-ONLY ON PURPOSE, until the Routes API quota is raised.
+#
+# A full build is 8 routes x 7 days x 24 hours = 1,344 Compute Routes calls. The
+# project's current cap is `ComputeRoutesRequestsPerDay` = 100, and the hourly
+# live agent was already exceeding that on its own. Scheduling a trickle under
+# that cap would take ~45 days to fill the table AND starve the live readings,
+# which is worse than not scheduling it at all — so this runs only when asked.
+#
+# TO MAKE THIS USEFUL:
+#   1. Google Cloud Console > APIs & Services > Routes API > Quotas
+#      Raise `ComputeRoutesRequestsPerDay` (free; 100 is far below the default).
+#   2. Run this workflow once with limit 1400 to fill the whole table.
+#   3. Add a monthly schedule below and restore live-traffic-agent.yml to hourly.
+#
+#      on:
+#        schedule:
+#          - cron: '0 4 1 * *'   # 04:00 UTC on the 1st
+#
+# Until then the app degrades honestly: a missing baseline row means the row
+# shows its severity and omits the comparison, never guesses one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max Routes API calls this run (1344 fills the table)'
+        required: false
+        default: '60'
+      refresh:
+        description: 'Refetch slots that are already filled'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  traffic-baseline:
+    runs-on: ubuntu-latest
+    # A full 1,344-call build paces at ~220ms per call, so ~6 minutes of
+    # requests plus setup. The default 360-minute timeout is far too generous
+    # for something that should never hang.
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build traffic baseline
+        run: |
+          node scripts/traffic-baseline-agent.js --apply \
+            --limit "${{ inputs.limit }}" \
+            ${{ inputs.refresh && '--refresh' || '' }}
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

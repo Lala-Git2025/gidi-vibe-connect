@@ -8,7 +8,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useTheme, polished } from '../contexts/ThemeContext';
 import { NotificationsBell } from '../components/NotificationsBell';
 import { supabase } from '../config/supabase';
@@ -123,6 +123,7 @@ function PostImage({ uri, style }: { uri: string; style: any }) {
 
 export default function SocialScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const { colors, activeTheme } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -264,6 +265,24 @@ export default function SocialScreen() {
     else if (tab === 'communities') handleSelectCommunities();
     else if (tab === 'people') handleSelectPeople();
   };
+
+  // A person matched on the Search screen arrives here as `view: 'people'`
+  // plus their name in `peopleSearch`, so the People tab opens already
+  // filtered to them. Handing the tab a name rather than a user id keeps the
+  // follow-state machinery in one place — this screen's — rather than
+  // duplicating it in search.
+  useEffect(() => {
+    const params = route.params as
+      | { view?: DrawerView; peopleSearch?: string }
+      | undefined;
+    if (!params?.view) return;
+
+    if (params.view === 'people') {
+      handleSelectPeople();
+      setPeopleSearch(params.peopleSearch ?? '');
+    }
+    navigation.setParams({ view: undefined, peopleSearch: undefined } as any);
+  }, [route.params]);
 
   // ── Data fetching ──────────────────────────────────────────────────
   // Auth (current user, likes set, etc.) only needs to load once on mount.
