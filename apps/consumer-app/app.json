@@ -20,6 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.femola.consumerapp",
+      "appleTeamId": "NVPBNA3JJC",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Gidi Connect needs access to your photos so you can add pictures and videos to your posts, vibes and profile picture.",
@@ -70,7 +71,8 @@
         {
           "color": "#EAB308"
         }
-      ]
+      ],
+      "./plugins/withIosBuildPatches"
     ]
   }
 }
