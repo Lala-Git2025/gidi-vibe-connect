@@ -100,7 +100,6 @@ export default function EventsScreen() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [rsvpdEventIds, setRsvpdEventIds] = useState<Set<string>>(new Set());
   /** Set by an `eventId` param; narrows the list to that one event. */
@@ -188,46 +187,24 @@ export default function EventsScreen() {
     }
   };
 
-  // Load events:
-  // - Skip the edge function for the initial render (it just re-queries the
-  //   same DB table with a stricter `status='upcoming'` filter that excludes
-  //   most rows, so it was returning empty/sparse results and short-circuiting
-  //   the DB fallback).
-  // - Pull a wider window (today onwards, limit 100) so users actually see
-  //   the events that exist.
-  // - On manual refresh we also hit the edge function in the background to
-  //   trigger any server-side scraping, but render whatever the DB has now.
-  const loadEvents = async (triggerSync = false) => {
+  /**
+   * Read the events table. That is the whole of it — there is no sync step.
+   *
+   * Pull-to-refresh used to also POST `fetch-lagos-events` behind a "Syncing
+   * live events…" label, and that function **cannot add an event**: it SELECTs
+   * from `public.events` and UPSERTs the result straight back into
+   * `public.events` with `ignoreDuplicates: true`, then answers
+   * `source: 'live_scraping'`. A tautology with a scraper's name on it — the
+   * last surviving member of the family of fake ingesters removed on
+   * 2026-10-06 (see EVENTS-INTEGRATION.md). Refreshing promised ingestion
+   * that does not exist and burned an invocation to do it.
+   *
+   * Refreshing is still worth having: a venue owner publishing an event on the
+   * business portal is a real way for new rows to appear between two pulls.
+   */
+  const loadEvents = async () => {
     setLoading(true);
     await fetchEventsFromDB();
-
-    if (triggerSync) {
-      // Fire and forget — the edge function caches into events table.
-      // We don't await it; the next pull-to-refresh will pick up new rows.
-      setSyncing(true);
-      try {
-        const { data: session } = await supabase.auth.getSession();
-        const anonKey = (supabase as any).supabaseKey as string | undefined;
-        await fetch(
-          `${(supabase as any).supabaseUrl}/functions/v1/fetch-lagos-events`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': anonKey ?? '',
-              'Authorization': `Bearer ${session?.session?.access_token ?? anonKey ?? ''}`,
-            },
-            body: JSON.stringify({ limit: 100 }),
-          }
-        );
-        // Re-fetch in case sync inserted new rows
-        await fetchEventsFromDB();
-      } catch (e) {
-        console.warn('[Events] sync fn unreachable, that\'s ok', e);
-      } finally {
-        setSyncing(false);
-      }
-    }
   };
 
   const fetchEventsFromDB = async () => {
@@ -243,6 +220,18 @@ export default function EventsScreen() {
           'image_url, featured_image_url, short_description, description, ' +
           'price_info, source, organizer_name, is_featured'
         )
+        // is_published is the kill switch, and until now it was decorative:
+        // this query filtered only on is_active and start_date, so eight
+        // fabricated rows written by scripts/scrape-nigerian-events.js were on
+        // screen despite every one of them being is_published = false. They
+        // carried a credible source badge ("Nairabox", "Lagos Events") over
+        // invented dates and ticket URLs that 404 — attribution made the
+        // fabrication more convincing, not less.
+        //
+        // Aggregated events are still auto-published by their ingester, so
+        // this does not add a review queue. What it adds is the ability to
+        // take one event off the screen by flipping a boolean.
+        .eq('is_published', true)
         .eq('is_active', true)
         .gte('start_date', windowStart)
         .order('is_featured', { ascending: false })
@@ -260,7 +249,7 @@ export default function EventsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadEvents(true); // pull-to-refresh triggers the background sync
+    await loadEvents();
     setRefreshing(false);
   };
 
@@ -370,7 +359,7 @@ export default function EventsScreen() {
         <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={{ color: colors.textSecondary, marginTop: 16 }}>
-            {syncing ? 'Syncing live events...' : 'Loading events...'}
+            Loading events…
           </Text>
         </View>
       </SafeAreaView>
@@ -408,7 +397,7 @@ export default function EventsScreen() {
             Events in <Text style={styles.titleAccent}>Lagos</Text>
           </Text>
           <Text style={styles.subtitle}>
-            {syncing ? 'Syncing live events…' : 'Discover upcoming experiences'}
+            Discover upcoming experiences
           </Text>
         </View>
 
@@ -520,13 +509,41 @@ export default function EventsScreen() {
           </Text>
 
           {filteredEvents.length === 0 ? (
+            /*
+              Two different empty states, because they mean different things and
+              only one of them is the user's to fix.
+
+              The old copy was a single message promising that "events from
+              Eventbrite and Lagos event platforms will appear here
+              automatically" if you pulled down. Every clause of that was
+              false: Eventbrite withdrew public event search in 2019, the
+              Lagos-platform ingesters were the fabricated scripts deleted on
+              2026-10-06, and the refresh it told you to perform called a
+              function that reads this table and writes it back. Telling
+              someone to pull down to fix an empty screen that pulling down
+              cannot fix is the worst version of an empty state.
+            */
             <View style={styles.emptyState}>
               <Ionicons name="ticket-outline" size={52} color={colors.textSecondary} style={{ marginBottom: 16 }} />
-              <Text style={styles.emptyTitle}>No events yet</Text>
-              <Text style={styles.emptyText}>
-                Pull down to refresh — events from Eventbrite and Lagos event
-                platforms will appear here automatically.
-              </Text>
+              {events.length > 0 ? (
+                <>
+                  <Text style={styles.emptyTitle}>Nothing in {activeFilter}</Text>
+                  <Text style={styles.emptyText}>
+                    There {events.length === 1 ? 'is' : 'are'} {events.length} other
+                    event{events.length === 1 ? '' : 's'} coming up — tap All Events to see
+                    {events.length === 1 ? ' it' : ' them'}.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyTitle}>No upcoming events listed</Text>
+                  <Text style={styles.emptyText}>
+                    Lagos venues and organisers publish events here from the Gidi Connect
+                    business portal, and nothing on the calendar has been published yet.
+                    This fills up as they come online — check back.
+                  </Text>
+                </>
+              )}
             </View>
           ) : (
             regularEvents.map((event) => {

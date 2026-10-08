@@ -72,7 +72,7 @@ import dotenv from 'dotenv';
 import {
   ROUTES, computeRoute, severityFor,
   LAGOS_UTC_OFFSET_HOURS, DOW_NAMES,
-} from './lagos-corridors.js';
+} from '../supabase/functions/_shared/lagos-corridors.js';
 
 dotenv.config();
 
@@ -89,8 +89,22 @@ const arg = (name, fallback = null) => {
 const ONLY_ROUTE = arg('--route');
 const REFRESH    = process.argv.includes('--refresh');
 // Default sits just under the observed 100/day project cap, leaving headroom
-// for the hourly live agent to keep working on the same quota.
-const CALL_LIMIT = Number(arg('--limit', '60'));
+// for the live readings to keep working on the same quota.
+//
+// Validated rather than trusted, because `Number('')` is 0, not NaN. The
+// workflow interpolates `--limit "${{ inputs.limit }}"` and a `schedule`
+// trigger supplies no inputs, so a scheduled run would have passed an empty
+// string, fetched exactly nothing, and reported success — a monthly job
+// quietly doing no work is worse than one that fails loudly.
+const CALL_LIMIT = (() => {
+  const raw = arg('--limit', '60');
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    console.error(`--limit must be a positive number (got ${JSON.stringify(raw)})`);
+    process.exit(1);
+  }
+  return Math.floor(n);
+})();
 
 /** A slot older than this is refetched; Google's model shifts slowly. */
 const STALE_DAYS = 45;

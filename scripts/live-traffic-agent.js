@@ -42,7 +42,7 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import {
   ROUTES, computeRoute, severityFor, vsUsualFor, lagosParts, DOW_NAMES,
-} from './lagos-corridors.js';
+} from '../supabase/functions/_shared/lagos-corridors.js';
 
 dotenv.config();
 

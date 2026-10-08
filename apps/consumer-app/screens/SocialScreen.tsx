@@ -21,6 +21,22 @@ import { useCreatePostModal } from '../contexts/CreatePostModalContext';
 import { PollCard } from '../components/PollCard';
 import { COMMUNITY_ICON_MAP } from '../constants/communityIcons';
 import { SocialDrawer, DrawerView } from '../components/SocialDrawer';
+import {
+  FeedLane,
+  FeedPost,
+  FollowRequest,
+  FollowState,
+  PostVisibility,
+  approveFollowRequest,
+  declineFollowRequest,
+  fetchDiscoverFeed,
+  fetchFollowRequests,
+  fetchFollowStates,
+  fetchFollowingFeed,
+  followUser,
+  pickLane,
+  unfollowUser,
+} from '../lib/social';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -74,6 +90,11 @@ interface Post {
   likes_count: number;
   comments_count: number;
   post_type?: 'standard' | 'poll';
+  /**
+   * Carried so the editor can show the post's real audience. Without it the
+   * composer falls back to 'public' and saving a Friends-only post widens it.
+   */
+  visibility?: PostVisibility;
   profiles?: {
     full_name: string;
     username?: string | null;
@@ -83,6 +104,42 @@ interface Post {
     name: string;
   };
 }
+
+/**
+ * Follow-button label. "Requested" is not "Following" — the request is with
+ * the other person, and saying otherwise is the lie the old boolean told.
+ */
+const followLabel = (state: FollowState): string =>
+  state === 'accepted' ? 'Following' : state === 'pending' ? 'Requested' : 'Follow';
+
+/**
+ * lib/social's FeedPost carries the audience columns this screen doesn't
+ * render, and allows a null body — a post can be an image with no caption.
+ * The screen's Post predates both, so the two are bridged here rather than
+ * cast past the type checker.
+ */
+const toScreenPosts = (posts: FeedPost[]): Post[] =>
+  posts.map((p) => ({
+    id: p.id,
+    content: p.content ?? '',
+    location: p.location,
+    media_urls: p.media_urls,
+    created_at: p.created_at,
+    user_id: p.user_id,
+    community_id: p.community_id,
+    likes_count: p.likes_count ?? 0,
+    comments_count: p.comments_count ?? 0,
+    post_type: p.post_type,
+    visibility: p.visibility,
+    profiles: p.profiles
+      ? {
+          full_name: p.profiles.full_name ?? 'User',
+          username: p.profiles.username,
+          avatar_url: p.profiles.avatar_url,
+        }
+      : undefined,
+    communities: p.communities ?? undefined,
+  }));
 
 interface Comment {
   id: string;
@@ -102,7 +159,13 @@ interface PeopleProfile {
   full_name: string;
   avatar_url?: string | null;
   bio?: string | null;
-  is_following: boolean;
+  /**
+   * Three states, not a boolean. A request to a private account is outstanding
+   * rather than complete, and a button reading "Following" over a pending
+   * request is a lie the old boolean could not help telling.
+   */
+  follow_state: FollowState;
+  is_private: boolean;
   followers_count: number;
   following_count: number;
 }
@@ -138,7 +201,17 @@ export default function SocialScreen() {
   // ── Data state ──────────────────────────────────────────────────────
   const [communities, setCommunities] = useState<Community[]>([]);
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
-  const [feedSort, setFeedSort] = useState<'new' | 'hot' | 'top'>('new');
+  // Which feed lane is showing. `laneLocked` records that the user picked one
+  // themselves, after which the cold-start rule stops overriding them.
+  const [lane, setLane] = useState<FeedLane>('following');
+  const [laneLocked, setLaneLocked] = useState(false);
+  const [followRequests, setFollowRequests] = useState<FollowRequest[]>([]);
+  // The realtime channel is subscribed once per session — its effect depends
+  // only on currentUserId, so the handler closure would otherwise capture the
+  // lane as it was at subscribe time. Refs keep it current without tearing the
+  // channel down on every lane change and every follow.
+  const laneRef = useRef<FeedLane>(lane);
+  const followingIdsRef = useRef<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   // showCreateModal + editingPost state removed — composer is now app-level
   // (mounted once via CreatePostModalProvider). Opened via openComposer().
@@ -300,7 +373,10 @@ export default function SocialScreen() {
   );
 
   // Refetch when the user flips Hot / New / Top.
-  useEffect(() => { fetchFeedPosts(); }, [feedSort]);
+  useEffect(() => { fetchFeedPosts(); }, [lane, currentUserId]);
+
+  useEffect(() => { laneRef.current = lane; }, [lane]);
+  useEffect(() => { followingIdsRef.current = followingIds; }, [followingIds]);
 
   // Realtime: stream new posts and likes/comments-count updates straight into
   // the feed so users see activity without pull-to-refresh. RLS still applies —
@@ -316,6 +392,19 @@ export default function SocialScreen() {
         async (payload) => {
           const row = payload.new as { id?: string; user_id?: string };
           if (!row?.id || !row?.user_id) return;
+
+          // The lane decides whether a brand-new post belongs on screen.
+          // Without this, Following quietly reintroduces exactly the strangers
+          // it exists to filter out. A post in a community you joined, by
+          // someone you don't follow, waits for the next fetch — the channel
+          // payload carries no membership context to test against.
+          if (
+            laneRef.current === 'following' &&
+            row.user_id !== currentUserId &&
+            !followingIdsRef.current.has(row.user_id)
+          ) {
+            return;
+          }
 
           // Fetch the full row with joins; relies on RLS to filter invisible rows.
           const [{ data: full }, { data: prof }] = await Promise.all([
@@ -343,13 +432,23 @@ export default function SocialScreen() {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'social_posts' },
         (payload) => {
-          const updated = payload.new as { id: string; likes_count: number; comments_count: number };
+          // Previously this copied likes_count and comments_count and nothing
+          // else, so an edit to a post's body never reached the screen — the
+          // author only saw it because saving also refetches the feed, and
+          // anyone else saw the old text until they reloaded.
+          const updated = payload.new as Partial<Post> & { id: string };
           setFeedPosts(prev =>
-            prev.map(p =>
-              p.id === updated.id
-                ? { ...p, likes_count: updated.likes_count, comments_count: updated.comments_count }
-                : p,
-            ),
+            prev.map(p => {
+              if (p.id !== updated.id) return p;
+              return {
+                ...p,
+                ...updated,
+                // The payload is the raw row: it carries no joined author or
+                // community, and spreading it would blank both.
+                profiles: p.profiles,
+                communities: p.communities,
+              };
+            }),
           );
         },
       )
@@ -433,48 +532,25 @@ export default function SocialScreen() {
 
   const fetchFeedPosts = async () => {
     try {
-      // New: pure recency. Top / Hot: pull last 7 days and sort client-side.
-      // Top = highest likes; Hot = engagement velocity (recency-weighted).
-      let q = supabase.from('social_posts').select('*, communities(name)');
-      if (feedSort === 'new') {
-        q = q.order('created_at', { ascending: false }).limit(50);
-      } else {
-        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        q = q.gte('created_at', weekAgo)
-             .order('created_at', { ascending: false })
-             .limit(120);
-      }
-      const { data: posts, error } = await q;
-
-      if (error) throw error;
-      if (!posts || posts.length === 0) { setFeedPosts([]); return; }
-
-      const userIds = [...new Set(posts.map((p: any) => p.user_id as string))];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, username, avatar_url')
-        .in('user_id', userIds);
-
-      const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
-
-      let mergedPosts = posts.map((post: any) => ({
-        ...post,
-        profiles: profileMap.get(post.user_id) ?? null,
-      }));
-
-      if (feedSort === 'top') {
-        mergedPosts.sort((a: any, b: any) => (b.likes_count || 0) - (a.likes_count || 0));
-      } else if (feedSort === 'hot') {
-        // Reddit-ish: weight engagement by recency. Older posts decay fast.
-        const score = (p: any) => {
-          const ageHours = (Date.now() - new Date(p.created_at).getTime()) / 3_600_000;
-          const eng = (p.likes_count || 0) + 2 * (p.comments_count || 0);
-          return eng / Math.pow(ageHours + 2, 1.5);
-        };
-        mergedPosts.sort((a: any, b: any) => score(b) - score(a));
+      // Signed out: there is no graph to follow, so the open pool is the only
+      // lane. RLS narrows it to public posts by public accounts.
+      if (lane === 'discover' || !currentUserId) {
+        setFeedPosts(toScreenPosts(await fetchDiscoverFeed()));
+        return;
       }
 
-      setFeedPosts(mergedPosts.slice(0, 50));
+      const posts = await fetchFollowingFeed(currentUserId);
+
+      // Cold start. A follows-only feed on a graph this young is a blank
+      // screen, so fall through to Discover rather than show one — but only
+      // while the user hasn't picked a lane themselves. The lane change
+      // retriggers this effect, which then takes the branch above.
+      if (!laneLocked && pickLane(posts.length) === 'discover') {
+        setLane('discover');
+        return;
+      }
+
+      setFeedPosts(toScreenPosts(posts));
     } catch (error) {
       console.error('Error fetching posts:', error);
     }
@@ -542,10 +618,18 @@ export default function SocialScreen() {
   };
 
   const handleEditPost = (post: Post) => {
-    openComposer({
-      editingPost: post as unknown as EditingPost,
-      onPostCreated: fetchFeedPosts,
-    });
+    // Built field by field rather than cast: a blind `as unknown as` here is
+    // what dropped `visibility`, and the composer's save would then have
+    // widened the post's audience without saying so.
+    const editing: EditingPost = {
+      id: post.id,
+      content: post.content,
+      location: post.location,
+      community_id: post.community_id,
+      media_urls: post.media_urls,
+      visibility: post.visibility,
+    };
+    openComposer({ editingPost: editing, onPostCreated: fetchFeedPosts });
   };
 
   // ── Report / Block (Play UGC policy surfaces) ──────────────────────
@@ -763,51 +847,38 @@ export default function SocialScreen() {
     if (!currentUserId) return;
     setPeopleLoading(true);
     try {
-      const [{ data: profiles }, { data: followingData }] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('user_id, full_name, avatar_url, bio')
-          .neq('user_id', currentUserId)
-          .order('full_name'),
-        supabase
-          .from('follows')
-          .select('following_id')
-          .eq('follower_id', currentUserId),
+      // follower_count / following_count are cached on profiles and kept in
+      // sync by trg_update_follow_counts, which counts accepted edges only.
+      // This used to pull every follow row in the table and tally them in JS,
+      // which duplicated the trigger and would now count pending requests as
+      // followers.
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, avatar_url, bio, is_private, follower_count, following_count')
+        .neq('user_id', currentUserId)
+        .order('full_name');
+
+      const rows = profiles ?? [];
+      const [states, requests] = await Promise.all([
+        fetchFollowStates(currentUserId, rows.map((p: any) => p.user_id as string)),
+        fetchFollowRequests(currentUserId),
       ]);
 
-      const followingSet = new Set((followingData ?? []).map((r: any) => r.following_id as string));
-      setFollowingIds(followingSet);
-
-      const userIds = (profiles ?? []).map((p: any) => p.user_id);
-      const { data: followerRows } = await supabase
-        .from('follows')
-        .select('following_id')
-        .in('following_id', userIds);
-
-      const followerCounts: Record<string, number> = {};
-      (followerRows ?? []).forEach((r: any) => {
-        followerCounts[r.following_id] = (followerCounts[r.following_id] || 0) + 1;
-      });
-
-      const { data: followingRows } = await supabase
-        .from('follows')
-        .select('follower_id')
-        .in('follower_id', userIds);
-
-      const followingCounts: Record<string, number> = {};
-      (followingRows ?? []).forEach((r: any) => {
-        followingCounts[r.follower_id] = (followingCounts[r.follower_id] || 0) + 1;
-      });
+      setFollowingIds(
+        new Set([...states.entries()].filter(([, s]) => s === 'accepted').map(([id]) => id)),
+      );
+      setFollowRequests(requests);
 
       setPeople(
-        (profiles ?? []).map((p: any) => ({
+        rows.map((p: any) => ({
           user_id: p.user_id,
           full_name: p.full_name || 'User',
           avatar_url: p.avatar_url,
           bio: p.bio,
-          is_following: followingSet.has(p.user_id),
-          followers_count: followerCounts[p.user_id] || 0,
-          following_count: followingCounts[p.user_id] || 0,
+          follow_state: states.get(p.user_id) ?? 'none',
+          is_private: Boolean(p.is_private),
+          followers_count: p.follower_count ?? 0,
+          following_count: p.following_count ?? 0,
         }))
       );
     } catch (err) {
@@ -823,64 +894,89 @@ export default function SocialScreen() {
       return;
     }
 
-    const isCurrentlyFollowing = followingIds.has(targetUserId);
+    const person =
+      people.find(p => p.user_id === targetUserId) ??
+      (viewingProfile?.user_id === targetUserId ? viewingProfile : undefined);
+    const previous: FollowState = person?.follow_state
+      ?? (followingIds.has(targetUserId) ? 'accepted' : 'none');
 
-    const newIds = new Set(followingIds);
-    if (isCurrentlyFollowing) newIds.delete(targetUserId);
-    else newIds.add(targetUserId);
-    setFollowingIds(newIds);
+    // 'pending' toggles off like a follow does — tapping "Requested" withdraws
+    // the request, which is the only other thing that button could mean.
+    const undoing = previous !== 'none';
 
-    setPeople(prev =>
-      prev.map(p =>
-        p.user_id === targetUserId
-          ? {
-              ...p,
-              is_following: !isCurrentlyFollowing,
-              followers_count: p.followers_count + (isCurrentlyFollowing ? -1 : 1),
-            }
-          : p
-      )
-    );
+    // Optimistic, but only as far as we can honestly predict: a follow of a
+    // private account lands as a request, and which it is depends on the
+    // target's privacy, so the count only moves when it will actually change.
+    const optimistic: FollowState = undoing
+      ? 'none'
+      : person?.is_private ? 'pending' : 'accepted';
+    const countDelta =
+      (previous === 'accepted' ? -1 : 0) + (optimistic === 'accepted' ? 1 : 0);
 
-    if (viewingProfile?.user_id === targetUserId) {
-      setViewingProfile(prev =>
-        prev
-          ? {
-              ...prev,
-              is_following: !isCurrentlyFollowing,
-              followers_count: prev.followers_count + (isCurrentlyFollowing ? -1 : 1),
-            }
-          : null
-      );
-    }
-
-    try {
-      if (isCurrentlyFollowing) {
-        await supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', currentUserId)
-          .eq('following_id', targetUserId);
-      } else {
-        await supabase.from('follows').insert({
-          follower_id: currentUserId,
-          following_id: targetUserId,
-        });
-      }
-    } catch (err) {
-      console.error('Follow toggle error:', err);
-      setFollowingIds(followingIds);
+    const applyState = (state: FollowState, delta: number) => {
+      setFollowingIds(prev => {
+        const next = new Set(prev);
+        if (state === 'accepted') next.add(targetUserId);
+        else next.delete(targetUserId);
+        return next;
+      });
       setPeople(prev =>
         prev.map(p =>
           p.user_id === targetUserId
-            ? {
-                ...p,
-                is_following: isCurrentlyFollowing,
-                followers_count: p.followers_count + (isCurrentlyFollowing ? 1 : -1),
-              }
+            ? { ...p, follow_state: state, followers_count: Math.max(p.followers_count + delta, 0) }
             : p
         )
       );
+      if (viewingProfile?.user_id === targetUserId) {
+        setViewingProfile(prev =>
+          prev
+            ? { ...prev, follow_state: state, followers_count: Math.max(prev.followers_count + delta, 0) }
+            : null
+        );
+      }
+    };
+
+    applyState(optimistic, countDelta);
+
+    try {
+      if (undoing) {
+        await unfollowUser(targetUserId);
+      } else {
+        // The database decides: status is set by trg_set_follow_status, not by
+        // the client, so the real answer comes back from the insert.
+        const actual = await followUser(targetUserId);
+        if (actual !== optimistic) {
+          applyState(actual, (actual === 'accepted' ? 1 : 0) - (optimistic === 'accepted' ? 1 : 0));
+        }
+      }
+    } catch (err) {
+      console.error('Follow toggle error:', err);
+      applyState(previous, -countDelta);
+    }
+  };
+
+  // Approving is an UPDATE the followed account is allowed to make; declining
+  // is a DELETE. Both are optimistic — the row leaves the list immediately and
+  // comes back only if the write failed.
+  const handleApproveRequest = async (req: FollowRequest) => {
+    setFollowRequests(prev => prev.filter(r => r.follow_id !== req.follow_id));
+    try {
+      await approveFollowRequest(req.follow_id);
+    } catch (err) {
+      console.error('Approve follow request error:', err);
+      setFollowRequests(prev => [req, ...prev]);
+      Alert.alert('Could not approve', 'Please try again.');
+    }
+  };
+
+  const handleDeclineRequest = async (req: FollowRequest) => {
+    setFollowRequests(prev => prev.filter(r => r.follow_id !== req.follow_id));
+    try {
+      await declineFollowRequest(req.follow_id);
+    } catch (err) {
+      console.error('Decline follow request error:', err);
+      setFollowRequests(prev => [req, ...prev]);
+      Alert.alert('Could not decline', 'Please try again.');
     }
   };
 
@@ -904,34 +1000,28 @@ export default function SocialScreen() {
     setViewingProfile({
       user_id: userId,
       full_name: '',
-      is_following: followingIds.has(userId),
+      follow_state: followingIds.has(userId) ? 'accepted' : 'none',
+      is_private: false,
       followers_count: 0,
       following_count: 0,
     });
 
     try {
-      const [
-        { data: profile },
-        { count: followersCount },
-        { count: followingCount },
-        { data: posts },
-      ] = await Promise.all([
+      const [{ data: profile }, states, { data: posts }] = await Promise.all([
         supabase
           .from('profiles')
-          .select('user_id, full_name, avatar_url, bio')
+          .select('user_id, full_name, avatar_url, bio, is_private, follower_count, following_count')
           .eq('user_id', userId)
           .single(),
-        supabase
-          .from('follows')
-          .select('*', { count: 'exact', head: true })
-          .eq('following_id', userId),
-        supabase
-          .from('follows')
-          .select('*', { count: 'exact', head: true })
-          .eq('follower_id', userId),
+        // A COUNT over follows would now include pending requests. The cached
+        // columns on profiles hold the accepted totals and are maintained by
+        // trg_update_follow_counts.
+        currentUserId
+          ? fetchFollowStates(currentUserId, [userId])
+          : Promise.resolve(new Map<string, FollowState>()),
         supabase
           .from('social_posts')
-          .select('id, content, media_urls, created_at, user_id, likes_count, comments_count')
+          .select('id, content, media_urls, created_at, user_id, likes_count, comments_count, post_type')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(12),
@@ -942,9 +1032,10 @@ export default function SocialScreen() {
         full_name: profile?.full_name || 'User',
         avatar_url: profile?.avatar_url,
         bio: profile?.bio,
-        is_following: followingIds.has(userId),
-        followers_count: followersCount ?? 0,
-        following_count: followingCount ?? 0,
+        follow_state: states.get(userId) ?? 'none',
+        is_private: Boolean(profile?.is_private),
+        followers_count: profile?.follower_count ?? 0,
+        following_count: profile?.following_count ?? 0,
       });
       setViewingProfilePosts((posts ?? []) as Post[]);
     } catch (err) {
@@ -1380,29 +1471,31 @@ export default function SocialScreen() {
           </View>
         )}
 
-        {/* Feed sort: Hot / New / Top */}
-        {(currentView === 'feed' || currentView === 'community') && (
+        {/* Feed lane: Following / Discover. Not shown inside a single
+            community, where the community already is the audience. */}
+        {currentView === 'feed' && (
           <View style={styles.sortRow}>
-            {(['new', 'hot', 'top'] as const).map((s) => {
-              const active = feedSort === s;
-              const icon =
-                s === 'new' ? 'time-outline' :
-                s === 'hot' ? 'flame-outline' :
-                              'trending-up-outline';
+            {(['following', 'discover'] as const).map((l) => {
+              const active = lane === l;
               return (
                 <TouchableOpacity
-                  key={s}
+                  key={l}
                   style={[styles.sortChip, active && styles.sortChipActive]}
-                  onPress={() => setFeedSort(s)}
+                  // Choosing a lane stops the cold-start rule from moving it
+                  // back on the next fetch.
+                  onPress={() => { setLaneLocked(true); setLane(l); }}
                   activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={l === 'following' ? 'Following feed' : 'Discover feed'}
                 >
                   <Ionicons
-                    name={icon as any}
+                    name={l === 'following' ? 'people-outline' : 'compass-outline'}
                     size={14}
                     color={active ? '#18181B' : colors.textSecondary}
                   />
                   <Text style={[styles.sortChipLabel, active && styles.sortChipLabelActive]}>
-                    {s === 'new' ? 'New' : s === 'hot' ? 'Hot' : 'Top'}
+                    {l === 'following' ? 'Following' : 'Discover'}
                   </Text>
                 </TouchableOpacity>
               );
@@ -1421,13 +1514,33 @@ export default function SocialScreen() {
                   color={colors.textSecondary}
                 />
                 <Text style={styles.emptyStateTitle}>
-                  {currentView === 'community' ? 'No Posts in This Community' : 'No Posts Yet'}
+                  {currentView === 'community'
+                    ? 'No Posts in This Community'
+                    : lane === 'following'
+                      ? 'Nothing from your circle yet'
+                      : 'No Posts Yet'}
                 </Text>
                 <Text style={styles.emptyStateText}>
                   {currentView === 'community'
                     ? 'Be the first to post in this community!'
-                    : 'Be the first to share something with the community!'}
+                    : lane === 'following'
+                      // Says what the lane holds, so an empty one reads as
+                      // "follow some people" rather than "the app is broken".
+                      ? 'This feed shows people you follow and communities you have joined.'
+                      : 'Be the first to share something with the community!'}
                 </Text>
+                {currentView === 'feed' && lane === 'following' && (
+                  <TouchableOpacity
+                    style={styles.emptyStateAction}
+                    onPress={() => { setLaneLocked(true); setLane('discover'); }}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel="Browse Discover"
+                  >
+                    <Ionicons name="compass-outline" size={16} color="#18181B" />
+                    <Text style={styles.emptyStateActionText}>Browse Lagos</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               visiblePosts.map((post: Post) => (
@@ -1681,6 +1794,48 @@ export default function SocialScreen() {
               />
             </View>
 
+            {/* Only a private account ever has these: following a public
+                account is accepted on arrival. */}
+            {followRequests.length > 0 && (
+              <View style={styles.requestsBlock}>
+                <Text style={styles.requestsTitle}>
+                  {followRequests.length === 1
+                    ? '1 follow request'
+                    : `${followRequests.length} follow requests`}
+                </Text>
+                {followRequests.map(req => (
+                  <View key={req.follow_id} style={styles.requestRow}>
+                    <View style={styles.requestAvatar}>
+                      {req.avatar_url ? (
+                        <Image source={{ uri: req.avatar_url }} style={styles.requestAvatarImg} />
+                      ) : (
+                        <Text style={styles.requestAvatarText}>{getInitials(req.full_name)}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.requestName} numberOfLines={1}>{req.full_name}</Text>
+                    <TouchableOpacity
+                      style={styles.requestApprove}
+                      onPress={() => handleApproveRequest(req)}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Approve ${req.full_name}`}
+                    >
+                      <Text style={styles.requestApproveText}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeclineRequest(req)}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Decline ${req.full_name}`}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {peopleLoading ? (
               <View style={styles.emptyState}>
                 <ActivityIndicator size="large" color={colors.primary} />
@@ -1747,9 +1902,11 @@ export default function SocialScreen() {
                           onPress={() => handleFollowToggle(person.user_id)}
                           activeOpacity={0.85}
                         >
-                          {person.is_following ? (
+                          {person.follow_state !== 'none' ? (
                             <View style={styles.followingBtn}>
-                              <Text style={styles.followingBtnText}>Following</Text>
+                              <Text style={styles.followingBtnText}>
+                                {followLabel(person.follow_state)}
+                              </Text>
                             </View>
                           ) : (
                             <LinearGradient
@@ -1975,15 +2132,15 @@ export default function SocialScreen() {
                     <TouchableOpacity
                       style={[
                         styles.profileModalFollowBtn,
-                        viewingProfile.is_following && styles.profileModalFollowingBtn,
+                        viewingProfile.follow_state !== 'none' && styles.profileModalFollowingBtn,
                       ]}
                       onPress={() => handleFollowToggle(viewingProfile.user_id)}
                     >
                       <Text style={[
                         styles.profileModalFollowBtnText,
-                        viewingProfile.is_following && styles.profileModalFollowingBtnText,
+                        viewingProfile.follow_state !== 'none' && styles.profileModalFollowingBtnText,
                       ]}>
-                        {viewingProfile.is_following ? 'Following' : 'Follow'}
+                        {followLabel(viewingProfile.follow_state)}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -2003,15 +2160,15 @@ export default function SocialScreen() {
                   <TouchableOpacity
                     style={[
                       styles.profileModalFollowBtn,
-                      viewingProfile.is_following && styles.profileModalFollowingBtn,
+                      viewingProfile.follow_state !== 'none' && styles.profileModalFollowingBtn,
                     ]}
                     onPress={() => handleFollowToggle(viewingProfile.user_id)}
                   >
                     <Text style={[
                       styles.profileModalFollowBtnText,
-                      viewingProfile.is_following && styles.profileModalFollowingBtnText,
+                      viewingProfile.follow_state !== 'none' && styles.profileModalFollowingBtnText,
                     ]}>
-                      {viewingProfile.is_following ? 'Following' : 'Follow'}
+                      {followLabel(viewingProfile.follow_state)}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -2447,6 +2604,64 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
+  // ── Follow requests ─────────────────────────────────────────────────
+  requestsBlock: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    marginBottom: 16,
+    gap: 10,
+  },
+  requestsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: 0.3,
+  },
+  requestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  requestAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceRaised ?? colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  requestAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  requestAvatarText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  requestName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  requestApprove: {
+    paddingHorizontal: 14,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestApproveText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#18181B',
+  },
   // ── People ──────────────────────────────────────────────────────────
   peopleSearchBar: {
     flexDirection: 'row',
@@ -2806,6 +3021,21 @@ const getStyles = (colors: any, insets: any) => StyleSheet.create({
     textAlign: 'center',
     maxWidth: 300,
     lineHeight: 20,
+  },
+  emptyStateAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 16,
+    paddingHorizontal: 16,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary,
+  },
+  emptyStateActionText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#18181B',
   },
   // ── Create Community Modal ──────────────────────────────────────────
   modalContainer: {

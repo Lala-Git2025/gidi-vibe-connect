@@ -12,6 +12,10 @@
  *    the report underneath it could be twenty hours old. Freshness here is
  *    measured from when the report was published, and anything past
  *    FRESH_WINDOW is separated out rather than quietly mixed in.
+ *
+ * 3. **One timestamp may only speak for one source.** Corollary of 2, and the
+ *    rule the header broke a second time by showing `Math.max` of the live
+ *    and reported ages. See `trafficHeader` at the foot of this file.
  */
 
 import { useState, useCallback } from 'react';
@@ -254,6 +258,70 @@ export const LIVE_STALE_MS = 6 * 60 * 60 * 1000;
 
 export const newestLiveAt = (routes: LiveRoute[]): number | null =>
   routes.length ? Math.max(...routes.map(r => new Date(r.updated_at).getTime())) : null;
+
+/**
+ * The one age and live dot the page header is allowed to show.
+ *
+ * **Never `Math.max` across the two sources.** Both surfaces used to compute
+ * `Math.max(liveAt, newestAt)` — "the age of whichever signal is newest" — and
+ * it produced a header reading "9m ago" under a lit live dot above radio rows
+ * that each said "11h ago". The live corridors refresh every 15 minutes via
+ * pg_cron; Lagos Traffic Radio stops posting overnight, so at 3am the newest
+ * report is routinely half a day old. Taking the max means the header reports
+ * the freshest thing on screen as though it described all of it, which is the
+ * least useful summary available: it makes the page look current precisely
+ * when half of it is not.
+ *
+ * This is rule 2 at the top of this file failing a second time through a
+ * different door. The September fix removed a header that showed the client's
+ * last *fetch* over a twenty-hour-old report; a max() over two sources tells
+ * the same lie with a real timestamp.
+ *
+ * So the header's age describes **the same source the verdict beside it was
+ * computed from**, and the two are decided here together so they cannot drift
+ * apart. Live corridors win when any of them carry a severity: they are the
+ * complete, objective picture, where the radio only covers what got posted.
+ * Each block further down states its own age independently.
+ */
+export interface TrafficHeader {
+  /** Worst-first summary of whichever source `source` names. */
+  verdict: string;
+  /** When that source last spoke, or null when neither has anything. */
+  at: number | null;
+  /** Whether `at` is current *by that source's own standard*. */
+  fresh: boolean;
+  source: 'live' | 'reports' | null;
+}
+
+export const trafficHeader = (
+  routes: LiveRoute[],
+  reports: TrafficReport[],
+  reportsNewestAt: number | null,
+  now = Date.now(),
+): TrafficHeader => {
+  // Severity-bearing rows only: a corridor whose reading failed contributes no
+  // verdict, so it must not claim the header either.
+  const liveSeverities = routes.flatMap(r => (r.severity ? [{ severity: r.severity as Severity }] : []));
+
+  if (liveSeverities.length) {
+    const at = newestLiveAt(routes);
+    return {
+      verdict: verdict(liveSeverities),
+      at,
+      // LIVE_STALE_MS, not FRESH_WINDOW — the two halves have different
+      // cadences and so different definitions of late.
+      fresh: at !== null && now - at <= LIVE_STALE_MS,
+      source: 'live',
+    };
+  }
+
+  return {
+    verdict: verdict(reports),
+    at: reportsNewestAt,
+    fresh: reportsNewestAt !== null && isFreshAt(reportsNewestAt, now),
+    source: reportsNewestAt === null ? null : 'reports',
+  };
+};
 
 export const useLiveRoutes = () => {
   const [routes, setRoutes] = useState<LiveRoute[]>([]);

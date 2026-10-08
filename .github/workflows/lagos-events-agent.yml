@@ -1,0 +1,73 @@
+name: Lagos Events Agent (Daily)
+
+# Reads schema.org Event JSON-LD from Eventbrite's public Lagos browse pages
+# and Meetup's Lagos find page, and upserts what it finds into public.events.
+#
+# ── Why GitHub cron is fine here, when it was not for traffic ───────────────
+#
+# Live traffic moved off GitHub to pg_cron because free-tier schedules are
+# throttled — 12 runs a day asked, 4.7 delivered, 9.1h worst gap — and a
+# traffic verdict that is six hours late is wrong. An event listing is not:
+# events are announced days or weeks ahead, so a late daily run is a late
+# refresh, never a wrong one. There is also nothing to port — this is a Node
+# script with no Deno equivalent, so pg_cron would mean rewriting it to buy
+# punctuality that does not matter.
+#
+# ── Secrets ────────────────────────────────────────────────────────────────
+#   VITE_SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+# No API key: both sources publish this markup for public consumption. Hosts
+# that refuse anonymous clients (tix.africa, 10times, bandsintown all 403) are
+# skipped by the agent's own robots.txt enforcement and are not worked around.
+#
+# NOTE: schedules only fire from the default branch.
+
+on:
+  schedule:
+    # 05:30 UTC = 06:30 Lagos, so the day's listing is in place before anyone
+    # opens the app. Offset from the news (:00) and traffic (:15, :30) agents.
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: 'Eventbrite listing pages to read'
+        required: false
+        default: '2'
+      dry_run:
+        description: 'Collect and print without writing'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  sync-events:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      # `--retire` closes out events whose start date has passed, so `status`
+      # stops being permanently 'upcoming' on every row in the table.
+      #
+      # `|| '2'` matters: a `schedule` trigger supplies no inputs, so the
+      # interpolation below would otherwise pass an empty string. The agent
+      # rejects a non-positive --pages rather than quietly reading nothing,
+      # which is the trap that made the baseline workflow's schedule a no-op.
+      - name: Run Lagos Events Agent
+        run: |
+          node scripts/lagos-events-agent.js \
+            --pages "${{ github.event.inputs.pages || '2' }}" \
+            ${{ github.event.inputs.dry_run == 'true' && ' ' || '--write --retire' }}
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

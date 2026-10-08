@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useRef, useState, ReactNode } from 'react';
 import { Alert } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../config/supabase';
 import { pickMedia } from '../lib/mediaCapture';
+import { STORY_ALLOWED_MIME, STORY_MAX_BYTES, uploadMedia } from '../lib/uploadFile';
 import { StoryEditor, StoryEditorData } from '../components/StoryEditor';
 
 // Single-instance story creator. Both Home's Stories rail ("My Vibe" tile) and
@@ -95,25 +95,17 @@ export const StoryCreatorProvider = ({ children }: { children: ReactNode }) => {
         ...stickerOverlays.map((s) => ({ type: 'sticker', ...s })),
       ];
 
-      const ext = uri.split('.').pop()?.toLowerCase() || (mediaType === 'video' ? 'mp4' : 'jpg');
-      const fileName = `${user.id}/${Date.now()}.${ext}`;
-      const contentType = mimeType ?? (
-        mediaType === 'video'
-          ? (ext === 'mov' ? 'video/quicktime' : `video/${ext}`)
-          : `image/${ext}`
-      );
-
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' as any });
-      const binaryStr = atob(base64);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-
-      const { error: uploadError } = await supabase.storage
-        .from('stories')
-        .upload(fileName, bytes, { contentType, upsert: false });
-      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
-
-      const { data: { publicUrl } } = supabase.storage.from('stories').getPublicUrl(fileName);
+      // Streams the file from disk — see lib/uploadFile.ts for why a vibe must
+      // not be read into memory first. Its thrown messages are user-facing.
+      const { publicUrl } = await uploadMedia({
+        bucket: 'stories',
+        pathPrefix: `${user.id}/${Date.now()}`,
+        fileUri: uri,
+        mediaType,
+        pickerMimeType: mimeType,
+        maxBytes: STORY_MAX_BYTES,
+        allowedMimeTypes: STORY_ALLOWED_MIME,
+      });
 
       const { error: insertError } = await supabase.from('stories').insert({
         user_id: user.id,

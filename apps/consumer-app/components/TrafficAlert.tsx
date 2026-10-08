@@ -8,8 +8,8 @@ import { TrafficRow } from './TrafficRow';
 import { LiveRouteRow } from './LiveRouteRow';
 import { LiveDot } from './LiveDot';
 import {
-  useTrafficReports, useLiveRoutes, verdict, timeAgo, isFreshAt,
-  newestLiveAt, LIVE_STALE_MS, type TrafficReport, type Severity,
+  useTrafficReports, useLiveRoutes, trafficHeader, timeAgo,
+  newestLiveAt, LIVE_STALE_MS, type TrafficReport,
 } from '../lib/traffic';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
@@ -62,16 +62,12 @@ export const TrafficAlert = () => {
 
   const liveAt = newestLiveAt(routes);
   const liveFresh = liveAt !== null && Date.now() - liveAt <= LIVE_STALE_MS;
-  const reportsFresh = newestAt !== null && isFreshAt(newestAt);
-  // The header shows the age of whichever signal is newest; the dot means at
-  // least one of them is current.
-  const newest = Math.max(liveAt ?? 0, newestAt ?? 0) || null;
-  const currentlyFresh = liveFresh || reportsFresh;
 
-  // The verdict summarises the live corridors when there are any — they are
-  // the complete, objective picture. Radio reports only cover what got posted.
-  const liveForVerdict = routes.flatMap(r => (r.severity ? [{ severity: r.severity as Severity }] : []));
-  const verdictLine = verdict(liveForVerdict.length ? liveForVerdict : group);
+  // The verdict summarises the live corridors when there are any — they are the
+  // complete, objective picture, where radio reports only cover what got
+  // posted — and the age beside it now dates *that* source. It used to be the
+  // max of both, which read "9m ago" with a lit dot over an 11h-old report.
+  const head = trafficHeader(routes, group, newestAt);
 
   const worstLive = routes[0]; // sorted worst-first by the hook
   const sources = [routes.length ? 'Google' : null, all[0]?.source_name ?? null].filter(Boolean).join(' · ');
@@ -83,11 +79,11 @@ export const TrafficAlert = () => {
           <Text style={styles.title}>
             Lagos <Text style={styles.titleAccent}>Traffic</Text>
           </Text>
-          {!!verdictLine && <Text style={styles.verdict}>{verdictLine}</Text>}
+          {!!head.verdict && <Text style={styles.verdict}>{head.verdict}</Text>}
         </View>
         <View style={styles.freshness}>
-          {currentlyFresh && <LiveDot color={colors.live} />}
-          <Text style={styles.freshnessText}>{newest === null ? '' : timeAgo(newest)}</Text>
+          {head.fresh && <LiveDot color={colors.live} />}
+          <Text style={styles.freshnessText}>{head.at === null ? '' : timeAgo(head.at)}</Text>
         </View>
       </View>
 

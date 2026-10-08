@@ -13,6 +13,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { PostGrid, GridPost } from '../components/PostGrid';
 import { useCreatePostModal } from '../contexts/CreatePostModalContext';
 import { useStoryCreator } from '../contexts/StoryCreatorContext';
+import { setIsPrivate } from '../lib/social';
 
 // Helper function to convert hex color to rgba
 const hexToRgba = (hex: string, opacity: number): string => {
@@ -55,6 +56,7 @@ export default function ProfileScreen() {
   // Settings state
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isPrivate, setIsPrivateState] = useState(false);
   const [locationEnabled, setLocationEnabled] = useState(true);
 
   // Keyboard state for auth modal
@@ -367,14 +369,32 @@ export default function ProfileScreen() {
 
   const fetchFollowCounts = async (userId: string) => {
     try {
-      const [{ count: followers }, { count: following }] = await Promise.all([
-        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId),
-        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
-      ]);
-      setFollowerCount(followers ?? 0);
-      setFollowingCount(following ?? 0);
+      // The cached columns hold accepted follows only, maintained by
+      // trg_update_follow_counts. A COUNT over `follows` would include pending
+      // requests, so a private account's follower total would climb with every
+      // request it had not approved. Privacy loads from the same row.
+      const { data } = await supabase
+        .from('profiles')
+        .select('follower_count, following_count, is_private')
+        .eq('user_id', userId)
+        .maybeSingle();
+      setFollowerCount(data?.follower_count ?? 0);
+      setFollowingCount(data?.following_count ?? 0);
+      setIsPrivateState(Boolean(data?.is_private));
     } catch (error) {
       console.log('Error fetching follow counts:', error);
+    }
+  };
+
+  const handleTogglePrivate = async (next: boolean) => {
+    if (!user) return;
+    setIsPrivateState(next);
+    try {
+      await setIsPrivate(user.id, next);
+    } catch (error) {
+      console.log('Error updating account privacy:', error);
+      setIsPrivateState(!next);
+      Alert.alert('Could not save', 'Your account privacy was not changed. Please try again.');
     }
   };
 
@@ -1291,6 +1311,26 @@ export default function ProfileScreen() {
                     <Text style={styles.settingsItemArrow}>›</Text>
                   </TouchableOpacity>
 
+                  <View style={styles.settingsItem}>
+                    <Ionicons name="lock-closed-outline" size={18} color={colors.text} style={styles.settingsItemIcon} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.settingsItemText}>Private Account</Text>
+                      {/* States what it does, in both directions — the whole
+                          point of the setting is that it is unambiguous. */}
+                      <Text style={styles.settingsItemHint}>
+                        {isPrivate
+                          ? 'Only approved followers can see your posts. New follows need your approval.'
+                          : 'Anyone on Gidi Connect can see your posts.'}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={isPrivate}
+                      onValueChange={handleTogglePrivate}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor={isPrivate ? colors.text : colors.textSecondary}
+                    />
+                  </View>
+
                   <TouchableOpacity style={styles.settingsItem} onPress={handleDeleteAccount}>
                     <Ionicons name="trash-outline" size={18} color={colors.error} style={styles.settingsItemIcon} />
                     <Text style={[styles.settingsItemText, { color: colors.error }]}>Delete Account</Text>
@@ -2186,6 +2226,13 @@ const getStyles = (colors: any) => StyleSheet.create({
   settingsItemArrow: {
     fontSize: 20,
     color: colors.textSecondary,
+  },
+  settingsItemHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16,
+    marginTop: 2,
+    paddingRight: 8,
   },
   settingsItemValue: {
     fontSize: 14,

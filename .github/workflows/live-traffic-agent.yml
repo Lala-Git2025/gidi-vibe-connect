@@ -1,35 +1,45 @@
-name: Live Traffic Agent (Every 2 Hours)
+name: Live Traffic Agent (Manual / Fallback)
 
 # The quantitative half of the traffic feature: Google Routes API travel-time
 # readings for a curated set of Lagos corridors. Pairs with traffic-agent.yml
 # (the radio-narrative half) — see scripts/live-traffic-agent.js for why both.
 #
-# Every 2 hours at :30 — offset from news-agent (:00) and traffic-agent (:15)
-# so the three don't queue behind each other on the same minute.
+# ── NO LONGER SCHEDULED. pg_cron owns the cadence now. ──────────────────────
 #
-# WHY NOT HOURLY, which is what this was. The Google Cloud project's Routes API
-# quota is `ComputeRoutesRequestsPerDay` = 100. At 8 routes per run, hourly is
-# 192 calls/day — so this workflow was exceeding the cap every day and silently
-# failing for the back half of it, returning 429 on every route. GitHub's
-# throttling of free-tier schedules (it actually fires these every 3-6h) had
-# been masking it.
+# This ran every 2 hours at :30 and the readings it produced are what condemned
+# the arrangement. Measured over 17.6 days of traffic_route_readings:
 #
-# Every 2 hours is 96 calls/day, which fits. If the quota is raised in the
-# Cloud Console — Routes API > Quotas > ComputeRoutesRequestsPerDay, it is free
-# to raise and 100 is far below Google's default — put this back to '30 * * * *'
-# and give traffic-baseline-agent.yml a real schedule at the same time.
+#     scheduled   12 runs/day          (cron: '30 */2 * * *')
+#     delivered    4.7 runs/day
+#     average gap  5.2 hours
+#     worst gap    9.1 hours
 #
-# Cadence caveat, same as the other scheduled agents: GitHub throttles free-tier
-# scheduled workflows under load. traffic-agent.yml is named "Every Hour" and
-# actually fires every 3-6 hours. Expect the same here. It stays correct
-# regardless — each run overwrites the same eight rows with fresher numbers, so
-# a late run is just a late reading, never a wrong one, and the app prints the
-# reading's real age next to it. If genuinely reliable cadence ever matters,
-# move it to pg_cron + an edge function; that is the fix, not a tighter cron.
+# GitHub throttles free-tier scheduled workflows under load, so the cron
+# expression was decorative — asking for every 5 minutes would have produced
+# the same 5 hours. The previous version of this header already named the fix:
+# pg_cron plus an edge function, not a tighter cron. That is now done, in
+# migration 20261006010000 and supabase/functions/live-traffic, at a real
+# 15-minute interval (768 Compute Routes calls/day).
+#
+# ── Why this workflow is kept rather than deleted ───────────────────────────
+#
+# Two jobs ran against one quota would double-count, so the schedule is gone —
+# but the script stays useful:
+#
+#   * `node scripts/live-traffic-agent.js` with no flags is a DRY RUN. It
+#     fetches every corridor, prints a table of durations, severities and
+#     baseline comparisons, and writes nothing. That is the fastest way to see
+#     whether the Routes API key and quota are healthy.
+#   * workflow_dispatch here is the fallback path if the edge function or
+#     pg_net is down. Running it writes a real reading, same as the cron does.
+#
+# Historic note worth keeping: the original hourly schedule was 192 calls/day
+# against a `ComputeRoutesRequestsPerDay` quota of 100, so it had been 429-ing
+# through the back half of every day — masked by the very throttling described
+# above. Raising that quota in the Cloud Console is free and is a prerequisite
+# for both the 15-minute cadence and a full baseline build.
 
 on:
-  schedule:
-    - cron: '30 */2 * * *'
   workflow_dispatch:
 
 jobs:
