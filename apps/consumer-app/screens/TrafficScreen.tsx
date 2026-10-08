@@ -11,8 +11,8 @@ import { TrafficRow } from '../components/TrafficRow';
 import { LiveRouteRow } from '../components/LiveRouteRow';
 import { LiveDot } from '../components/LiveDot';
 import {
-  useTrafficReports, useLiveRoutes, verdict, timeAgo, isFreshAt,
-  newestLiveAt, LIVE_STALE_MS, type Severity,
+  useTrafficReports, useLiveRoutes, trafficHeader, timeAgo,
+  newestLiveAt, LIVE_STALE_MS,
 } from '../lib/traffic';
 
 /**
@@ -51,12 +51,12 @@ export default function TrafficScreen() {
 
   const liveAt = newestLiveAt(routes);
   const liveFresh = liveAt !== null && Date.now() - liveAt <= LIVE_STALE_MS;
-  const reportsFresh = newestAt !== null && isFreshAt(newestAt);
-  const newest = Math.max(liveAt ?? 0, newestAt ?? 0) || null;
-  const currentlyFresh = liveFresh || reportsFresh;
 
-  const liveForVerdict = routes.flatMap(r => (r.severity ? [{ severity: r.severity as Severity }] : []));
-  const verdictLine = verdict(liveForVerdict.length ? liveForVerdict : all);
+  // Verdict and age together, describing one source. Previously the verdict
+  // preferred the live corridors while the age beside it was the max of both,
+  // so the header summarised the roads from Google and dated that summary with
+  // whichever half happened to be newer.
+  const head = trafficHeader(routes, all, newestAt);
   const sourceName = all[0]?.source_name;
 
   return (
@@ -87,11 +87,11 @@ export default function TrafficScreen() {
           <Text style={styles.title}>Lagos Traffic</Text>
           {!nothing && (
             <View style={styles.titleMeta}>
-              <Text style={styles.verdict}>{verdictLine}</Text>
-              {newest !== null && (
+              <Text style={styles.verdict}>{head.verdict}</Text>
+              {head.at !== null && (
                 <View style={styles.freshness}>
-                  {currentlyFresh && <LiveDot color={colors.live} />}
-                  <Text style={styles.freshnessText}>{timeAgo(newest)}</Text>
+                  {head.fresh && <LiveDot color={colors.live} />}
+                  <Text style={styles.freshnessText}>{timeAgo(head.at)}</Text>
                 </View>
               )}
             </View>
