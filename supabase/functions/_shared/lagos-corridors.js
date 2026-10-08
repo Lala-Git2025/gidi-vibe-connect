@@ -1,14 +1,26 @@
 /**
- * The curated Lagos corridors, and the one Routes API call both traffic agents
- * make. Shared so the two cannot drift apart.
+ * The curated Lagos corridors, and the one Routes API call every traffic agent
+ * makes. Shared so they cannot drift apart.
  *
  * Why shared and not copy-pasted: `route_key` is the UPSERT identity in
  * traffic_live_routes AND the foreign key by which traffic_route_baseline and
- * traffic_route_readings are joined. If the live agent and the baseline agent
- * held separate copies of this list, a reworded label would be harmless but a
- * changed key — or a route added to one list and not the other — would put
- * readings against a baseline that does not exist, and the app would silently
- * fall back to "no comparison" forever. One list removes the failure mode.
+ * traffic_route_readings are joined. If the agents held separate copies of
+ * this list, a reworded label would be harmless but a changed key — or a route
+ * added to one list and not the other — would put readings against a baseline
+ * that does not exist, and the app would silently fall back to "no comparison"
+ * forever. One list removes the failure mode.
+ *
+ * ── Why this file lives under supabase/functions/_shared ────────────────────
+ *
+ * It has three consumers across two runtimes: the Node baseline agent and the
+ * Node live agent in scripts/, and the `live-traffic` Deno edge function that
+ * pg_cron drives every 15 minutes. Deno can only import from inside the
+ * functions directory when deployed, and Node can import from anywhere, so
+ * this is the one location all three can reach.
+ *
+ * Keeping it runtime-agnostic is therefore a requirement, not a style choice:
+ * plain ESM, `fetch` and `Date` only. No `require`, no `process`, no node:
+ * imports, no Deno globals. Anything runtime-specific belongs in the caller.
  *
  * Routes are place-name ADDRESSES, not coordinates, and Google's geocoding
  * resolves them. Hand-typed lat/lng is how a route ends up silently measuring

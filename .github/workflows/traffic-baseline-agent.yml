@@ -61,8 +61,11 @@ jobs:
 
       - name: Build traffic baseline
         run: |
+          # inputs.* are empty on a `schedule` trigger, so these need explicit
+          # fallbacks — without them a scheduled run passes --limit "" and the
+          # script refuses to start rather than silently fetching nothing.
           node scripts/traffic-baseline-agent.js --apply \
-            --limit "${{ inputs.limit }}" \
+            --limit "${{ inputs.limit || '1400' }}" \
             ${{ inputs.refresh && '--refresh' || '' }}
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
