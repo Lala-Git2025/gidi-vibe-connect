@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
   Image, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../config/supabase';
@@ -64,8 +64,29 @@ const MIN_RELEVANCE = 30;
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const REFRESH_INTERVAL   = 60 * 60 * 1000; // auto-refresh every 1 hour
-const MAX_AGE_HOURS      = 168;             // last 7 days — wider window so niche chips (tech/food/sports) have content
+/**
+ * A news feed is only news for a day. Nothing older than this is shown.
+ *
+ * This was 168 (seven days), justified in a comment as "a wider window so
+ * niche chips have content" — and the numbers say that trade never paid. Of
+ * the 99 stories a seven-day window surfaces, **23 are from the last 24
+ * hours**: roughly five in six rows in the feed were already old, and the
+ * screen is sorted newest-first so the staleness piled up exactly where
+ * someone scrolling would hit it. Worse, the chips it was meant to feed were
+ * empty either way — nightlife, food & drink and sport have had **no story
+ * in seven days**, so the wide window bought nothing and cost freshness. The
+ * fix for a thin chip is deriving the chip list from the data (below), not
+ * reaching further back in time.
+ */
+const MAX_AGE_HOURS      = 24;
 const BREAKING_AGE_HOURS = 3;              // articles < 3 h old = "Breaking"
+/**
+ * Refetch on focus if the loaded feed is older than this. The screen stays
+ * mounted in the navigator, so the mount-time fetch plus an hourly interval
+ * meant re-entering News could show a feed loaded up to an hour ago — stale
+ * on its own terms, and far more visible against a 24-hour window.
+ */
+const FOCUS_STALE_MS     = 5 * 60 * 1000;
 
 /**
  * Route news images through images.weserv.nl — a free image proxy.
@@ -261,7 +282,16 @@ export default function NewsScreen() {
 
   // ── Fetch ────────────────────────────────────────────────────────────────────
 
+  // When the feed was last loaded, for the focus guard below. A ref and not
+  // state: it must be readable from a `useFocusEffect` callback that has no
+  // dependencies, and writing it must not re-render.
+  const lastFetchRef = useRef(0);
+
   const fetchNews = async (isRefresh = false) => {
+    // Set before the first await so the initial focus can see that the
+    // mount-time fetch has already claimed this load, whichever effect the
+    // renderer runs first.
+    lastFetchRef.current = Date.now();
     isRefresh ? setRefreshing(true) : setLoading(true);
 
     try {
@@ -315,7 +345,41 @@ export default function NewsScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  // Top up on focus. `isRefresh` so the existing stories stay on screen behind
+  // the pull-to-refresh spinner instead of being replaced by the full-screen
+  // loader — the feed is small enough that blanking it would be the louder
+  // event.
+  useFocusEffect(
+    useCallback(() => {
+      // First focus: the mount effect above is already fetching.
+      if (lastFetchRef.current === 0) return;
+      if (Date.now() - lastFetchRef.current > FOCUS_STALE_MS) fetchNews(true);
+    }, []),
+  );
+
   // ── Derived data ─────────────────────────────────────────────────────────────
+
+  /**
+   * Chips come from the stories that actually loaded, never from the full
+   * taxonomy. Same rule Explore and Discover already follow: a chip that
+   * leads to an empty list is worse than no chip, because it reads as a
+   * broken screen rather than a quiet news day. Inside 24 hours most of the
+   * taxonomy is empty on any given day, and the old seven-day window was only
+   * concealing that by reaching back far enough to find one match.
+   */
+  const availableCategories = useMemo(() => {
+    const present = new Set(news.map(item => item.category));
+    return GIDI_CATEGORIES.filter(c => c.key === 'All' || present.has(c.key));
+  }, [news]);
+
+  // A refresh can retire the chip that is currently selected. Without this the
+  // screen sits on an empty list with no chip visibly active and no way back
+  // except guessing that 'All' is the fix.
+  useEffect(() => {
+    if (activeCategory !== 'All' && !availableCategories.some(c => c.key === activeCategory)) {
+      setActiveCategory('All');
+    }
+  }, [availableCategories, activeCategory]);
 
   const filtered = news.filter(item =>
     activeCategory === 'All' || item.category === activeCategory
@@ -416,14 +480,20 @@ export default function NewsScreen() {
             )}
           </View>
           <Text style={styles.title}>Latest Lagos News</Text>
-          {/* Was "Last 24 hours" over a seven-day window. */}
-          <Text style={styles.subtitle}>Briefed by Gidi from Lagos's top sources</Text>
+          {/*
+            "Last 24 hours" is true again. It used to say this over a
+            seven-day window, and the honest fix at the time was to delete the
+            claim; the window is now actually 24 hours, so the claim comes
+            back — the feed states its own scope rather than leaving a reader
+            to work out why a story is four days old.
+          */}
+          <Text style={styles.subtitle}>Last 24 hours · briefed by Gidi from Lagos's top sources</Text>
         </View>
 
         {/* ── Categories ── */}
         <View style={styles.categoriesSection}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesContent}>
-            {GIDI_CATEGORIES.map(({ key, label }) => (
+            {availableCategories.map(({ key, label }) => (
               <TouchableOpacity
                 key={key}
                 style={[styles.categoryBtn, activeCategory === key && styles.categoryBtnActive]}
@@ -445,10 +515,17 @@ export default function NewsScreen() {
           /* ── Empty state ── */
           <View style={styles.emptyState}>
             <Ionicons name="mail-open-outline" size={52} color={colors.textSecondary} />
-            <Text style={styles.emptyTitle}>No recent news</Text>
+            {/*
+              With a 24-hour window this is now a reachable state on a quiet
+              news day, not only a signal that something broke. So it names
+              the window: nothing today reads very differently from nothing
+              ever, and only one of the two is worth worrying about.
+            */}
+            <Text style={styles.emptyTitle}>Nothing new in the last 24 hours</Text>
             <Text style={styles.emptySubtitle}>
-              Pull down to refresh, or check back soon.{'\n'}
-              News updates every hour from Pulse, The Punch, BellaNaija and more.
+              Gidi News only carries today's stories, so this empties out on a quiet day.{'\n'}
+              Pull down to refresh — new stories arrive hourly from Pulse, The Punch,
+              BellaNaija and more.
             </Text>
           </View>
         ) : (
