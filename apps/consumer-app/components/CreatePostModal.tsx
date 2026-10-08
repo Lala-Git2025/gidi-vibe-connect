@@ -12,12 +12,50 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
+import {
+  POST_IMAGE_ALLOWED_MIME,
+  POST_IMAGE_MAX_BYTES,
+  uploadMedia,
+} from '../lib/uploadFile';
 import { supabase } from '../config/supabase';
 import { pickMedia } from '../lib/mediaCapture';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { resolveCommunityIcon } from '../constants/communityIcons';
+import { PostVisibility } from '../lib/social';
+
+/**
+ * The three audiences, in widening-to-narrowing order.
+ *
+ * 'mutuals' is the connection this product calls a friend — both of you follow
+ * each other — and it is derived from the follow graph rather than stored, so
+ * it needs no separate friend list to maintain. See lib/social.ts.
+ */
+const VISIBILITY_CHOICES: ReadonlyArray<{
+  value: PostVisibility;
+  label: string;
+  hint: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}> = [
+  {
+    value: 'public',
+    label: 'Everyone',
+    hint: 'Anyone on Gidi Connect. If your account is private, only your approved followers.',
+    icon: 'globe-outline',
+  },
+  {
+    value: 'followers',
+    label: 'Followers',
+    hint: 'Only people who follow you.',
+    icon: 'people-outline',
+  },
+  {
+    value: 'mutuals',
+    label: 'Friends',
+    hint: 'Only people you follow who follow you back.',
+    icon: 'heart-outline',
+  },
+];
 
 interface Community {
   id: string;
@@ -31,6 +69,13 @@ export interface EditingPost {
   location: string | null;
   community_id: string | null;
   media_urls: string[] | null;
+  /**
+   * Optional because callers that opened an edit before this field existed
+   * still compile — but when it is missing the editor cannot show the post's
+   * real audience, so it falls back to 'public' and the save would widen it.
+   * Pass it wherever an edit is offered.
+   */
+  visibility?: PostVisibility;
 }
 
 interface CreatePostModalProps {
@@ -66,6 +111,7 @@ export const CreatePostModal = ({
 
   // ── Poll state ──────────────────────────────────────────────────────────
   const [postType, setPostType] = useState<'standard' | 'poll'>('standard');
+  const [visibility, setVisibility] = useState<PostVisibility>('public');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
 
   // Load communities for the picker
@@ -84,6 +130,13 @@ export const CreatePostModal = ({
       setPostLocation(editingPost.location || '');
       setSelectedCommunity(editingPost.community_id);
       setSelectedImage(editingPost.media_urls?.[0] || null);
+      setVisibility(editingPost.visibility ?? 'public');
+      // Park the tracked cursor at the end of the loaded text. insertMention
+      // slices on contentSelection.end, so leaving it at 0 would splice a
+      // mention in before the first character if someone typed @ before
+      // tapping into the field.
+      const end = editingPost.content.length;
+      setContentSelection({ start: end, end });
     } else {
       resetForm();
       if (lockedCommunity) setSelectedCommunity(lockedCommunity.id);
@@ -97,6 +150,10 @@ export const CreatePostModal = ({
     setSelectedImage(null);
     setPostType('standard');
     setPollOptions(['', '']);
+    setVisibility('public');
+    setContentSelection({ start: 0, end: 0 });
+    setMentionQuery(null);
+    setMentionSuggestions([]);
   };
 
   // Detect if the cursor is currently inside an @mention token. Returns the
@@ -142,7 +199,12 @@ export const CreatePostModal = ({
 
   const handleContentChange = (text: string) => {
     setPostContent(text);
-    const prefix = computeMentionPrefix(text, contentSelection.end);
+    // onSelectionChange fires separately and will re-run this with the real
+    // caret, so this is a first pass — but the stored cursor can be past the
+    // end of the new text (a deletion, or a prefill), and computeMentionPrefix
+    // would then read from beyond the string.
+    const cursor = Math.min(contentSelection.end, text.length);
+    const prefix = computeMentionPrefix(text, cursor);
     setMentionQuery(prefix);
   };
 
@@ -237,36 +299,26 @@ export const CreatePostModal = ({
       // Upload image if selected (and it's a local file, not an existing URL)
       let imageUrl = null;
       if (selectedImage && !selectedImage.startsWith('http')) {
-        const rawExt = selectedImage.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
-        const fileExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(rawExt) ? rawExt : 'jpg';
-        const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-        const mimeType = fileExt === 'jpg' ? 'image/jpeg' : `image/${fileExt}`;
-
-        // Read the image as base64 via expo-file-system and decode to bytes.
-        // XHR with responseType:'arraybuffer' returns 0-byte buffers for the
-        // photo-picker `content://` URIs that Android hands us, so we can't
-        // use that path. The base64 round-trip is the pattern StorySection
-        // already uses for the same reason.
-        const base64 = await FileSystem.readAsStringAsync(selectedImage!, {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          encoding: 'base64' as any,
+        // Streams the file from disk in native code. What this replaces read
+        // the photo as base64, atob'd it to a binary string and copied that
+        // byte by byte into a Uint8Array — three copies of the image in the JS
+        // heap and one loop iteration per byte, which for a phone photo is
+        // several million. See lib/uploadFile.ts.
+        //
+        // The comment that used to justify it was right about one thing worth
+        // keeping: XHR with responseType 'arraybuffer' returns 0-byte buffers
+        // for the content:// URIs Android's picker hands over. That rules out
+        // reading the file in JS at all, which is why native streaming is the
+        // answer rather than a different in-JS encoding.
+        const uploaded = await uploadMedia({
+          bucket: 'social-media',
+          pathPrefix: `${user.id}/${Date.now()}`,
+          fileUri: selectedImage,
+          mediaType: 'image',
+          maxBytes: POST_IMAGE_MAX_BYTES,
+          allowedMimeTypes: POST_IMAGE_ALLOWED_MIME,
         });
-        const binaryStr = atob(base64);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) {
-          bytes[i] = binaryStr.charCodeAt(i);
-        }
-
-        const { error: uploadError } = await supabase.storage
-          .from('social-media')
-          .upload(fileName, bytes, { contentType: mimeType, upsert: false });
-
-        if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('social-media')
-          .getPublicUrl(fileName);
-        imageUrl = publicUrl;
+        imageUrl = uploaded.publicUrl;
       } else if (selectedImage?.startsWith('http')) {
         // Keep existing image URL when editing
         imageUrl = selectedImage;
@@ -280,6 +332,7 @@ export const CreatePostModal = ({
             location: postLocation.trim() || null,
             community_id: selectedCommunity,
             media_urls: imageUrl ? [imageUrl] : (selectedImage ? editingPost.media_urls : null),
+            visibility,
           })
           .eq('id', editingPost.id);
         if (error) throw error;
@@ -294,6 +347,7 @@ export const CreatePostModal = ({
             community_id: selectedCommunity,
             media_urls: imageUrl ? [imageUrl] : null,
             post_type: postType,
+            visibility,
           })
           .select('id')
           .single();
@@ -386,7 +440,14 @@ export const CreatePostModal = ({
               value={postContent}
               onChangeText={handleContentChange}
               onSelectionChange={handleContentSelection}
-              selection={contentSelection}
+              // No `selection` prop on purpose. It used to be controlled from
+              // contentSelection, but nothing ever *writes* that state — it is
+              // fed by onSelectionChange and read only for @mention detection.
+              // Controlling it therefore pinned the caret to whatever stale
+              // value the state held, which for an edit is {0,0} against a body
+              // that already has text: the cursor sat before the first
+              // character and jumped back there on every keystroke, so an
+              // existing post could not actually be edited.
               maxLength={500}
               autoFocus={!editingPost}
             />
@@ -521,6 +582,38 @@ export const CreatePostModal = ({
               </View>
             )}
 
+            {/* Audience. 'Everyone' still respects a private account — a
+                private account has no public posts, so the label reads as the
+                widest audience available rather than a promise of reach. */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Who can see this</Text>
+              <View style={styles.communityOptions}>
+                {VISIBILITY_CHOICES.map((choice) => (
+                  <TouchableOpacity
+                    key={choice.value}
+                    style={[
+                      styles.communityOption,
+                      visibility === choice.value && styles.communityOptionSelected,
+                    ]}
+                    onPress={() => setVisibility(choice.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: visibility === choice.value }}
+                    accessibilityLabel={`${choice.label}. ${choice.hint}`}
+                  >
+                    <Ionicons
+                      name={choice.icon}
+                      size={14}
+                      color={visibility === choice.value ? colors.primary : colors.textSecondary}
+                    />
+                    <Text style={styles.communityOptionText}>{choice.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.visibilityHint}>
+                {VISIBILITY_CHOICES.find((c) => c.value === visibility)?.hint}
+              </Text>
+            </View>
+
             {/* Image Picker */}
             <TouchableOpacity
               style={styles.imagePickerBtn}
@@ -614,6 +707,12 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textSecondary,
     marginBottom: 8,
+  },
+  visibilityHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16,
+    marginTop: 8,
   },
   input: {
     backgroundColor: colors.border,

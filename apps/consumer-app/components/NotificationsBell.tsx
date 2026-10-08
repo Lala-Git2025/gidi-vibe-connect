@@ -15,7 +15,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../config/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 
-type NotifType = 'like' | 'comment' | 'reply' | 'follow' | 'mention';
+/**
+ * Mirrors the notifications_type_check constraint. The three maps below are
+ * Record<NotifType, …>, so adding a type here fails the build until it has a
+ * verb, an icon and a colour — which is the point: an unmapped type would
+ * otherwise render as a blank row with an undefined tint.
+ */
+type NotifType =
+  | 'like'
+  | 'comment'
+  | 'reply'
+  | 'follow'
+  | 'mention'
+  | 'follow_request'
+  | 'follow_accepted';
 
 interface NotificationRow {
   id: string;
@@ -34,6 +47,10 @@ const VERB: Record<NotifType, string> = {
   reply:   'replied to your comment',
   follow:  'started following you',
   mention: 'mentioned you',
+  // Deliberately different from 'follow': a request is not a follow yet, and
+  // it is waiting on the reader to do something about it.
+  follow_request:  'asked to follow you',
+  follow_accepted: 'accepted your follow request',
 };
 
 const ICON: Record<NotifType, keyof typeof Ionicons.glyphMap> = {
@@ -42,6 +59,8 @@ const ICON: Record<NotifType, keyof typeof Ionicons.glyphMap> = {
   reply:   'arrow-undo',
   follow:  'person-add',
   mention: 'at',
+  follow_request:  'person-add-outline',
+  follow_accepted: 'checkmark-circle',
 };
 
 const formatTimeAgo = (iso: string): string => {
@@ -236,12 +255,16 @@ export const NotificationsBell = () => {
   );
 };
 
-const typeColor = (t: NotifType, colors: any) => {
+const typeColor = (t: NotifType, colors: any): string => {
   switch (t) {
     case 'like':    return '#E11D48';
     case 'comment':
     case 'reply':   return colors.primary;
-    case 'follow':  return '#10B981';
+    case 'follow':
+    case 'follow_accepted': return '#10B981';
+    // A request needs a decision, so it reads as the app's attention colour
+    // rather than the green that means "already happened".
+    case 'follow_request':  return colors.primary;
     case 'mention': return '#A855F7';
   }
 };
