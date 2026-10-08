@@ -1,5 +1,21 @@
 # Eventbrite API Integration Setup
 
+> ## ⚠️ SUPERSEDED — 2026-10-06. This approach cannot work.
+>
+> **Eventbrite removed public access to the event search API** (`GET
+> /v3/events/search/`) in December 2019 and started denying all requests to it
+> in February 2020. There is no public endpoint for searching events across
+> the platform; what remains is retrieve-by-id, list-by-venue and
+> list-by-organization, all of which require already knowing the target. So no
+> API token will make this work — `scripts/sync-eventbrite-events.js` has been
+> deleted, along with every `npm run events:*` script this document names.
+>
+> See [EVENTS-INTEGRATION.md](EVENTS-INTEGRATION.md) for the full picture,
+> including the separate problem that the Nigerian "scraper" alongside it was
+> a hardcoded array of invented events.
+>
+> Kept for the record. Do not follow its instructions.
+
 ## Overview
 
 The events system is fully configured to pull real events from Eventbrite API. You just need to add your API token.

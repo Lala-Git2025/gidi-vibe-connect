@@ -1,5 +1,60 @@
 # Events Integration System
 
+> ## ⚠️ SUPERSEDED — 2026-10-06. The tooling below no longer exists.
+>
+> Every `npm run events:*` command in this document has been removed, along
+> with the scripts behind them, because two of them did not do what they
+> claimed:
+>
+> - **`scripts/scrape-nigerian-events.js` was not a scraper.** It imported
+>   Puppeteer and a stealth plugin, and then wrote a hardcoded array of
+>   invented events — fabricated ticket URLs (`nairabox.com/felabration`,
+>   `tix.africa/lagos-food-festival`) that resolve to nothing, image URLs on
+>   `source.unsplash.com` (an endpoint Unsplash retired, so they rendered
+>   broken), and invented venues, dates, prices and organizers. Several titles
+>   were real annual Lagos events, which made it worse: a user could plan
+>   around an invented date. Eight such rows reached production.
+> - **`scripts/sync-eventbrite-events.js` could never have worked.** It called
+>   `GET /v3/events/search/`, which Eventbrite removed from public access in
+>   December 2019 and began denying outright in February 2020. There is no
+>   public endpoint for searching events across Eventbrite.
+>
+> `sync-all-events.js`, `test-events-system.js` and `setup-auto-events.sh` were
+> removed with them, as was the `com.gidiconnect.events-sync` launchd job that
+> ran the orchestrator nightly at 03:00.
+>
+> - **`supabase/functions/fetch-lagos-events` is a tautology, not an
+>   ingester** (found 2026-10-05, client call removed). Its `fetchLagosEvents()`
+>   SELECTs from `public.events`, and the handler then UPSERTs that result back
+>   into `public.events` with `ignoreDuplicates: true` — while answering
+>   `source: 'live_scraping'`. It cannot add an event. EventsScreen's
+>   pull-to-refresh called it behind a "Syncing live events…" label, so the
+>   screen promised ingestion that does not exist. The client no longer calls
+>   it; **the deployed function is still live and should be deleted.**
+>
+> **Also note what the schema got right:** `events` already carries `source`,
+> `external_id`, `external_url`, `last_synced_at`, `ticket_url` and
+> `organizer_name/url`, and `EventsScreen` already renders a source badge and
+> links out. The table is ready for real aggregation; only the ingesters were
+> fiction.
+>
+> **Superseded by a working ingester:**
+> [scripts/lagos-events-agent.js](scripts/lagos-events-agent.js) (2026-10-05)
+> reads **schema.org `Event` JSON-LD** from Eventbrite's public Lagos browse
+> pages and Meetup's Lagos find page — markup those sites publish for machines
+> to read, which is why no API key is involved and why the 2019 API withdrawal
+> never closed the route. 31 real events live on the first run. See CLAUDE.md
+> (October 2026) for the data-quality traps it has to handle.
+>
+> tix.africa, 10times.com and bandsintown.com all return **403** to a
+> self-identifying client — tix.africa even on `/robots.txt`. Those are
+> skipped permanently: a 403 is an answer, not an obstacle, and defeating bot
+> protection on a ticketing platform would poison the partnership that is the
+> actual way into its catalogue. The agent fetches and enforces `robots.txt`
+> at runtime, so this is a property of the code rather than of a comment.
+>
+> Kept for the record of what was attempted. Do not follow its instructions.
+
 Complete guide to the events integration system for Gidi Vibe Connect.
 
 ## Overview

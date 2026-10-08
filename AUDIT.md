@@ -295,9 +295,9 @@ Documented in REMAINING-WORK #2 and CLAUDE.md. Password reset call succeeds serv
 | Script | Status |
 |---|---|
 | `scripts/lagos-news-agent.js` | ✅ Active via GitHub Actions hourly cron |
-| `scripts/sync-eventbrite-events.js` | ⏳ Inactive — no token |
-| `scripts/sync-all-events.js`, `scripts/scrape-nigerian-events.js` | Manual only |
-| **`com.gidiconnect.newsagent.plist`** | ❌ Wrong path — points to `/Users/femimoritiwon/gidi-vibe-connect-1/` which doesn't exist on this machine. Local macOS cron is broken. (GitHub Actions still works.) |
+| `scripts/sync-eventbrite-events.js` | 🗑️ **Deleted 2026-10-06.** Not "inactive pending a token" — it called `GET /v3/events/search/`, which Eventbrite withdrew from public access in Dec 2019 and began denying in Feb 2020. No token could have made it work. |
+| `scripts/sync-all-events.js`, `scripts/scrape-nigerian-events.js` | 🗑️ **Deleted 2026-10-06.** The "scraper" was a hardcoded array of invented events with fabricated ticket URLs and retired-endpoint Unsplash images; 8 rows reached production. See [EVENTS-INTEGRATION.md](EVENTS-INTEGRATION.md). |
+| **`com.gidiconnect.newsagent.plist`** | ✅ **Fixed 2026-10-06.** The path was right about being broken but wrong about why: `gidi-vibe-connect-1/` *did* exist — it held nothing but two error logs, 53 and 52 copies of the same `MODULE_NOT_FOUND`. `setup-auto-news.sh` rewrote only the *node* path and left the project path hardcoded, so renaming the checkout broke it silently for two months while `launchctl list` still showed it loaded. The plist is now generated at install time from the script's own location, the committed copy is deleted, and the directory is gone. |
 | Phase migration scripts, seeders, diagnostics | Manual one-shots |
 
 ---
