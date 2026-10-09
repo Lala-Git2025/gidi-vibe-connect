@@ -19,6 +19,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../config/supabase';
 import { trackVenueEvent } from '../lib/analytics';
+import { VenueOffers } from '../components/VenueOffers';
 import { useFonts, Orbitron_700Bold, Orbitron_900Black } from '@expo-google-fonts/orbitron';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -336,6 +337,15 @@ function VenueDetailModal({
             {venue.description ? (
               <Text style={modalStyles.description}>{venue.description}</Text>
             ) : null}
+
+            {/* Live deals from the venue's owner, high on the sheet because a
+                discount is the thing most likely to change a decision.
+                Renders nothing when there are none. */}
+            <VenueOffers
+              venueId={venue.id}
+              venueName={venue.name}
+              phone={venue.contact_phone}
+            />
 
             {/* Features */}
             {venue.features && venue.features.length > 0 && (

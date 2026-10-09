@@ -1,42 +1,26 @@
-import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { supabase } from '../config/supabase';
 import { useTheme, polished } from '../contexts/ThemeContext';
 import { tile, type as T, space as S, radius as R, elevation as E, gutter } from '../theme/tokens';
 import { Ionicons } from '@expo/vector-icons';
+import { hasRating, type TrendingVenue } from '../lib/trending';
 
-interface Venue {
-  id: string;
-  name: string;
-  location: string;
-  rating: number;
-  live_rating?: number;
-  professional_media_urls?: string[];
-  is_promoted?: boolean;
-  promotion_label?: string;
-  checkins_24h?: number;
-}
-
+/**
+ * The promoted-venue rail.
+ *
+ * Every card here is a paid placement — see lib/trending.ts. There is no
+ * ranking and so no rank number: these venues hold their slots because they
+ * were bought, and a "#1" would claim a position none of them earned.
+ *
+ * Presentational by design. HomeScreen owns the fetch because it also owns the
+ * section header, and it needs the total to decide whether "See all" leads
+ * anywhere this rail is not already showing.
+ */
 interface TrendingVenuesProps {
-  refreshTrigger?: number;
+  venues: TrendingVenue[];
+  loading: boolean;
 }
-
-const isActivePromotion = (venue: Venue) => !!venue.is_promoted;
-
-const dedupeVenues = (list: Venue[]): Venue[] => {
-  const seenIds = new Set<string>();
-  const seenNames = new Set<string>();
-  return list.filter(v => {
-    if (seenIds.has(v.id)) return false;
-    const nameKey = v.name.trim().toLowerCase();
-    if (seenNames.has(nameKey)) return false;
-    seenIds.add(v.id);
-    seenNames.add(nameKey);
-    return true;
-  });
-};
 
 // NOTE: hardcoded fallback venues were removed on 2026-05-11.
 // They used synthetic IDs ('1'..'6') that didn't exist in the DB, so
@@ -44,52 +28,10 @@ const dedupeVenues = (list: Venue[]): Venue[] => {
 // row and silently failed. We now render the empty state instead — see
 // the empty-container branch below.
 
-export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
+export const TrendingVenues = ({ venues, loading }: TrendingVenuesProps) => {
   const { colors } = useTheme();
   const navigation = useNavigation();
-  const [venues, setVenues] = useState<Venue[]>([]);
-  const [loading, setLoading] = useState(true);
   const styles = getStyles(colors);
-
-  useEffect(() => {
-    fetchTrendingVenues();
-  }, [refreshTrigger]);
-
-  const fetchTrendingVenues = async () => {
-    try {
-      // Primary: admin-promoted venues, ranked by trending_score.
-      const { data: promoted, error: promotedErr } = await supabase
-        .from('trending_venues')
-        .select('id, name, location, rating, live_rating, professional_media_urls, is_promoted, promotion_label, checkins_24h')
-        .eq('is_promoted', true)
-        .order('trending_score', { ascending: false })
-        .limit(10);
-
-      if (promotedErr) throw promotedErr;
-
-      const promotedUnique = promoted ? dedupeVenues(promoted as Venue[]).slice(0, 6) : [];
-      if (promotedUnique.length > 0) {
-        setVenues(promotedUnique);
-        return;
-      }
-
-      // Backstop: when nothing is promoted yet, surface the top-rated *real*
-      // venues so the home page isn't empty. Still real DB rows — tapping
-      // a card opens the venue's detail modal as expected.
-      const { data: topRated } = await supabase
-        .from('venues')
-        .select('id, name, location, rating, professional_media_urls')
-        .order('rating', { ascending: false })
-        .limit(6);
-
-      setVenues(topRated ? dedupeVenues(topRated as Venue[]) : []);
-    } catch (err) {
-      console.log('TrendingVenues fetch error:', err);
-      setVenues([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -102,7 +44,7 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
   if (venues.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>No trending venues at the moment</Text>
+        <Text style={styles.emptyText}>Nothing is featured right now</Text>
       </View>
     );
   }
@@ -114,9 +56,7 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
       style={styles.scrollView}
       contentContainerStyle={styles.scrollContent}
     >
-      {venues.map((venue, idx) => {
-        const rank = idx + 1;
-        const promoted = isActivePromotion(venue);
+      {venues.map(venue => {
         return (
           <TouchableOpacity
             key={venue.id}
@@ -124,7 +64,7 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
             onPress={() => (navigation as any).navigate('Explore', { venueId: venue.id })}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel={`${venue.name}, ${venue.location}`}
+            accessibilityLabel={[venue.name, venue.location].filter(Boolean).join(', ')}
           >
             <Image
               source={{ uri: venue.professional_media_urls?.[0] || 'https://images.unsplash.com/photo-1576442655380-1e828d09852f?q=80&w=1000' }}
@@ -142,12 +82,17 @@ export const TrendingVenues = ({ refreshTrigger }: TrendingVenuesProps) => {
             <View style={styles.content}>
               <View style={styles.topRow}>
                 <Text style={styles.rankLabel} numberOfLines={1}>
-                  {promoted ? (venue.promotion_label || 'Sponsored') : `#${rank}`}
+                  {venue.promotion_label || 'Sponsored'}
                 </Text>
-                <View style={styles.ratingChip}>
-                  <Ionicons name="star" size={9} color={polished.goldMid} />
-                  <Text style={styles.ratingText}>{venue.rating.toFixed(1)}</Text>
-                </View>
+                {/* No chip rather than "0.0": `rating` is 0 on a venue nobody
+                    has rated, and a star beside a zero reads as a bad score
+                    rather than an absent one. */}
+                {hasRating(venue) && (
+                  <View style={styles.ratingChip}>
+                    <Ionicons name="star" size={9} color={polished.goldMid} />
+                    <Text style={styles.ratingText}>{venue.rating!.toFixed(1)}</Text>
+                  </View>
+                )}
               </View>
 
               <View>
