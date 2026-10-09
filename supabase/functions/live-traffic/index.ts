@@ -52,6 +52,44 @@ import {
 // is the shape that trips it.
 const PACE_MS = 250;
 
+/**
+ * ── Daily quota pacing ──────────────────────────────────────────────────────
+ *
+ * The cron fires every 15 minutes and a pass costs one Routes API call per
+ * corridor, so this function wants 96 × 8 = 768 Compute Routes calls a day.
+ * The project's `ComputeRoutesRequestsPerDay` quota is **100**. The result,
+ * measured over six days of traffic_route_readings:
+ *
+ *     PT day       readings   first reading   last reading
+ *     2026-10-08        107       00:00:03       03:30:05
+ *     2026-10-07        115       00:00:05       16:15:51
+ *     2026-10-06        112       00:00:03       11:45:04
+ *
+ * Every day starts at 00:00:0x Pacific — the moment Google's daily quota
+ * resets — burns the whole allowance inside a few hours, then 429s until the
+ * next reset. On 2026-10-08 the app had no live reading for 20.5 of 24 hours.
+ * pg_cron logged all 144 runs as "succeeded" throughout, because
+ * `net.http_post` reports that it queued the request, not what came back.
+ *
+ * So the cadence has to fit the quota that exists. With a budget of N calls
+ * and 8 corridors, the day affords floor(N / 8) passes; spacing them evenly
+ * gives a minimum interval between passes. At N=100 that is 12 passes a day,
+ * one every two hours — worse than 15 minutes, and far better than three
+ * hours of coverage followed by twenty-one of nothing.
+ *
+ * Raising the quota in the Cloud Console is free and remains the real fix.
+ * When it is raised, set ROUTES_DAILY_BUDGET to the new value and the spacing
+ * tightens automatically; at 800 the interval falls below the 15-minute tick
+ * and this guard stops having any effect.
+ *
+ * Spacing on the newest reading rather than a counter is deliberate: it needs
+ * no new table, it is self-correcting after an outage (a long gap means the
+ * next tick runs immediately), and it holds across the Pacific midnight
+ * boundary without knowing where that boundary is — an even spread over any
+ * rolling 24 hours is also an even spread within each quota day.
+ */
+const DEFAULT_DAILY_BUDGET = 100;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface Reading {
@@ -118,6 +156,50 @@ serve(async (req: Request) => {
 
   const supabase = createClient(supabaseUrl!, serviceKey!, { auth: { persistSession: false } });
 
+  // ── Quota pacing ──────────────────────────────────────────────────────────
+  // Before anything billable. See DEFAULT_DAILY_BUDGET above for the measured
+  // reason this exists.
+  const budgetRaw = Number(env('ROUTES_DAILY_BUDGET') ?? DEFAULT_DAILY_BUDGET);
+  const dailyBudget = Number.isFinite(budgetRaw) && budgetRaw > 0
+    ? budgetRaw
+    : DEFAULT_DAILY_BUDGET;
+
+  const passesPerDay = Math.max(1, Math.floor(dailyBudget / ROUTES.length));
+  const minIntervalMs = Math.floor(86_400_000 / passesPerDay);
+
+  const { data: newest, error: newestError } = await supabase
+    .from('traffic_route_readings')
+    .select('observed_at')
+    .order('observed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // A failed lookup must not block the run — losing a reading to a transient
+  // read error is worse than one extra call against the budget.
+  if (newestError) console.error('pacing: could not read last observation', newestError.message);
+
+  const lastAt = newest?.observed_at ? Date.parse(newest.observed_at) : null;
+  const sinceLastMs = lastAt === null ? Infinity : Date.now() - lastAt;
+
+  if (sinceLastMs < minIntervalMs) {
+    // 200, not an error: skipping is the function working correctly. The body
+    // states the budget it is pacing against so a reader can tell this apart
+    // from a crash, and from the 429s this exists to prevent.
+    return new Response(
+      JSON.stringify({
+        skipped: 'paced',
+        reason:
+          `Routes API budget is ${dailyBudget} calls/day for ${ROUTES.length} corridors ` +
+          `= ${passesPerDay} passes/day, one every ${Math.round(minIntervalMs / 60_000)} min.`,
+        minutes_since_last_pass: Math.round(sinceLastMs / 60_000),
+        minutes_until_next_pass: Math.ceil((minIntervalMs - sinceLastMs) / 60_000),
+        raise_quota:
+          'ComputeRoutesRequestsPerDay in the Google Cloud console; then set ROUTES_DAILY_BUDGET to match.',
+      }, null, 2),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
   // Which baseline slot this run falls in. Read once, before the loop: a pass
   // takes a couple of seconds and must not straddle two hour buckets, which
   // would compare the last corridors against a different hour than the first.
@@ -139,16 +221,29 @@ serve(async (req: Request) => {
   const readings: Reading[] = [];
   const failures: string[] = [];
   let noBaseline = 0;
+  let quotaExhausted = false;
 
   for (const route of ROUTES) {
     let reading;
     try {
       reading = await computeRoute(route, apiKey);
     } catch (err) {
+      const message = (err as Error).message;
       // One corridor failing must not cost the other seven. Collected and
       // reported in the response so a partial run is visible rather than
       // looking like a success with fewer rows.
-      failures.push(`${route.key}: ${(err as Error).message}`);
+      failures.push(`${route.key}: ${message}`);
+
+      // A 429 is not a per-corridor fault — the daily quota is gone and the
+      // remaining corridors would each produce an identical rejection. Every
+      // run in the dead window was firing all eight regardless, which is how
+      // the failure stayed invisible: eight identical quota errors look like
+      // eight broken routes.
+      if (/\b429\b|RESOURCE_EXHAUSTED|Quota exceeded/i.test(message)) {
+        quotaExhausted = true;
+        break;
+      }
+
       await sleep(PACE_MS);
       continue;
     }
@@ -213,7 +308,26 @@ serve(async (req: Request) => {
     no_baseline: noBaseline,
     baselines_available: expectedFor.size,
     baseline_lookup_error: baselineError?.message ?? null,
+    // Keep this. The status code is derived from failures.length, so dropping
+    // the field (as an earlier edit did) produces a 207 with nothing on the
+    // response explaining it — the exact "status without evidence" shape this
+    // whole file exists to avoid.
     failures,
+    // Named separately from `failures` because it is one fact about the
+    // account, not N facts about corridors, and it is the one that explains
+    // a silent feature.
+    quota_exhausted: quotaExhausted,
+    ...(quotaExhausted
+      ? {
+          quota_note:
+            `Routes API daily quota is gone. Pacing assumes ${dailyBudget} calls/day ` +
+            `(${passesPerDay} passes); if that is above the real quota, lower ` +
+            'ROUTES_DAILY_BUDGET or raise ComputeRoutesRequestsPerDay in the Cloud console. ' +
+            'Also check nothing else is spending the same quota — the GitHub workflow ' +
+            'live-traffic-agent.yml must stay unscheduled.',
+        }
+      : {}),
+    paced_every_minutes: Math.round(minIntervalMs / 60_000),
   };
 
   // 207 when some corridors failed: the run did useful work and still needs

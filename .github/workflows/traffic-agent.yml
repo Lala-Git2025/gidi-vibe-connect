@@ -1,9 +1,42 @@
-name: Lagos Traffic Agent (Every Hour)
+name: Lagos Traffic Agent (Manual / Fallback)
+
+# The narrative half of the traffic feature: Lagos Traffic Radio 96.1FM posts,
+# classified by Gemini into traffic_reports. Pairs with the Routes API half.
+#
+# ── NO LONGER SCHEDULED. pg_cron owns the cadence now. ──────────────────────
+#
+# This ran hourly at :15 and did not. Measured on 2026-10-08, the six most
+# recent scheduled runs landed at 02:12, 22:06, 16:31, 09:01, 01:57 and 22:00
+# — gaps of 4.1, 5.6, 7.5, 7.1 and 4.0 hours, about five runs a day against a
+# one-hour cron. GitHub throttles free-tier scheduled workflows under load, so
+# the cron expression was decorative; this is the same record live-traffic
+# measured before it moved.
+#
+# It matters more here than lateness usually does. These reports are the only
+# source that says *why* a road is bad, the station posts a handful of times a
+# day, and the app's LOOKBACK_MS is 12 hours — so a 7.5-hour gap can retire a
+# post before anything ever scraped it. A missed run is not a late report, it
+# is no report.
+#
+# Now: supabase/functions/lagos-traffic, every 20 minutes, scheduled by
+# pg_cron in migration 20261009000100.
+#
+# ── Why this workflow is kept rather than deleted ───────────────────────────
+#
+# Two producers on one source would double-classify and double-spend the
+# Gemini free tier, so the schedule is gone — but the script stays useful:
+#
+#   * `node scripts/lagos-traffic-agent.js --dry-run` fetches the listing,
+#     classifies nothing new and writes nothing. Fastest check that the
+#     selectors still match the site after a theme change.
+#   * workflow_dispatch here is the fallback if the edge function or pg_net is
+#     down. Running it writes real rows, same as the cron does.
+#
+# The script and the function share selectors, prompt, schema and row shape
+# via supabase/functions/_shared/lagos-traffic.js, so the fallback cannot
+# classify a post differently from the scheduled path.
 
 on:
-  schedule:
-    # Run hourly at :15 past — staggered from news-agent (:00) to avoid spike.
-    - cron: '15 */1 * * *'
   workflow_dispatch:
 
 jobs:

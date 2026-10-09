@@ -15,9 +15,6 @@ jwt_expiry = 3600
 enable_signup = true
 enable_anonymous_sign_ins = false
 
-[functions.fetch-lagos-news]
-verify_jwt = false
-
 [functions.fetch-venues]
 verify_jwt = false
 
@@ -28,4 +25,16 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.scrape-lagos-venues]
+verify_jwt = false
+
+# Both traffic functions are called by pg_cron through pg_net, which mints no
+# user token — so JWT verification must stay off and the x-cron-secret header
+# is the gate instead. Declared here rather than relying on the deploy flag:
+# both were deployed with --no-verify-jwt, and a later `supabase functions
+# deploy <name>` without that flag would silently re-enable verification and
+# leave the cron 401ing while pg_cron still logged every run as "succeeded".
+[functions.live-traffic]
+verify_jwt = false
+
+[functions.lagos-traffic]
 verify_jwt = false
