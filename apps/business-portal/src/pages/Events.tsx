@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Calendar,
+  List,
   Plus,
   MapPin,
   Star,
   MoreHorizontal,
   Search,
 } from 'lucide-react';
-import { useEvents, useDeleteEvent, useEventStats } from '../hooks/useEvents';
+import { useEvents, useDeleteEvent, useEventStats, useEventRsvpCounts } from '../hooks/useEvents';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
 import { formatDate } from '../lib/utils';
+import { EventCalendar } from '../components/events/EventCalendar';
 
 const FILTERS = ['All', 'Upcoming', 'Live', 'Past', 'Drafts'] as const;
 type Filter = typeof FILTERS[number];
@@ -33,8 +35,14 @@ export default function Events() {
   const { subscription } = useBusinessAuth();
   const [filter, setFilter] = useState<Filter>('Upcoming');
   const [search, setSearch] = useState('');
-  const { data: events, isLoading, error } = useEvents(filterToQuery(filter));
+  const [view, setView] = useState<'list' | 'calendar'>('list');
+  // A month grid that hid past events would have holes in it, so the calendar
+  // always asks for the full set regardless of the active chip.
+  const { data: events, isLoading, error } = useEvents(
+    view === 'calendar' ? 'all' : filterToQuery(filter),
+  );
   const { data: stats } = useEventStats();
+  const { data: rsvpCounts } = useEventRsvpCounts();
   const deleteEvent = useDeleteEvent();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -106,9 +114,13 @@ export default function Events() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="bp2-btn bp2-btn-secondary">
-            <Calendar className="h-3.5 w-3.5" />
-            Calendar view
+          <button
+            className="bp2-btn bp2-btn-secondary"
+            onClick={() => setView(v => (v === 'list' ? 'calendar' : 'list'))}
+            aria-pressed={view === 'calendar'}
+          >
+            {view === 'list' ? <Calendar className="h-3.5 w-3.5" /> : <List className="h-3.5 w-3.5" />}
+            {view === 'list' ? 'Calendar view' : 'List view'}
           </button>
           <button
             className="bp2-btn bp2-btn-primary"
@@ -201,6 +213,16 @@ export default function Events() {
         <div className="bp2-card" style={{ padding: 48, textAlign: 'center', color: '#6B7280' }}>
           Loading events…
         </div>
+      ) : view === 'calendar' ? (
+        <EventCalendar
+          events={(events ?? []).map((e) => ({
+            id: e.id,
+            title: e.title,
+            start_date: e.start_date,
+            is_published: e.is_published,
+          }))}
+          onSelect={(id) => navigate(`/events/${id}`)}
+        />
       ) : filtered.length === 0 ? (
         <div className="bp2-card" style={{ padding: 48, textAlign: 'center' }}>
           <Calendar className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
@@ -221,11 +243,20 @@ export default function Events() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {filtered.map((e) => {
             const status = getEventStatus(e.start_date, e.end_date, e.is_published);
-            // Synthetic RSVP/cap for now — real counts plug in later
-            const rsvps = 0;
-            const cap = 250;
-            const fillPct = Math.min(100, (rsvps / cap) * 100);
-            const featured = false;
+            /*
+              These four were `rsvps = 0`, `cap = 250`, `fillPct` derived from
+              them and `featured = false`, under a comment saying real counts
+              would plug in later. The capacity bar therefore drew a invented
+              250-seat room on every event, and the Featured flag the schema
+              already carries was ignored.
+
+              `tickets_available` is nullable, and an event with no stated
+              capacity gets no bar rather than a bar against a made-up number.
+            */
+            const rsvps = rsvpCounts?.[e.id] ?? 0;
+            const cap = e.tickets_available ?? null;
+            const fillPct = cap && cap > 0 ? Math.min(100, (rsvps / cap) * 100) : null;
+            const featured = Boolean(e.is_featured);
             return (
               <div
                 key={e.id}
@@ -344,32 +375,38 @@ export default function Events() {
                       }}
                     >
                       <span style={{ color: '#3F3F46', fontWeight: 600 }}>
-                        <span style={{ color: '#A16207', fontWeight: 800 }}>{rsvps}</span> / {cap}{' '}
-                        RSVPs
+                        <span style={{ color: '#A16207', fontWeight: 800 }}>{rsvps}</span>
+                        {cap ? ` / ${cap}` : ''} RSVP{rsvps === 1 ? '' : 's'}
                       </span>
-                      <span style={{ color: '#6B7280' }}>{Math.round(fillPct)}% full</span>
+                      {fillPct !== null && (
+                        <span style={{ color: '#6B7280' }}>{Math.round(fillPct)}% full</span>
+                      )}
                     </div>
-                    <div
-                      style={{
-                        height: 6,
-                        background: '#F3F4F6',
-                        borderRadius: 3,
-                        overflow: 'hidden',
-                      }}
-                    >
+                    {/* No stated capacity means no bar. Drawing one against an
+                        invented denominator is what this replaced. */}
+                    {fillPct !== null && (
                       <div
                         style={{
-                          width: `${fillPct}%`,
-                          height: '100%',
-                          background:
-                            fillPct >= 100
-                              ? 'linear-gradient(90deg, #F97316, #EA580C)'
-                              : 'linear-gradient(90deg, #FDE047, #EAB308)',
-                          boxShadow:
-                            fillPct >= 90 ? '0 0 8px rgba(234,179,8,0.5)' : 'none',
+                          height: 6,
+                          background: '#F3F4F6',
+                          borderRadius: 3,
+                          overflow: 'hidden',
                         }}
-                      />
-                    </div>
+                      >
+                        <div
+                          style={{
+                            width: `${fillPct}%`,
+                            height: '100%',
+                            background:
+                              fillPct >= 100
+                                ? 'linear-gradient(90deg, #F97316, #EA580C)'
+                                : 'linear-gradient(90deg, #FDE047, #EAB308)',
+                            boxShadow:
+                              fillPct >= 90 ? '0 0 8px rgba(234,179,8,0.5)' : 'none',
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div

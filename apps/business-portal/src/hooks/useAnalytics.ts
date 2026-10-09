@@ -68,12 +68,21 @@ export function getDefaultDateRange(): DateRange {
 /**
  * Hook to fetch analytics data for user's venues
  */
-export function useAnalytics(dateRange?: DateRange) {
+/**
+ * `venueId` narrows the whole page to one venue. The Analytics header has
+ * always promised "drill into a specific venue from the dropdown" and the
+ * control beside it was a button with no handler, so the promise had nothing
+ * behind it.
+ *
+ * It is part of the query key: without that, switching venue would serve the
+ * previous venue's cached figures under the new name.
+ */
+export function useAnalytics(dateRange?: DateRange, venueId?: string) {
   const { user, subscription } = useBusinessAuth();
   const range = dateRange || getDefaultDateRange();
 
   return useQuery({
-    queryKey: ['analytics', user?.id, range.start, range.end],
+    queryKey: ['analytics', user?.id, range.start, range.end, venueId ?? 'all'],
     queryFn: async () => {
       if (!user) throw new Error('User not authenticated');
 
@@ -106,7 +115,17 @@ export function useAnalytics(dateRange?: DateRange) {
         } as AggregatedAnalytics;
       }
 
-      const venueIds = venues.map((v) => v.id);
+      // Narrow to one venue when asked — but only to a venue this owner
+      // actually owns, so a hand-edited id cannot widen the query.
+      const scoped = venueId ? venues.filter((v) => v.id === venueId) : venues;
+      const venueIds = scoped.map((v) => v.id);
+      if (venueIds.length === 0) {
+        return {
+          totalProfileViews: 0, totalPhoneClicks: 0, totalWebsiteClicks: 0,
+          totalDirectionClicks: 0, totalOfferViews: 0, totalOfferClicks: 0,
+          totalEventViews: 0, totalEngagement: 0, dailyData: [], venueBreakdown: [],
+        } as AggregatedAnalytics;
+      }
 
       // Fetch analytics for these venues within the date range
       const { data: analyticsData, error: analyticsError } = await supabase
@@ -120,7 +139,7 @@ export function useAnalytics(dateRange?: DateRange) {
       if (analyticsError) throw analyticsError;
 
       // Aggregate the data
-      const aggregated = aggregateAnalytics(analyticsData || [], venues);
+      const aggregated = aggregateAnalytics(analyticsData || [], scoped);
       return aggregated;
     },
     enabled: !!user && !!subscription?.can_view_analytics,

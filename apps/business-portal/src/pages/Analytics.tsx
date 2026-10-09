@@ -18,6 +18,8 @@ import {
 } from 'recharts';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
 import { useAnalytics, getDefaultDateRange, type DateRange } from '../hooks/useAnalytics';
+import { useVenues } from '../hooks/useVenues';
+import { downloadCsv, datedFilename } from '../lib/csv';
 import { DateRangePicker } from '../components/analytics/DateRangePicker';
 import { formatDate } from '../lib/utils';
 import { StatCard } from '../components/ui/stat-card';
@@ -28,7 +30,32 @@ export default function Analytics() {
   const navigate = useNavigate();
   const { subscription } = useBusinessAuth();
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultDateRange());
-  const { data: analytics, isLoading, error } = useAnalytics(dateRange);
+  const [venueId, setVenueId] = useState<string>('');
+  const { data: venues } = useVenues();
+  const { data: analytics, isLoading, error } = useAnalytics(dateRange, venueId || undefined);
+
+  const selectedVenue = (venues ?? []).find(v => v.id === venueId);
+
+  /**
+   * Exports the daily series actually on screen, honouring both the date range
+   * and the venue filter. The charts show shape; this is where the numbers
+   * behind them come out.
+   */
+  const handleExport = () => {
+    const rows = analytics?.dailyData ?? [];
+    downloadCsv(
+      datedFilename(selectedVenue ? `gidi-analytics-${selectedVenue.name.replace(/\W+/g, '-').toLowerCase()}` : 'gidi-analytics'),
+      [
+        { header: 'Date', value: (r: any) => r.date },
+        { header: 'Profile views', value: (r: any) => r.profile_views ?? 0 },
+        { header: 'Phone clicks', value: (r: any) => r.phone_clicks ?? 0 },
+        { header: 'Website clicks', value: (r: any) => r.website_clicks ?? 0 },
+        { header: 'Direction clicks', value: (r: any) => r.direction_clicks ?? 0 },
+        { header: 'Total engagement', value: (r: any) => r.engagement ?? 0 },
+      ],
+      rows,
+    );
+  };
 
   if (!subscription?.can_view_analytics) {
     return (
@@ -95,7 +122,9 @@ export default function Analytics() {
         }}
       >
         <div>
-          <div className="bp2-page-eyebrow">All venues · {subscription?.tier || 'Premium'} tier</div>
+          <div className="bp2-page-eyebrow">
+            {selectedVenue ? selectedVenue.name : 'All venues'} · {subscription?.tier || 'Premium'} tier
+          </div>
           <h1 className="bp2-page-title">Analytics</h1>
           <p className="bp2-page-sub">
             How your venues are performing across Lagos. Drill into a specific venue from the
@@ -106,11 +135,30 @@ export default function Analytics() {
           <div className="bp2-card" style={{ padding: '6px 12px' }}>
             <DateRangePicker value={dateRange} onChange={setDateRange} />
           </div>
-          <button className="bp2-btn bp2-btn-secondary">
-            <Filter className="h-3.5 w-3.5" />
-            All venues
-          </button>
-          <button className="bp2-btn bp2-btn-primary">
+          {/* Was a button with no handler, beside copy promising a dropdown. */}
+          <div className="bp2-btn bp2-btn-secondary" style={{ padding: 0, overflow: 'hidden' }}>
+            <Filter className="h-3.5 w-3.5" style={{ marginLeft: 12 }} />
+            <select
+              value={venueId}
+              onChange={e => setVenueId(e.target.value)}
+              aria-label="Filter analytics by venue"
+              style={{
+                border: 0, background: 'transparent', outline: 'none',
+                font: 'inherit', color: 'inherit', cursor: 'pointer',
+                padding: '8px 12px 8px 8px',
+              }}
+            >
+              <option value="">All venues</option>
+              {(venues ?? []).map(v => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="bp2-btn bp2-btn-primary"
+            onClick={handleExport}
+            disabled={!analytics?.dailyData?.length}
+          >
             <Download className="h-3.5 w-3.5" />
             Export
           </button>

@@ -1,10 +1,33 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Plus, Download, Search, MoreHorizontal } from 'lucide-react';
-import { useVenues, useDeleteVenue } from '../hooks/useVenues';
+import { useVenues, useDeleteVenue, type Venue } from '../hooks/useVenues';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
+import { downloadCsv, datedFilename } from '../lib/csv';
 
-const LAGOS_AREAS = ['All Lagos', 'Victoria Island', 'Lekki Phase 1', 'Ikoyi', 'Ikeja', 'Surulere'];
+const ALL_AREAS = 'All Lagos';
+
+/**
+ * Area chips come from the owner's own venues, not a fixed list.
+ *
+ * This was hardcoded to six areas, which failed in both directions: an owner
+ * whose venue sits in Yaba or Oniru had no chip that could reach it, and the
+ * five chips they did get mostly filtered to nothing. Same rule Explore and
+ * Discover already follow in the consumer app — derive the filter from the
+ * data, so a chip never promises rows that do not exist.
+ */
+const areasFrom = (venues: Venue[]): string[] => {
+  const seen = new Map<string, string>();
+  for (const v of venues) {
+    // `location` is free text and casing is inconsistent across sources, so
+    // the first spelling seen wins and the rest collapse onto it.
+    const label = (v.location ?? '').trim();
+    if (!label) continue;
+    const key = label.toLowerCase();
+    if (!seen.has(key)) seen.set(key, label);
+  }
+  return [ALL_AREAS, ...[...seen.values()].sort((a, b) => a.localeCompare(b))];
+};
 
 export default function Venues() {
   const navigate = useNavigate();
@@ -13,7 +36,41 @@ export default function Venues() {
   const deleteVenue = useDeleteVenue();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [activeArea, setActiveArea] = useState('All Lagos');
+  const [activeArea, setActiveArea] = useState(ALL_AREAS);
+
+  const LAGOS_AREAS = areasFrom(venues ?? []);
+
+  const filtered = (venues || []).filter((v) => {
+    const matchSearch =
+      !search ||
+      v.name.toLowerCase().includes(search.toLowerCase()) ||
+      v.category.toLowerCase().includes(search.toLowerCase());
+    const matchArea = activeArea === ALL_AREAS || v.location.toLowerCase().includes(activeArea.toLowerCase());
+    return matchSearch && matchArea;
+  });
+
+  const handleExport = () => {
+    downloadCsv<Venue>(
+      datedFilename('gidi-venues'),
+      [
+        { header: 'Name', value: v => v.name },
+        { header: 'Category', value: v => v.category },
+        { header: 'Location', value: v => v.location },
+        { header: 'Phone', value: v => v.contact_phone ?? '' },
+        { header: 'Email', value: v => v.contact_email ?? '' },
+        { header: 'Website', value: v => v.website_url ?? '' },
+        { header: 'Instagram', value: v => v.instagram_handle ?? '' },
+        { header: 'Price range', value: v => v.price_range ?? '' },
+        { header: 'Verified', value: v => (v.is_verified ? 'yes' : 'no') },
+        { header: 'Promoted', value: v => (v.is_promoted ? 'yes' : 'no') },
+        { header: 'Promoted until', value: v => v.promoted_until ?? '' },
+        { header: 'Created', value: v => v.created_at },
+      ],
+      // Export what is on screen. A filtered table whose Export quietly
+      // returns everything is a different kind of lie.
+      filtered,
+    );
+  };
 
   const handleCreateVenue = () => {
     const currentCount = venues?.length || 0;
@@ -41,15 +98,6 @@ export default function Venues() {
       setDeletingId(null);
     }
   };
-
-  const filtered = (venues || []).filter((v) => {
-    const matchSearch =
-      !search ||
-      v.name.toLowerCase().includes(search.toLowerCase()) ||
-      v.category.toLowerCase().includes(search.toLowerCase());
-    const matchArea = activeArea === 'All Lagos' || v.location.toLowerCase().includes(activeArea.toLowerCase());
-    return matchSearch && matchArea;
-  });
 
   const currentCount = venues?.length || 0;
   const promotedCount = (venues || []).filter((v) => v.is_promoted).length;
@@ -89,7 +137,11 @@ export default function Venues() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="bp2-btn bp2-btn-secondary">
+          <button
+            className="bp2-btn bp2-btn-secondary"
+            onClick={handleExport}
+            disabled={filtered.length === 0}
+          >
             <Download className="h-3.5 w-3.5" />
             Export
           </button>

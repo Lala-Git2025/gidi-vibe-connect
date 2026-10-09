@@ -18,6 +18,9 @@ export interface Event {
   featured_image_url?: string;
   tags?: string[];
   is_published: boolean;
+  /** Stated capacity. Null when the organiser has not set one. */
+  tickets_available?: number | null;
+  is_featured?: boolean;
   organizer_id: string;
   created_at: string;
   updated_at: string;
@@ -345,6 +348,48 @@ export function useEventStats() {
         upcomingEvents: upcomingEvents || 0,
         eventsThisMonth: eventsThisMonth || 0,
       };
+    },
+    enabled: !!user,
+  });
+}
+
+/**
+ * Confirmed RSVP counts, keyed by event id, for every event this owner runs.
+ *
+ * The Events list drew its capacity bar from `const rsvps = 0` and a
+ * `cap = 250` that existed nowhere in the schema, so every card reported an
+ * empty 250-seat room. One grouped read is enough for the whole page.
+ */
+export function useEventRsvpCounts() {
+  const { user } = useBusinessAuth();
+
+  return useQuery({
+    queryKey: ['event-rsvp-counts', user?.id],
+    queryFn: async (): Promise<Record<string, number>> => {
+      if (!user) return {};
+
+      const { data: events } = await supabase
+        .from('events')
+        .select('id')
+        .eq('organizer_id', user.id);
+
+      const ids = (events ?? []).map((e: { id: string }) => e.id);
+      if (ids.length === 0) return {};
+
+      const { data, error } = await supabase
+        .from('event_rsvps')
+        .select('event_id, status')
+        .in('event_id', ids);
+      if (error) return {};
+
+      const counts: Record<string, number> = {};
+      for (const row of (data ?? []) as any[]) {
+        // Only a confirmed yes counts toward a capacity bar; 'interested' is
+        // not a seat taken.
+        if (row.status && !['going', 'attending'].includes(row.status)) continue;
+        counts[row.event_id] = (counts[row.event_id] ?? 0) + 1;
+      }
+      return counts;
     },
     enabled: !!user,
   });
