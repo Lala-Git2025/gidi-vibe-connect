@@ -8,6 +8,7 @@ import Venues from './pages/Venues';
 import VenueForm from './pages/VenueForm';
 import VenueDetails from './pages/VenueDetails';
 import Analytics from './pages/Analytics';
+import Audience from './pages/Audience';
 import Events from './pages/Events';
 import EventForm from './pages/EventForm';
 import EventDetails from './pages/EventDetails';
@@ -32,6 +33,7 @@ function App() {
             <Route path="/venues/:venueId" element={<VenueDetails />} />
             <Route path="/venues/:venueId/edit" element={<VenueForm />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/audience" element={<Audience />} />
             <Route path="/events" element={<Events />} />
             <Route path="/events/new" element={<EventForm />} />
             <Route path="/events/:eventId" element={<EventDetails />} />
@@ -44,6 +46,11 @@ function App() {
 
           {/* Default redirect */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          {/* Anything else. Without this a typo'd or retired path renders the
+              chrome around an empty outlet, which reads as a broken page
+              rather than a wrong address — exactly what /audience did before
+              it had a route. */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BusinessAuthProvider>
     </BrowserRouter>

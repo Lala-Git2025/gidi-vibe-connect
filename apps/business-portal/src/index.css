@@ -421,3 +421,58 @@
   -webkit-overflow-scrolling: touch;
   width: 100%;
 }
+
+/* ── Header dropdowns ───────────────────────────────────────────────────────
+   Shared by search results, notifications and the What's new panel. Anchored
+   to a position:relative parent; bp2-popover-right flips the anchor so a panel
+   hanging off a right-hand icon does not run past the viewport edge. */
+.bp2-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  min-width: 280px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(24,24,27,0.12);
+  z-index: 60;
+  padding: 6px;
+}
+.bp2-popover-right { left: auto; right: 0; }
+
+.bp2-popover-head {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #9CA3AF;
+  padding: 8px 10px 6px;
+}
+
+.bp2-popover-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  width: 100%; text-align: left;
+  padding: 9px 10px; border: 0; border-radius: 9px;
+  background: transparent; cursor: pointer;
+  transition: background 120ms;
+}
+.bp2-popover-row:hover { background: #FAFAFA; }
+
+.bp2-popover-note { padding: 9px 10px; }
+
+.bp2-popover-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.bp2-popover-title { font-size: 13px; font-weight: 700; color: #18181B; }
+/* Single-line by default so a long venue name cannot blow out the panel. */
+.bp2-popover-sub {
+  font-size: 12px; color: #6B7280;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bp2-popover-meta { font-size: 11px; color: #9CA3AF; margin-top: 2px; }
+
+.bp2-popover-empty { padding: 14px 12px; font-size: 13px; color: #6B7280; }
+
+@media (max-width: 767px) {
+  /* The search box goes full-width on mobile, so its panel must not inherit a
+     360px anchor it no longer has. */
+  .bp2-popover { min-width: 0; }
+}

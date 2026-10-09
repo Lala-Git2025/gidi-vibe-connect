@@ -7,7 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  MoreHorizontal,
+  AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { logAdminAction } from '../lib/audit';
@@ -38,6 +38,7 @@ export default function VenueManager() {
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [areaCounts, setAreaCounts] = useState<Record<string, number>>({});
+  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
 
   const fetchVenues = useCallback(async () => {
     setLoading(true);
@@ -89,7 +90,10 @@ export default function VenueManager() {
 
   const handlePromote = async (venue: VenueRow, active: boolean) => {
     setSavingId(venue.id);
-    const days = parseInt(promotionDays[venue.id] ?? '30', 10);
+    // parseInt('') is NaN, and new Date(NaN).toISOString() throws — an empty
+    // days box used to take the whole handler down with a RangeError.
+    const parsed = parseInt(promotionDays[venue.id] ?? '', 10);
+    const days = Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
     const update = active
       ? {
           is_promoted: true,
@@ -102,6 +106,31 @@ export default function VenueManager() {
       name: venue.name,
       ...(active ? { days } : {}),
     });
+
+    /**
+     * Push the change into the app now, rather than up to ten minutes later.
+     *
+     * The consumer app reads `trending_venues`, which is a MATERIALIZED view
+     * that pg_cron refreshes every 10 minutes. Writing `venues.is_promoted`
+     * therefore does nothing visible until that refresh lands, so promoting a
+     * venue and then opening the app showed no change — indistinguishable from
+     * the promotion having failed. Overview has a manual "refresh views"
+     * button for exactly this, but it is on another page and nothing on this
+     * one said to go and press it.
+     *
+     * The RPC is SECURITY DEFINER and admin-guarded, so this caller is the
+     * intended one. A failure here costs nothing beyond the original wait, so
+     * it is reported and swallowed rather than failing the promotion that has
+     * already been written.
+     */
+    const { error: refreshErr } = await supabase.rpc('refresh_trending_venues');
+    if (refreshErr) {
+      console.error('Promotion saved, but the trending view did not refresh:', refreshErr);
+      setRefreshWarning(venue.name);
+    } else {
+      setRefreshWarning(null);
+    }
+
     await fetchVenues();
     await fetchAreaCounts();
     setSavingId(null);
@@ -165,6 +194,32 @@ export default function VenueManager() {
           </button>
         </div>
       </div>
+
+      {/* The promotion is saved either way, but if the view did not refresh the
+          app will not show it until pg_cron next runs — so say so, rather than
+          leave the admin to discover it by opening the app. */}
+      {refreshWarning && (
+        <div
+          className="ap-card"
+          style={{
+            padding: '10px 14px',
+            marginBottom: 14,
+            borderColor: '#A16207',
+            color: '#FBBF24',
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+          role="status"
+        >
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+          <span>
+            Saved <strong>{refreshWarning}</strong>, but the trending list could not be
+            rebuilt just now — it will appear in the app within 10 minutes.
+          </span>
+        </div>
+      )}
 
       {/* Stats strip */}
       <div
@@ -272,7 +327,6 @@ export default function VenueManager() {
                 <th>Promo badge</th>
                 <th>Expires</th>
                 <th>Actions</th>
-                <th style={{ width: 40 }} />
               </tr>
             </thead>
             <tbody>
@@ -394,11 +448,6 @@ export default function VenueManager() {
                           </button>
                         )}
                       </div>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="ap-btn ap-btn-ghost ap-btn-icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
                     </td>
                   </tr>
                 );

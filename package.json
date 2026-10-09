@@ -16,7 +16,6 @@
     "news-auto:uninstall": "bash scripts/uninstall-auto-news.sh",
     "news-auto:status": "launchctl list | grep gidiconnect || echo 'Auto-update not installed'",
     "news-auto:logs": "tail -f logs/news-agent.log",
-    "scrape-news": "node scripts/scrape-lagos-news.js",
     "scrape-venues": "node scripts/scrape-lagos-venues.js",
     "check-venues": "node scripts/check-venues.js",
     "clear-venues": "node scripts/clear-venues.js",

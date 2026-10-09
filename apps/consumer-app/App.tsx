@@ -19,6 +19,7 @@ import SocialScreen from './screens/SocialScreen';
 import DiscoverScreen from './screens/DiscoverScreen';
 import TrafficScreen from './screens/TrafficScreen';
 import SearchScreen from './screens/SearchScreen';
+import TrendingScreen from './screens/TrendingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemeProvider, useTheme, polished } from './contexts/ThemeContext';
 import { CreatePostModalProvider } from './contexts/CreatePostModalContext';
@@ -214,6 +215,13 @@ function AppNavigator() {
         <Tab.Screen
           name="Search"
           component={SearchScreen}
+          options={{
+            tabBarButton: () => null,
+          }}
+        />
+        <Tab.Screen
+          name="Trending"
+          component={TrendingScreen}
           options={{
             tabBarButton: () => null,
           }}

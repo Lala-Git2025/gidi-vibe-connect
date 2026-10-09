@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useTrending } from '../lib/trending';
 import { useTheme } from '../contexts/ThemeContext';
 import { categoryAccent, tile, type as T, space as S, radius as R, elevation as E, gutter, tracking } from '../theme/tokens';
 import { TrafficAlert } from '../components/TrafficAlert';
@@ -46,18 +47,28 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const { colors, activeTheme } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
-  const [venueRefreshTrigger, setVenueRefreshTrigger] = useState(0);
+
+  /**
+   * The trending rail's data lives here, not in the component, because this
+   * screen owns the section header — and whether "See all" is worth showing
+   * depends on whether there are more promotions than the rail already fits.
+   *
+   * Refetch on focus, not only on mount: this screen never unmounts in the tab
+   * navigator, so without it a venue promoted while the app was open stayed
+   * missing until someone happened to pull down — indistinguishable from the
+   * promotion having failed.
+   */
+  const { venues, total, loading: venuesLoading, load: loadVenues } = useTrending(6);
+  useFocusEffect(useCallback(() => { loadVenues(); }, [loadVenues]));
 
   const [fontsLoaded] = useFonts({ Orbitron_700Bold, Orbitron_900Black });
   const styles = getStyles(colors);
 
-  // Bumping the trigger remounts the data children so they refetch. Held open
-  // briefly so the control doesn't snap shut before anything has arrived —
-  // previously it cleared synchronously and the spinner just flashed.
+  // Awaits the real request rather than holding the spinner open for a fixed
+  // 600ms and hoping — the previous version remounted a child and guessed.
   const onRefresh = async () => {
     setRefreshing(true);
-    setVenueRefreshTrigger(prev => prev + 1);
-    await new Promise(r => setTimeout(r, 600));
+    await loadVenues();
     setRefreshing(false);
   };
 
@@ -190,14 +201,29 @@ export default function HomeScreen() {
         {/* ── Trending ───────────────────────────────────────────────────── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Trending venues</Text>
-          <TouchableOpacity
-            onPress={() => (navigation as any).navigate('Explore')}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.seeAll}>See all</Text>
-          </TouchableOpacity>
+          {/* Was navigate('Explore') with no params — an unfiltered A-to-Z
+              venue list, a different list rather than more of this one. Now it
+              opens the full featured list.
+
+              Shown whenever anything is featured, not only when the count
+              exceeds what the rail fits: this rail scrolls sideways and
+              truncates, while the page lists every featured venue at once with
+              its area, category and rating. Hiding the link below seven
+              promotions would make the page unreachable at today's volume. It
+              does hide when there is nothing at all, since the rail then says
+              so itself. */}
+          {total > 0 && (
+            <TouchableOpacity
+              onPress={() => (navigation as any).navigate('Trending')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="See all trending venues"
+            >
+              <Text style={styles.seeAll}>See all</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        <TrendingVenues refreshTrigger={venueRefreshTrigger} />
+        <TrendingVenues venues={venues} loading={venuesLoading} />
       </ScrollView>
     </SafeAreaView>
   );

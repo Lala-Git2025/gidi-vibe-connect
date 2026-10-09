@@ -1,8 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 import { Building2, Eye, Calendar, MapPin, Rocket, Download } from 'lucide-react';
 import { useBusinessAuth } from '../contexts/BusinessAuthContext';
-import { useVenueStats, useWeeklyViews, useVenueActivity } from '../hooks/useVenues';
+import {
+  useVenueStats,
+  useWeeklyViews,
+  useVenueActivity,
+  useCheckInStats,
+  useVenueGrowth,
+} from '../hooks/useVenues';
 import { useEventStats } from '../hooks/useEvents';
+import { downloadCsv, datedFilename } from '../lib/csv';
 import { StatCard } from '../components/ui/stat-card';
 import { AreaChart } from '../components/ui/charts';
 
@@ -27,6 +34,32 @@ export default function Dashboard() {
   const { data: eventStats, isLoading: loadingEventStats } = useEventStats();
   const { data: weeklyViews } = useWeeklyViews();
   const { data: activity, isLoading: loadingActivity } = useVenueActivity();
+  const { data: checkIns, isLoading: loadingCheckIns } = useCheckInStats();
+  const { data: venueGrowth } = useVenueGrowth();
+
+  /**
+   * Export the figures actually on this page. A sparkline a reader cannot get
+   * the numbers out of is the reason this button existed in the first place.
+   */
+  const handleExport = () => {
+    const current = weeklyViews?.current ?? [];
+    const checkSeries = checkIns?.series ?? [];
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().slice(0, 10);
+    });
+
+    downloadCsv(
+      datedFilename('gidi-dashboard'),
+      [
+        { header: 'Date', value: (r: { date: string }) => r.date },
+        { header: 'Profile views', value: (r: any) => r.views },
+        { header: 'Check-ins', value: (r: any) => r.checkIns },
+      ],
+      days.map((date, i) => ({ date, views: current[i] ?? 0, checkIns: checkSeries[i] ?? 0 })),
+    );
+  };
 
   const firstName = profile?.full_name?.split(' ')[0] || 'there';
   const maxVenues = subscription?.max_venues || 1;
@@ -56,13 +89,18 @@ export default function Dashboard() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="bp2-btn bp2-btn-secondary">
+          <button className="bp2-btn bp2-btn-secondary" onClick={handleExport}>
             <Download className="h-3.5 w-3.5" />
             Export
           </button>
-          <button className="bp2-btn bp2-btn-primary" onClick={() => navigate('/venues/new')}>
+          {/*
+            Was labelled "Promote a venue" and navigated to /venues/new, which
+            is where you add one. Promotion is an admin-granted flag, so the
+            honest destination for an owner is the plan that includes it.
+          */}
+          <button className="bp2-btn bp2-btn-primary" onClick={() => navigate('/subscription')}>
             <Rocket className="h-3.5 w-3.5" />
-            Promote a venue
+            Get promoted
           </button>
         </div>
       </div>
@@ -82,32 +120,39 @@ export default function Dashboard() {
           value={loadingVenueStats ? '—' : (venueStats?.totalViews || 0).toLocaleString()}
           sub="Last 30 days"
           icon={Eye}
-          sparkline={[180, 210, 260, 240, 300, 360, 420, 520, 610, 720, 820, 880]}
+          sparkline={weeklyViews?.current}
         />
+        {/*
+          Every figure on this row now comes from the database. The check-ins
+          card read value="612" with delta="18%" and a twelve-point sparkline,
+          none of which existed anywhere — the whole table holds five rows. A
+          fabricated number on an owner's own dashboard is worse than a zero:
+          zero sends them out to get customers, 612 tells them they already have.
+
+          `delta` and `sparkline` are optional on StatCard, so a card with no
+          real series simply does not draw one rather than inventing a shape.
+        */}
         <StatCard
           title="Check-ins"
-          value="612"
-          delta="18%"
-          deltaUp
-          sub="vs last week"
+          value={loadingCheckIns ? '—' : (checkIns?.total ?? 0).toLocaleString()}
+          delta={checkIns?.deltaPct != null ? `${Math.abs(checkIns.deltaPct)}%` : undefined}
+          deltaUp={(checkIns?.deltaPct ?? 0) >= 0}
+          sub={checkIns?.deltaPct != null ? 'vs last week' : 'last 7 days'}
           icon={MapPin}
-          sparkline={[34, 42, 50, 68, 82, 96, 114, 140, 168, 196, 220, 250]}
+          sparkline={checkIns?.series}
         />
         <StatCard
           title="Active events"
           value={loadingEventStats ? '—' : eventStats?.upcomingEvents || 0}
-          delta="50%"
-          deltaUp
           sub="upcoming"
           icon={Calendar}
-          sparkline={[1, 1, 2, 2, 2, 3, 3, 3]}
         />
         <StatCard
           title="Total venues"
           value={loadingVenueStats ? '—' : venueStats?.totalVenues || 0}
           sub={`of ${maxVenues} on ${tier}`}
           icon={Building2}
-          sparkline={[3, 3, 4, 4, 4, 5, 5]}
+          sparkline={venueGrowth}
         />
       </div>
 

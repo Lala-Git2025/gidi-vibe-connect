@@ -68,16 +68,34 @@ const PLANS = [
 ];
 
 export default function Subscription() {
-  const { subscription } = useBusinessAuth();
+  const { subscription, user, profile } = useBusinessAuth();
   const currentTier = subscription?.tier || 'Free';
 
+  /**
+   * Card payment is not wired yet — there is no Paystack account or key in this
+   * project — so upgrading opens a real, pre-addressed upgrade request instead
+   * of claiming a checkout that does not exist.
+   *
+   * It was a `window.alert` reading "Payment integration coming soon!", which
+   * is a dead end: the user is told to email an address they then have to
+   * retype, and the address was at gidivibe.com, a domain this project does not
+   * own. Every mail sent to it bounced.
+   */
   const handleUpgrade = (tier: string) => {
-    if (tier === 'Enterprise') {
-      window.open('mailto:business@gidivibe.com?subject=Enterprise Plan Inquiry', '_blank');
-      return;
-    }
-    // TODO: Integrate Paystack/Stripe payment here
-    alert(`Payment integration coming soon! Contact business@gidivibe.com to upgrade to ${tier}.`);
+    const subject =
+      tier === 'Enterprise' ? 'Enterprise plan enquiry' : `Upgrade to ${tier}`;
+    const body = [
+      `I'd like to move from ${currentTier} to ${tier}.`,
+      '',
+      `Account: ${user?.email ?? '(signed-in email)'}`,
+      `Business: ${profile?.full_name ?? ''}`,
+      '',
+      'Please send payment details.',
+    ].join('\n');
+
+    window.location.href =
+      `mailto:business@gidiconnect.com?subject=${encodeURIComponent(subject)}` +
+      `&body=${encodeURIComponent(body)}`;
   };
 
   return (
@@ -182,9 +200,9 @@ export default function Subscription() {
         <CardContent className="space-y-4">
           {[
             { q: 'Can I cancel anytime?', a: 'Yes. You can cancel your subscription at any time. Your plan stays active until the end of the billing period.' },
-            { q: 'How do I upgrade?', a: 'Contact us at business@gidivibe.com or click the upgrade button above. Payment via Paystack (card, bank transfer) is coming soon.' },
+            { q: 'How do I upgrade?', a: 'Contact us at business@gidiconnect.com or click the upgrade button above. Payment via Paystack (card, bank transfer) is coming soon.' },
             { q: 'What happens to my data if I downgrade?', a: 'Your data is preserved. If you exceed the lower tier limits, existing venues/events remain but you cannot create new ones until within limits.' },
-            { q: 'Do you offer annual billing?', a: 'Yes — annual billing gives you 2 months free. Contact us at business@gidivibe.com for annual pricing.' },
+            { q: 'Do you offer annual billing?', a: 'Yes — annual billing gives you 2 months free. Contact us at business@gidiconnect.com for annual pricing.' },
           ].map(({ q, a }) => (
             <div key={q} className="border-b last:border-0 pb-4 last:pb-0">
               <p className="font-medium text-sm">{q}</p>

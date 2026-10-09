@@ -23,6 +23,8 @@ interface PlatformStats {
   totalUsers: number;
   totalVenues: number;
   activePromotions: number;
+  /** Subscriptions on a tier above Free. */
+  paidPlans: number;
   newUsersThisWeek: number;
   mau: number;
 }
@@ -80,6 +82,7 @@ export default function Overview() {
     totalUsers: 0,
     totalVenues: 0,
     activePromotions: 0,
+    paidPlans: 0,
     newUsersThisWeek: 0,
     mau: 0,
   });
@@ -95,7 +98,7 @@ export default function Overview() {
 
   useEffect(() => {
     async function load() {
-      const [usersRes, venuesRes, promoRes, newUsersRes, mauRes] = await Promise.all([
+      const [usersRes, venuesRes, promoRes, paidRes, newUsersRes, mauRes] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('venues').select('id', { count: 'exact', head: true }),
         supabase
@@ -103,6 +106,13 @@ export default function Overview() {
           .select('id', { count: 'exact', head: true })
           .eq('is_promoted', true)
           .gt('promoted_until', new Date().toISOString()),
+        // Replaces a hardcoded "₦4.8M revenue". There is no payments table and
+        // no payment integration in this project, so the nearest honest number
+        // is how many businesses are on a paid tier.
+        supabase
+          .from('business_subscriptions')
+          .select('id', { count: 'exact', head: true })
+          .neq('tier', 'Free'),
         supabase
           .from('profiles')
           .select('id', { count: 'exact', head: true })
@@ -116,6 +126,7 @@ export default function Overview() {
         totalUsers: usersRes.count ?? 0,
         totalVenues: venuesRes.count ?? 0,
         activePromotions: promoRes.count ?? 0,
+        paidPlans: paidRes.count ?? 0,
         newUsersThisWeek: newUsersRes.count ?? 0,
         mau: mauRes.count ?? 0,
       });
@@ -401,12 +412,17 @@ export default function Overview() {
           sub={`/ ${stats.totalVenues} venues`}
           icon={Rocket}
         />
+        {/*
+          This card read "Revenue · 30d · ₦4.8M · +22%". There is no payments
+          table, no Paystack integration and no revenue data anywhere in this
+          platform — the figure, its delta and its comparison period were all
+          invented, on the dashboard a platform operator would most reasonably
+          trust. Paid plan count is the nearest thing that is actually true.
+        */}
         <MetricCard
-          title="Revenue · 30d"
-          value="₦4.8M"
-          delta="22%"
-          deltaUp
-          sub="vs prev. 30d"
+          title="Paid plans"
+          value={loading ? '—' : stats.paidPlans}
+          sub="businesses above Free"
           icon={DollarSign}
         />
       </div>

@@ -484,9 +484,13 @@ export function useVenueActivity(limit = 5) {
         eventIds.length
           ? supabase
               .from('event_rsvps')
-              .select('user_id, event_id, created_at')
+              // `rsvp_at`, not `created_at` — that column does not exist on
+              // this table. PostgREST rejected the whole query, `data` came
+              // back null, and `?? []` turned the failure into an empty lane,
+              // so RSVPs silently never appeared in the activity feed.
+              .select('user_id, event_id, rsvp_at')
               .in('event_id', eventIds)
-              .order('created_at', { ascending: false })
+              .order('rsvp_at', { ascending: false })
               .limit(limit)
           : Promise.resolve({ data: [] as any[] }),
       ]);
@@ -510,7 +514,7 @@ export function useVenueActivity(limit = 5) {
           user_id: r.user_id,
           verb: "RSVP'd to",
           what: eventName.get(r.event_id) ?? 'your event',
-          at: r.created_at,
+          at: r.rsvp_at,
           color: '#3B82F6',
         })),
       ]
@@ -529,6 +533,103 @@ export function useVenueActivity(limit = 5) {
       const nameMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p.full_name]));
 
       return rows.map(r => ({ ...r, who: nameMap.get(r.user_id) || 'Someone' }));
+    },
+    enabled: !!user,
+  });
+}
+
+/**
+ * Check-ins across the owner's venues: this week, last week, and a 7-point
+ * daily series.
+ *
+ * The Dashboard card previously read `value="612"` with a `delta="18%"` and a
+ * twelve-point sparkline, none of which came from anywhere — the whole venue
+ * table has five check-ins in it. A fabricated number on an owner's own
+ * dashboard is worse than a zero: zero is a prompt to go and get customers,
+ * 612 is a reason to believe the product is working.
+ */
+export function useCheckInStats() {
+  const { user } = useBusinessAuth();
+
+  return useQuery({
+    queryKey: ['check-in-stats', user?.id],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated');
+
+      const { data: venues } = await supabase
+        .from('venues')
+        .select('id')
+        .eq('owner_id', user.id);
+
+      const venueIds = (venues ?? []).map((v: { id: string }) => v.id);
+      const empty = { total: 0, previous: 0, deltaPct: null as number | null, series: [] as number[] };
+      if (venueIds.length === 0) return empty;
+
+      // Midnight 13 days ago, so "this week" is the last 7 whole days and the
+      // comparison week is the 7 before it — the same shape as useWeeklyViews.
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - 13);
+
+      const { data, error } = await supabase
+        .from('venue_check_ins')
+        .select('checked_in_at')
+        .in('venue_id', venueIds)
+        .gte('checked_in_at', start.toISOString());
+
+      if (error) throw error;
+
+      const buckets = Array(14).fill(0);
+      for (const row of data ?? []) {
+        const offset = Math.floor(
+          (new Date((row as any).checked_in_at).getTime() - start.getTime()) / 86_400_000,
+        );
+        if (offset >= 0 && offset < 14) buckets[offset] += 1;
+      }
+
+      const previous = buckets.slice(0, 7).reduce((a, b) => a + b, 0);
+      const series = buckets.slice(7);
+      const total = series.reduce((a, b) => a + b, 0);
+
+      // No delta from a zero baseline. "+100%" off one check-in last week is
+      // noise dressed as a trend, and dividing by zero would render "Infinity%".
+      const deltaPct = previous > 0 ? Math.round(((total - previous) / previous) * 100) : null;
+
+      return { total, previous, deltaPct, series };
+    },
+    enabled: !!user,
+  });
+}
+
+/**
+ * Cumulative venue count over the last 7 days, from `venues.created_at`.
+ * Real, unlike the [3,3,4,4,4,5,5] it replaces, and flat for most owners —
+ * which is the honest shape of a venue count.
+ */
+export function useVenueGrowth() {
+  const { user } = useBusinessAuth();
+
+  return useQuery({
+    queryKey: ['venue-growth', user?.id],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated');
+
+      const { data, error } = await supabase
+        .from('venues')
+        .select('created_at')
+        .eq('owner_id', user.id);
+      if (error) throw error;
+
+      const days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setHours(23, 59, 59, 999);
+        d.setDate(d.getDate() - (6 - i));
+        return d.getTime();
+      });
+
+      return days.map(
+        cutoff => (data ?? []).filter((v: any) => new Date(v.created_at).getTime() <= cutoff).length,
+      );
     },
     enabled: !!user,
   });

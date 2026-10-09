@@ -3,6 +3,7 @@ import { Star, X, Loader2, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { supabase } from '../lib/supabase';
+import { logAdminAction } from '../lib/audit';
 
 interface PromotedVenue {
   id: string;
@@ -34,6 +35,12 @@ export default function PromotionsManager() {
   const handleRemove = async (venueId: string) => {
     setSavingId(venueId);
     await supabase.from('venues').update({ is_promoted: false, promoted_until: null }).eq('id', venueId);
+    const name = venues.find(v => v.id === venueId)?.name;
+    await logAdminAction('unpromote', 'venue', venueId, { name });
+    // Same reason as the promote path in VenueManager: the app reads the
+    // materialized view, so without this the venue keeps its sponsored slot
+    // until pg_cron next runs.
+    await supabase.rpc('refresh_trending_venues');
     await fetchPromoted();
     setSavingId(null);
   };
