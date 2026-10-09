@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 import {
   LayoutDashboard,
   Building2,
@@ -78,6 +79,34 @@ export function AdminSidebar({ mobileOpen = false, onClose }: AdminSidebarProps)
   const location = useLocation();
   const { profile, signOut } = useAdminAuth();
 
+  /**
+   * Live queue counts on the two nav items that carry work.
+   *
+   * `alert: true` has been set on Verifications and Reports since this file was
+   * written, but the badge only renders when `count` is present and nothing
+   * ever set it — so the styling existed and the number never did. These are
+   * the real pending totals; a badge appears only when there is something
+   * waiting, and never as decoration.
+   */
+  const [queue, setQueue] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [verifications, reports] = await Promise.all([
+        supabase.from('verification_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('post_reports').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      ]);
+      if (cancelled) return;
+      setQueue({
+        '/verifications': verifications.count ?? 0,
+        '/reports': reports.count ?? 0,
+      });
+    })();
+    return () => { cancelled = true; };
+    // Re-count on navigation: acting on a report should empty its badge.
+  }, [location.pathname]);
+
   const isSuperAdmin = profile?.role === 'Super Admin';
   const fullName = profile?.full_name || 'Administrator';
   const initials = fullName
@@ -147,8 +176,10 @@ export function AdminSidebar({ mobileOpen = false, onClose }: AdminSidebarProps)
                 >
                   <Icon className="h-4 w-4" />
                   <span>{item.name}</span>
-                  {item.count && (
-                    <span className={`count${item.alert ? ' alert' : ''}`}>{item.count}</span>
+                  {/* `> 0`, not truthiness: a literal "0" badge on an empty
+                      queue is the same false signal as a permanently-lit pip. */}
+                  {(queue[item.href] ?? 0) > 0 && (
+                    <span className={`count${item.alert ? ' alert' : ''}`}>{queue[item.href]}</span>
                   )}
                 </Link>
               );

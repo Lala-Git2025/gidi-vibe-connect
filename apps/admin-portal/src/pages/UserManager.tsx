@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Download,
   BadgeCheck,
-  MoreHorizontal,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { logAdminAction } from '../lib/audit';
@@ -237,7 +236,6 @@ export default function UserManager() {
                 <th>Role</th>
                 <th>Joined</th>
                 <th>Change role</th>
-                <th style={{ width: 40 }} />
               </tr>
             </thead>
             <tbody>
@@ -333,11 +331,6 @@ export default function UserManager() {
                       {savingId === u.user_id && (
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground inline ml-2" />
                       )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="ap-btn ap-btn-ghost ap-btn-icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
                     </td>
                   </tr>
                 );
