@@ -3,6 +3,17 @@
 /**
  * Gidi Connect — Lagos traffic agent (Gemini Flash classifier).
  *
+ * ── SCHEDULING MOVED TO pg_cron (2026-10-08) ───────────────────────────────
+ * The hourly GitHub schedule delivered ~5 runs/day (gaps of 4.0-7.5h), and a
+ * missed scrape here is not a late report but NO report: the station posts a
+ * handful of times a day and the app's LOOKBACK_MS is 12h, so a 7.5h gap can
+ * retire a post before anything ever read it. supabase/functions/lagos-traffic
+ * now owns the cadence. This script stays as the dry-run and manual-dispatch
+ * path, and shares its selectors, prompt, schema and row shape with that
+ * function via _shared/lagos-traffic.js so the two cannot drift.
+ *
+ * Dry run (writes nothing):  node scripts/lagos-traffic-agent.js --dry-run
+ *
  * Scrapes recent posts from Lagos Traffic Radio 96.1FM, classifies each new post
  * with Gemini 2.0 Flash (structured JSON output via responseSchema), and writes
  * structured rows directly to traffic_reports via the Supabase service role.
@@ -14,7 +25,8 @@
  * stays around for higher-stakes work like moderation.
  *
  * Idempotent: skips URLs already present in traffic_reports.
- * Runs hourly via .github/workflows/traffic-agent.yml.
+ * Scheduled by pg_cron via supabase/functions/lagos-traffic; the workflow at
+ * .github/workflows/traffic-agent.yml is manual-dispatch only.
  *
  * Required env:
  *   GEMINI_API_KEY               (Get free from aistudio.google.com)
@@ -31,26 +43,29 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import {
+  SOURCE_URL as SHARED_SOURCE_URL,
+  MAX_POSTS as SHARED_MAX_POSTS,
+  DEFAULT_MODEL,
+  HTTP_HEADERS,
+  LISTING_LINK_SELECTOR,
+  HEADLINE_SELECTOR,
+  BODY_SELECTOR,
+  BODY_MAX_CHARS,
+  MIN_CONFIDENCE,
+  isTrafficTitle,
+  normalisePublishedAt,
+  classify,
+  buildReportRow,
+} from '../supabase/functions/_shared/lagos-traffic.js';
 
 dotenv.config();
 
-const SOURCE_URL   = process.env.TRAFFIC_SOURCE_URL || 'https://trafficradio961.ng/news/traffic-updates/';
-const MAX_POSTS    = Number(process.env.TRAFFIC_MAX_POSTS || 10);
-// Pinned to a LITE model, deliberately not an alias.
-//
-// The history here is worth keeping: gemini-2.0-flash was superseded, then
-// gemini-2.5-flash was blocked for API-key access on 2026-09-16 while still
-// appearing in the models listing (only generateContent enforces the cutoff).
-// The obvious fix looked like 'gemini-flash-latest' — let Google point us at
-// the current model. That backfired: the alias resolves to the NEWEST flash
-// model, which carries the tightest free-tier quota (it landed on
-// gemini-3.8-flash, limit 20 requests), and the news agent's briefs collapsed
-// under 429s.
-//
-// Lite models have far more generous free-tier limits. Pinned, so a
-// retirement is a loud 404 we fix on purpose rather than a silent slide onto
-// a model the free tier can't sustain.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+const DRY_RUN = process.argv.includes('--dry-run');
+
+const SOURCE_URL   = process.env.TRAFFIC_SOURCE_URL || SHARED_SOURCE_URL;
+const MAX_POSTS    = Number(process.env.TRAFFIC_MAX_POSTS || SHARED_MAX_POSTS);
+const GEMINI_MODEL = process.env.GEMINI_MODEL || DEFAULT_MODEL;
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -68,71 +83,7 @@ for (const [name, val] of Object.entries({
 }
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  Accept: 'text/html,application/xhtml+xml',
-  'Accept-Language': 'en-US,en;q=0.9',
-};
-
-// ── Gemini classification schema ────────────────────────────────────────
-// Structured output: Gemini guarantees the response matches this schema.
-
-const CLASSIFICATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    route_label: {
-      type: 'string',
-      description: 'Route name in title case, e.g. "3rd Mainland Bridge", "Lekki-Epe Expressway", "Ikorodu Road / Onipan".',
-    },
-    area: {
-      type: 'string',
-      enum: ['Mainland', 'Island', 'Lekki', 'Mainland-Outer'],
-      description: 'Mainland=Yaba/Surulere/Ikeja/Ikorodu corridor. Island=VI/Ikoyi/CMS/Eko/Carter Bridge. Lekki=Lekki/Ajah/Ibeju. Mainland-Outer=Badagry/Lagos-Ibadan beyond Berger.',
-    },
-    severity: {
-      type: 'string',
-      enum: ['light', 'moderate', 'heavy', 'critical', 'closed'],
-      description: 'light=flowing, moderate=slow, heavy=major congestion, critical=gridlock, closed=road closure/major incident.',
-    },
-    summary: {
-      type: 'string',
-      description: '1-2 sentences written for a Lagos driver deciding whether to leave now: what is happening, where exactly, and the cause if given. Direct, plain, no headline restatement.',
-    },
-    confidence: {
-      type: 'number',
-      description: '0..1 confidence in route + severity classification.',
-    },
-    ttl_minutes: {
-      type: 'integer',
-      description: '60 for fast-changing incidents, 120 for normal congestion, 240 for road closures.',
-    },
-  },
-  required: ['route_label', 'area', 'severity', 'summary', 'confidence', 'ttl_minutes'],
-};
-
-const SYSTEM_PROMPT = `You classify Lagos traffic posts from Lagos Traffic Radio 96.1FM into structured reports.
-
-Input is a JSON object: { headline, body }. Posts are short professional updates like:
-  - "INCIDENT REPORT – IKORODU ROAD / ONIPAN AXIS"
-  - "TRAFFIC UPDATE – 3RD MAINLAND BRIDGE / OBALENDE / CMS AXIS"
-
-Rules:
-1. Extract the route name from the headline. Title-case it ("3rd Mainland Bridge", "Ikorodu Road / Onipan").
-2. Infer severity from body language:
-   - "free flow", "moving", "easing" → light
-   - "slow", "build-up", "gradual" → moderate
-   - "heavy", "congested", "long queue" → heavy
-   - "gridlock", "standstill", "stationary" → critical
-   - "closed", "blocked", "diversion in effect", "road shut" → closed
-   - "INCIDENT REPORT" headlines usually mean heavy/critical/closed — confirm with body.
-3. Pick area from the enum.
-4. Summary is written FOR Gidi Connect, not copied from the source. Speak to a Lagos driver deciding whether to leave now: say what is happening, where exactly (junction, direction — inward/outward), and the cause if given (accident, road work, broken-down vehicle, rain, flooding). 1-2 sentences, direct and plain. Use Lagos names as locals say them ("Third Mainland", "Lekki-Epe", "Ikorodu Road"). Never invent a detail the post does not contain; if the post is thin, keep the summary short rather than padding it. No headline restatement, no exclamation marks.
-5. Confidence:
-   - 0.9+ if route is clear and severity unambiguous
-   - 0.7-0.9 if severity inferred indirectly
-   - < 0.5 if ambiguous or off-topic → still emit JSON, the script filters
-6. TTL: 60 for incidents (fast-changing), 120 for general congestion, 240 for road closures.`;
+const HEADERS = HTTP_HEADERS;
 
 // ── Scraping ────────────────────────────────────────────────────────────
 
@@ -140,14 +91,14 @@ async function fetchListing() {
   const { data: html } = await axios.get(SOURCE_URL, { headers: HEADERS, timeout: 20000 });
   const $ = cheerio.load(html);
   const posts = [];
-  const candidates = $('article h2 a, article h3 a, .post-title a, .entry-title a, h2.entry-title a').toArray();
+  const candidates = $(LISTING_LINK_SELECTOR).toArray();
   for (const el of candidates) {
     const a = $(el);
     const url = a.attr('href');
     const title = a.text().trim();
     if (!url || !title) continue;
     if (!url.startsWith('http')) continue;
-    if (!/traffic|incident|update/i.test(title)) continue;
+    if (!isTrafficTitle(title)) continue;
     posts.push({ url, title });
     if (posts.length >= MAX_POSTS) break;
   }
@@ -158,17 +109,17 @@ async function fetchPost(url) {
   try {
     const { data: html } = await axios.get(url, { headers: HEADERS, timeout: 20000 });
     const $ = cheerio.load(html);
-    const headline = $('h1.entry-title, h1.post-title, h1').first().text().trim();
-    const body = $('.entry-content, .post-content, article .content, article').first().text().trim().slice(0, 4000);
+    const headline = $(HEADLINE_SELECTOR).first().text().trim();
+    const body = $(BODY_SELECTOR).first().text().trim().slice(0, BODY_MAX_CHARS);
     let publishedAt =
       $('time[datetime]').attr('datetime') ||
       $('meta[property="article:published_time"]').attr('content') ||
       $('meta[name="publish_date"]').attr('content') ||
       null;
-    if (publishedAt && !/Z|[+-]\d{2}:?\d{2}$/.test(publishedAt)) {
-      publishedAt = new Date(publishedAt).toISOString();
-    }
-    return { headline: headline || null, body: body || null, published_at: publishedAt };
+    // Shared: a timestamp with no zone used to be read as the RUNNER's local
+    // time, so the same post dated differently from a GitHub runner than from
+    // an edge region. normalisePublishedAt pins it to Lagos.
+    return { headline: headline || null, body: body || null, published_at: normalisePublishedAt(publishedAt) };
   } catch (err) {
     console.warn(`  ! Could not fetch post body for ${url}: ${err.message}`);
     return { headline: null, body: null, published_at: null };
@@ -198,6 +149,7 @@ async function partitionListing(urls) {
 // reports vanish from the consumer app after 2h of source quiet.
 async function refreshExpiry(urls, ttlMinutes = 120) {
   if (urls.length === 0) return 0;
+  if (DRY_RUN) return 0;
   const newExpiry = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
   const { error, count } = await supabase
     .from('traffic_reports')
@@ -212,62 +164,32 @@ async function refreshExpiry(urls, ttlMinutes = 120) {
 
 // ── Gemini classify ─────────────────────────────────────────────────────
 
-async function classify({ headline, body }) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
-  const payload = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: JSON.stringify({ headline, body: body || '' }) }],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseSchema: CLASSIFICATION_SCHEMA,
-      temperature: 0.2,
-    },
-  };
-  try {
-    const res = await axios.post(url, payload, { timeout: 60000 });
-    const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Gemini returned no text');
-    return JSON.parse(text);
-  } catch (err) {
-    // Surface Gemini's actual error so 429/403/400 are diagnosable.
-    const status = err.response?.status;
-    const detail = err.response?.data?.error?.message || err.response?.data || err.message;
-    throw new Error(status ? `Gemini ${status}: ${detail}` : detail);
-  }
-}
+// classify() comes from _shared/lagos-traffic.js — the prompt and schema live
+// there so this script and the edge function cannot classify the same post
+// two different ways.
 
 // ── Insert ──────────────────────────────────────────────────────────────
 
 async function writeReport({ post, full, classification }) {
-  const ttlMinutes = Number.isFinite(classification.ttl_minutes) ? classification.ttl_minutes : 120;
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+  const row = buildReportRow({
+    sourceUrl: post.url,
+    publishedAt: full.published_at,
+    classification,
+  });
+  if (DRY_RUN) {
+    console.log(`\n      [dry run] would write ${JSON.stringify(row)}`);
+    return;
+  }
   const { error } = await supabase
     .from('traffic_reports')
-    .upsert(
-      {
-        route_label: String(classification.route_label),
-        area: classification.area || null,
-        severity: String(classification.severity),
-        summary: String(classification.summary),
-        source_url: post.url,
-        source_published_at: full.published_at,
-        expires_at: expiresAt,
-        confidence: typeof classification.confidence === 'number' ? classification.confidence : null,
-      },
-      { onConflict: 'source_url' },
-    );
+    .upsert(row, { onConflict: 'source_url' });
   if (error) throw error;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`Lagos traffic agent (Gemini ${GEMINI_MODEL}) — source: ${SOURCE_URL}`);
+  console.log(`Lagos traffic agent (Gemini ${GEMINI_MODEL})${DRY_RUN ? ' [DRY RUN — writes nothing]' : ''} — source: ${SOURCE_URL}`);
   const listing = await fetchListing();
   console.log(`  Found ${listing.length} post candidate(s) on the listing page.`);
   if (listing.length === 0) {
@@ -291,11 +213,11 @@ async function main() {
     process.stdout.write(`  → ${post.title.slice(0, 70)}... `);
     try {
       const full = await fetchPost(post.url);
-      const classification = await classify({
-        headline: full.headline || post.title,
-        body: full.body,
-      });
-      if (typeof classification.confidence === 'number' && classification.confidence < 0.5) {
+      const classification = await classify(
+        { headline: full.headline || post.title, body: full.body },
+        { apiKey: GEMINI_KEY, model: GEMINI_MODEL },
+      );
+      if (typeof classification.confidence === 'number' && classification.confidence < MIN_CONFIDENCE) {
         skipped++;
         console.log(`skipped (low confidence ${classification.confidence})`);
         continue;

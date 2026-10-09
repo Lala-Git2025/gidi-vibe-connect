@@ -346,25 +346,70 @@ async function scrapeRealLagosNews() {
   const newsItems = [];
   const seenUrls = new Set(); // Track URLs to prevent duplicates within this run
 
-  // CRITICAL: Fetch existing URLs from database to prevent duplicates across runs
+  /**
+   * Fetch existing URLs so the same article is not inserted twice.
+   *
+   * This guard has existed since the agent was written and did almost nothing,
+   * for a reason worth remembering: **PostgREST caps every response at
+   * `db-max-rows` (1000 on this project), so a bare `.select()` silently
+   * returns a slice rather than the column.** Against a table of 38,635 rows
+   * it was loading 870 URLs — 2% — and with no `.order()` the slice came back
+   * in physical order, which is the *oldest* rows. So the set never contained
+   * anything recent, every run re-inserted everything it scraped, and the
+   * table reached 38,635 rows holding 4,788 distinct articles: 88% copies.
+   * One story was inserted eight times from a single URL in 17 hours.
+   *
+   * Two changes. Page through with `.range()` rather than asking for
+   * everything in one response, and only load the window the scraper can
+   * actually re-encounter — sources list recent articles, so a URL older than
+   * the lookback is not a URL this run can scrape again.
+   *
+   * The set is still only an optimisation. The guarantee belongs in a UNIQUE
+   * index on external_url; see the migration that adds one. Until that is
+   * applied this is the whole defence, which is exactly why it must not
+   * silently truncate.
+   */
+  const DEDUPE_LOOKBACK_DAYS = 45;
+  const PAGE = 1000; // Match db-max-rows; a larger page is capped to this anyway.
+  const MAX_PAGES = 60; // Safety stop: 60k URLs is far past any real window.
+
   const existingUrls = new Set();
   if (supabase) {
     try {
       console.log('🔍 Checking database for existing article URLs...');
-      const { data, error } = await supabase
-        .from('news')
-        .select('external_url');
+      const since = new Date(Date.now() - DEDUPE_LOOKBACK_DAYS * 86400000).toISOString();
+      let page = 0;
+      let truncated = false;
 
-      if (!error && data) {
-        data.forEach(item => {
-          if (item.external_url) {
-            existingUrls.add(item.external_url);
-          }
-        });
-        console.log(`   ✅ Found ${existingUrls.size} existing URLs in database\n`);
+      for (; page < MAX_PAGES; page++) {
+        const { data, error } = await supabase
+          .from('news')
+          .select('external_url')
+          .not('external_url', 'is', null)
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .range(page * PAGE, page * PAGE + PAGE - 1);
+
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        for (const item of data) {
+          if (item.external_url) existingUrls.add(item.external_url);
+        }
+        if (data.length < PAGE) break;
+        if (page === MAX_PAGES - 1) truncated = true;
       }
+
+      console.log(
+        `   ✅ Found ${existingUrls.size} existing URLs from the last ${DEDUPE_LOOKBACK_DAYS} days` +
+        ` (${page + 1} page${page === 0 ? '' : 's'})${truncated ? ' — TRUNCATED, raise MAX_PAGES' : ''}\n`,
+      );
     } catch (error) {
-      console.log(`   ⚠️  Could not fetch existing URLs: ${error.message}\n`);
+      // Loud, because carrying on with a partial set is how the table got to
+      // 88% duplicates in the first place. The run still proceeds — stale news
+      // is worse than duplicated news — but the reason is on the record.
+      console.log(`   ⚠️  Could not fetch existing URLs (${error.message}).`);
+      console.log(`   ⚠️  Dedupe is degraded for this run; duplicates are likely.\n`);
     }
   }
 
@@ -585,17 +630,33 @@ async function uploadToSupabase(newsItems) {
       source: item.source || 'Lagos News',
     }));
 
+    // Upsert, never insert. `news_external_url_key` is a UNIQUE index (applied
+    // 2026-10-09, migrations 20261009000000 + 20261009000200), so the database
+    // skips a URL it already holds and the client-side Set above is only an
+    // optimisation.
+    //
+    // There is deliberately no plain-insert fallback. One existed for the
+    // window before the index was applied, and once the index landed it became
+    // strictly harmful: a plain INSERT carrying even one duplicate URL now
+    // raises 23505 and fails the ENTIRE batch, so a fallback meant to rescue a
+    // run would instead throw away every story in it.
+    //
+    // Note the index must NOT be partial: `ON CONFLICT (external_url)` cannot
+    // infer a partial index (error 42P10), which is what 20261009000200 fixed.
     const { data, error } = await supabase
       .from('news')
-      .insert(formattedItems)
+      .upsert(formattedItems, { onConflict: 'external_url', ignoreDuplicates: true })
       .select();
 
     if (error) {
       throw error;
     }
 
-    console.log(`✅ SUCCESS: Uploaded ${data.length} news items to Supabase`);
-    return data;
+    // With ignoreDuplicates the returned rows are the ones actually written,
+    // so this number is new articles rather than articles offered.
+    const written = data?.length ?? 0;
+    console.log(`✅ SUCCESS: ${written} new news item(s) written (${formattedItems.length} offered)`);
+    return data ?? [];
 
   } catch (error) {
     console.error('❌ Supabase upload error:', error.message);
